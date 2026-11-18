@@ -1,0 +1,409 @@
+name: Release
+
+# Builds every package of every platform, tests what was built, and publishes.
+#
+#   push of a v* tag        build, test, then publish: NuGet, npm, PyPI and a GitHub release (needs the tag's version
+#                           in Directory.Build.props and every manifest: node eng/set-version.mjs --check)
+#   push to main            the same build and tests as a dry run (version <prefix>-ci.<run>); nothing is published
+#   run by hand             a dry run of the chosen ref
+#
+# Publishing uses trusted publishing (OpenID Connect), so no long-lived secret is needed once the registries trust
+# this workflow; see CONTRIBUTING.md for the one-time setup. The publish jobs run in the "release" environment, which
+# can require an approval.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        name: Version of this build
+        run: |
+          node eng/set-version.mjs --check
+          prefix="$(node eng/set-version.mjs --print)"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            base="${version%%-*}"
+            if [[ "$base" != "$prefix" ]]; then
+              echo "::error::The tag is $GITHUB_REF_NAME but Directory.Build.props says $prefix. Bump the version in a commit first."
+              exit 1
+            fi
+            publish=true
+          else
+            version="$prefix-ci.$GITHUB_RUN_NUMBER"
+            publish=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Version $version (publish: $publish)"
+
+  # The native library, the command line and the Python wheel of each platform, each tested where it was built.
+  # Native AOT does not cross-compile between operating systems. Linux builds run in AlmaLinux 8 so the binaries
+  # need only glibc 2.28 (manylinux_2_28): what is built on a current distribution would not load on older ones.
+  native:
+    name: native ${{ matrix.rid }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-latest, container: 'almalinux:8', wheel: manylinux_2_28_x86_64 }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm, container: 'almalinux:8', wheel: manylinux_2_28_aarch64 }
+          - { rid: win-x64, os: windows-latest, wheel: win_amd64, msvc: amd64 }
+          - { rid: win-arm64, os: windows-11-arm, wheel: win_arm64, msvc: arm64 }
+          - { rid: osx-arm64, os: macos-latest, wheel: macos }
+          - { rid: osx-x64, os: macos-latest, wheel: macos, cross: x86_64 }
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      RID: ${{ matrix.rid }}
+      # The SDK itself does not need ICU for this; AlmaLinux images do not ship it.
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: ${{ matrix.container && '1' || '' }}
+    steps:
+      - name: Build tools (AlmaLinux 8)
+        if: matrix.container
+        run: dnf install -y --setopt=install_weak_deps=False git clang lld binutils zlib-devel tar gzip findutils which python3.12 python3.12-pip libicu
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v6
+        if: ${{ !matrix.container }}
+        with:
+          python-version: '3.13'
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.msvc
+        with:
+          arch: ${{ matrix.msvc }}
+
+      - name: Native library
+        run: dotnet publish src/CoreIdml.Native -c Release -r "$RID" -p:Version="$VERSION" -p:CoreIdmlRelease=true
+
+      - name: C smoke test
+        env:
+          # Git Bash would otherwise turn cl's /options into paths.
+          MSYS_NO_PATHCONV: 1
+          CC: ${{ matrix.container && 'clang' || 'cc' }}
+        run: |
+          out="artifacts/smoke/$RID"
+          mkdir -p "$out"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            cl /nologo /W4 /WX /D_CRT_SECURE_NO_WARNINGS /Iinclude tests/native/smoke.c "artifacts/native/$RID/coreidml.lib" /Fo"$out/" /Fe"$out/smoke.exe"
+            cp "artifacts/native/$RID/coreidml.dll" "$out/"
+            "$out/smoke.exe" tests/fixtures/article-1photo.idml "$out"
+          elif [[ -n "${{ matrix.cross }}" ]]; then
+            "$CC" -arch "${{ matrix.cross }}" tests/native/smoke.c -Wall -Wextra -Werror -Iinclude -L"artifacts/native/$RID" -lcoreidml -Wl,-rpath,"$PWD/artifacts/native/$RID" -o "$out/smoke"
+            arch "-${{ matrix.cross }}" "$out/smoke" tests/fixtures/article-1photo.idml "$out"
+          else
+            "$CC" tests/native/smoke.c -Wall -Wextra -Werror -Iinclude -L"artifacts/native/$RID" -lcoreidml -Wl,-rpath,"$PWD/artifacts/native/$RID" -o "$out/smoke"
+            "$out/smoke" tests/fixtures/article-1photo.idml "$out"
+          fi
+
+      - name: Command line
+        run: |
+          dotnet publish src/CoreIdml.Cli -c Release -r "$RID" -p:Version="$VERSION" -p:CoreIdmlRelease=true
+          cli="artifacts/cli/$RID/coreidml"
+          [[ "$RUNNER_OS" == Windows ]] && cli="$cli.exe"
+          run() { if [[ -n "${{ matrix.cross }}" ]]; then arch "-${{ matrix.cross }}" "$@"; else "$@"; fi; }
+          run "$cli" summary tests/fixtures/article-1photo.idml --sections pages > summary.json
+          grep -q '"pageCount"' summary.json
+          run "$cli" to-pdf tests/fixtures/article-1photo.idml -o artifacts/smoke/cli.pdf --fonts tests/fixtures/fonts
+          head -c 4 artifacts/smoke/cli.pdf | grep -q '%PDF'
+
+      - name: Python wheel
+        run: |
+          python="python"
+          [[ -n "${{ matrix.container }}" ]] && python="python3.12"
+          tag="${{ matrix.wheel }}"
+          if [[ "$tag" == macos ]]; then
+            # The wheel says which macOS the library needs: the minimum version it was linked for.
+            minos="$(otool -l artifacts/native/$RID/libcoreidml.dylib | awk '/minos/ { print $2; exit }')"
+            arch="${{ matrix.cross || 'arm64' }}"
+            tag="macosx_${minos%%.*}_0_${arch}"
+          fi
+          node eng/set-version.mjs "$VERSION"
+          "$python" -m pip install --quiet build twine
+          "$python" bindings/python/tools/build_wheel.py --rid "$RID" --plat-name "$tag"
+          "$python" -m twine check --strict artifacts/python/*.whl
+          if [[ -z "${{ matrix.cross }}" ]]; then
+            "$python" -m venv artifacts/venv
+            venv_python="artifacts/venv/bin/python"
+            [[ "$RUNNER_OS" == Windows ]] && venv_python="artifacts/venv/Scripts/python.exe"
+            "$venv_python" -m pip install --quiet artifacts/python/*.whl
+            # The tests import the installed package (with its bundled library), not the source tree.
+            COREIDML_TEST_INSTALLED=1 "$venv_python" -m unittest discover -s bindings/python/tests -v
+          fi
+          if [[ -n "${{ matrix.container }}" ]]; then
+            "$python" -m pip install --quiet auditwheel
+            "$python" -m auditwheel show artifacts/python/*.whl
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: artifacts/native/${{ matrix.rid }}
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.rid }}
+          path: artifacts/cli/${{ matrix.rid }}
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.rid }}
+          path: artifacts/python/*.whl
+          if-no-files-found: error
+
+  android:
+    name: native android
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Install the pinned NDK
+        run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" > /dev/null
+      - name: Build the Android libraries
+        run: bash eng/build-android.sh -p:Version="$VERSION" -p:CoreIdmlRelease=true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-jniLibs
+          path: artifacts/native/jniLibs
+          if-no-files-found: error
+
+  wasm:
+    name: wasm
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: dotnet publish src/CoreIdml.Wasm -c Release -p:Version="$VERSION" -p:CoreIdmlRelease=true
+      - name: Build and test the package
+        working-directory: bindings/wasm
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run test:browser
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: artifacts/wasm
+          if-no-files-found: error
+
+  # Everything that is published, built once from the binaries above, and checked as the registries will see it.
+  packages:
+    name: packages
+    needs: [version, native, android, wasm]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/download
+
+      - name: Lay out the binaries
+        run: |
+          for folder in artifacts/download/native-*; do
+            rid="${folder#artifacts/download/native-}"
+            mkdir -p "artifacts/native/$rid" && cp -r "$folder"/. "artifacts/native/$rid/"
+          done
+          mkdir -p artifacts/wasm && cp -r artifacts/download/wasm/. artifacts/wasm/
+          ls -R artifacts/native | head -50
+
+      - name: NuGet packages
+        run: |
+          for project in src/CoreIdml src/CoreIdml.Pdf src/CoreIdml.Cli; do
+            dotnet pack "$project" -c Release -p:Version="$VERSION" -p:CoreIdmlRelease=true -o artifacts/nuget
+          done
+          ls -l artifacts/nuget
+
+      - name: npm packages
+        run: |
+          node eng/set-version.mjs "$VERSION"
+          (cd bindings/node && npm ci && npm run build)
+          (cd bindings/wasm && npm ci && npm run build)
+          node eng/stage-npm.mjs --version "$VERSION"
+          mkdir -p artifacts/npm-tarballs
+          for folder in artifacts/npm/*/; do
+            (cd "$folder" && npm publish --dry-run --access public --tag ci > /dev/null && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/npm-tarballs" > /dev/null)
+          done
+          ls -l artifacts/npm-tarballs
+
+      - name: The staged npm package installs and works
+        run: |
+          mkdir -p artifacts/try-npm && cd artifacts/try-npm
+          npm init -y > /dev/null
+          npm install ../npm-tarballs/coreidml-node-linux-x64-*.tgz ../npm-tarballs/coreidml-node-[0-9]*.tgz ../npm-tarballs/coreidml-wasm-*.tgz > /dev/null
+          node --input-type=module -e "
+            import { CoreIdml } from '@coreidml/node';
+            const idml = CoreIdml.load();
+            const doc = idml.open('$GITHUB_WORKSPACE/tests/fixtures/article-1photo.idml');
+            if (doc.info().stories.length === 0) throw new Error('no stories');
+            console.log('@coreidml/node', idml.version, idml.libraryPath);
+          "
+
+      - name: Release archives
+        run: |
+          mkdir -p artifacts/release
+          cd artifacts
+          for folder in download/native-*; do
+            rid="${folder#download/native-}"
+            (cd "$folder" && zip -qr "../../release/coreidml-native-$VERSION-$rid.zip" .)
+          done
+          for folder in download/cli-*; do
+            rid="${folder#download/cli-}"
+            chmod +x "$folder"/coreidml 2>/dev/null || true
+            if [[ "$rid" == win-* ]]; then
+              (cd "$folder" && zip -qr "../../release/coreidml-cli-$VERSION-$rid.zip" .)
+            else
+              tar -czf "release/coreidml-cli-$VERSION-$rid.tar.gz" -C "$folder" .
+            fi
+          done
+          (cd download/android-jniLibs && zip -qr "../../release/coreidml-android-$VERSION-jniLibs.zip" .)
+          (cd download/wasm && zip -qr "../../release/coreidml-wasm-$VERSION.zip" .)
+          cp download/wheel-*/*.whl release/
+          cp nuget/*.nupkg release/
+          cp npm-tarballs/*.tgz release/
+          cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: artifacts/release
+          if-no-files-found: error
+
+  # ---- Publishing (tags only) -----------------------------------------------------------------------------------
+
+  nuget:
+    name: publish NuGet
+    needs: [version, packages]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - run: dotnet nuget push "release/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  npm:
+    name: publish npm
+    needs: [version, packages]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Publish (platform packages first, then @coreidml/node, then @coreidml/wasm)
+        env:
+          # Only needed for the very first publish of a package; afterwards trusted publishing takes over.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm@11
+          tag=latest
+          [[ "${{ needs.version.outputs.version }}" == *-* ]] && tag=next
+          for tarball in release/coreidml-node-*-*-[0-9]*.tgz release/coreidml-node-[0-9]*.tgz release/coreidml-wasm-*.tgz; do
+            npm publish "$tarball" --access public --provenance --tag "$tag"
+          done
+
+  pypi:
+    name: publish PyPI
+    needs: [version, packages]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - run: mkdir dist && cp release/*.whl dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github:
+    name: GitHub release
+    needs: [version, packages, nuget, npm, pypi]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          [[ "${{ needs.version.outputs.version }}" == *-* ]] && prerelease="--prerelease"
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --title "CoreIdml ${{ needs.version.outputs.version }}" --generate-notes $prerelease

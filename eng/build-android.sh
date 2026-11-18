@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the native library for Android (arm64-v8a and x86_64) and lays it out the way Flutter and Gradle expect:
 #
-#   bash eng/build-android.sh
+#   bash eng/build-android.sh [extra dotnet publish arguments, e.g. -p:Version=1.2.0 -p:CoreIdmlRelease=true]
 #     -> artifacts/native/linux-bionic-arm64/libcoreidml.so, artifacts/native/linux-bionic-x64/libcoreidml.so
 #     -> artifacts/native/jniLibs/{arm64-v8a,x86_64}/libcoreidml.so   (copy into android/app/src/main/jniLibs/)
 #
@@ -65,7 +65,7 @@ for rid in linux-bionic-arm64 linux-bionic-x64; do
   # CoreIdml.Native.csproj sets what every linux-bionic build needs; the NDK's compiler and sysroot come from here.
   dotnet publish "$root/src/CoreIdml.Native" -c Release -r "$rid" -nologo -v q \
     -p:CppCompilerAndLinker=clang \
-    -p:SysRoot="$toolchain/sysroot"
+    -p:SysRoot="$toolchain/sysroot" "$@"
   mkdir -p "$out/jniLibs/${abis[$rid]}"
   cp "$out/$rid/libcoreidml.so" "$out/jniLibs/${abis[$rid]}/"
 done

@@ -230,7 +230,7 @@ public static partial class IdmlJson
         }
         catch (System.Xml.XmlException exception)
         {
-            throw new IdmlException("The XML to import is not well-formed: " + exception.Message, exception);
+            throw new IdmlException(IdmlErrorKind.InvalidFormat, "The XML to import is not well-formed: " + exception.Message, exception);
         }
         var report = document.Tags.ImportXml(source, at ?? "/" + (document.Tags.Root?.Tag ?? "Root"), options);
         return JsonSerializer.Serialize(new XmlImportReportSpec

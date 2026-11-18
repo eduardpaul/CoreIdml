@@ -1,7 +1,7 @@
 {
   "name": "@coreidml/wasm",
   "version": "0.1.0",
-  "description": "Read, edit and write Adobe InDesign IDML files in the browser, without InDesign and without a server. WebAssembly, no native code.",
+  "description": "Create, read, edit and print Adobe InDesign IDML files in the browser, without InDesign and without a server: templates, XML, PDF export and import, in a Web Worker. WebAssembly, no native code.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -22,6 +22,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "default": "./dist/worker.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -36,6 +40,8 @@
     "wasm",
     "webassembly",
     "browser",
+    "pdf",
+    "web-worker",
     "dtp",
     "publishing"
   ],

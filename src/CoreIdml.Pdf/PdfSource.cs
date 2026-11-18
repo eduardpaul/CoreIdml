@@ -20,7 +20,15 @@ internal static class PdfSource
                 $"{description} is encrypted (password protected). Decrypting PDFs is not available in the native Android build; " +
                 "remove the protection (for example by printing it to a new PDF) and try again.");
         }
-        return PdfPigDocument.Open(data);
+        try
+        {
+            return PdfPigDocument.Open(data);
+        }
+        catch (Exception exception) when (exception is not (IdmlException or OutOfMemoryException or OperationCanceledException))
+        {
+            // PdfPig reports a damaged or foreign file with its own exception types; to callers it is bad input.
+            throw new IdmlException(IdmlErrorKind.InvalidFormat, $"{description} is not a readable PDF: {exception.Message}", exception);
+        }
     }
 
     /// <summary>An /Encrypt entry in a trailer or cross-reference stream dictionary marks an encrypted PDF.</summary>

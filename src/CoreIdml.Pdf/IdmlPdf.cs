@@ -74,8 +74,24 @@ public static class IdmlPdf
     public static PdfExportResult Export(IdmlDocument document, string pdfPath, PdfExportOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pdfPath);
-        using var stream = File.Create(pdfPath);
-        return Export(document, stream, options);
+        // Written next to the target and moved into place when complete, so a failed or cancelled export leaves no
+        // truncated file behind (and does not destroy an earlier PDF of the same name).
+        var full = Path.GetFullPath(pdfPath);
+        var temporary = Path.Combine(Path.GetDirectoryName(full)!, "." + Path.GetFileName(full) + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp");
+        try
+        {
+            PdfExportResult result;
+            using (var stream = File.Create(temporary))
+            {
+                result = Export(document, stream, options);
+            }
+            File.Move(temporary, full, overwrite: true);
+            return result;
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
     }
 
     /// <summary>Builds an IDML document from a PDF.</summary>

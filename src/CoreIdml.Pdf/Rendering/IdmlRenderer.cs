@@ -84,6 +84,10 @@ internal sealed class IdmlRenderer : IDisposable
         var selected = options.Pages is { Count: > 0 } wanted
             ? wanted.Where(number => number >= 1 && number <= pages.Count).Select(number => pages[number - 1]).ToList()
             : pages.ToList();
+        foreach (var missing in options.Pages?.Where(number => number < 1 || number > pages.Count) ?? [])
+        {
+            warnings.Add($"Page {missing} does not exist: the document has {pages.Count} page(s), numbered from 1.");
+        }
 
         if (options.MaxImageDpi is { } maxDpi)
         {

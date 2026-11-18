@@ -13,6 +13,9 @@
     <Project Path="tests/CoreIdml.Interop.Tests/CoreIdml.Interop.Tests.csproj" />
     <Project Path="tests/CoreIdml.Abi.Tests/CoreIdml.Abi.Tests.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/CoreIdml.Benchmarks/CoreIdml.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/CoreIdml.Sample/CoreIdml.Sample.csproj" />
   </Folder>

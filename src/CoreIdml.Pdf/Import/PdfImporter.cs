@@ -39,6 +39,10 @@ internal sealed class PdfImporter
         var numbers = options.Pages is { Count: > 0 } wanted
             ? wanted.Where(n => n >= 1 && n <= pdf.NumberOfPages).ToList()
             : Enumerable.Range(1, pdf.NumberOfPages).ToList();
+        foreach (var missing in options.Pages?.Where(n => n < 1 || n > pdf.NumberOfPages) ?? [])
+        {
+            warnings.Add($"Page {missing} does not exist: the PDF has {pdf.NumberOfPages} page(s), numbered from 1.");
+        }
         if (numbers.Count == 0)
         {
             throw new IdmlException(IdmlErrorKind.InvalidFormat, "The PDF has no pages to import.");

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Benchmarks (BenchmarkDotNet) and the golden-output check. Not shipped, so BenchmarkDotNet is fine here; the
+    libraries stay BCL-only. How to run them: CONTRIBUTING.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Benchmark methods must be instance methods; BenchmarkDotNet's generated code needs public types. -->
+    <NoWarn>$(NoWarn);CA1822;CA1515;CA1001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CoreIdml\CoreIdml.csproj" />
+    <ProjectReference Include="..\..\src\CoreIdml.Pdf\CoreIdml.Pdf.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The sample app's ficha demo, also used by the PDF tests. -->
+    <Compile Include="..\..\samples\CoreIdml.Sample\FichaDemo.cs" Link="FichaDemo.cs" />
+  </ItemGroup>
+
+</Project>

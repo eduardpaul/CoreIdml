@@ -59,8 +59,11 @@
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 
-  <!-- The native binary is "coreidml" (see the comment at the top). Set after the ILCompiler targets. -->
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(NativeBinaryExt)' != ''">
+  <!--
+    The native binary is "coreidml" (see the comment at the top). Set after the ILCompiler targets. (Not conditioned on
+    NativeBinaryExt, as in CoreIdml.Native: an executable has no extension outside Windows.)
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(PublishAot)' == 'true' and '$(NativeOutputPath)' != ''">
     <NativeBinary>$(NativeOutputPath)$(CliBinaryName)$(NativeBinaryExt)</NativeBinary>
     <_LinkNativeOutputs>$(NativeBinary)</_LinkNativeOutputs>
   </PropertyGroup>

@@ -1,6 +1,6 @@
 import koffi from 'koffi';
 
-import { ABI_VERSION, PROTOTYPES, Status, type NativeFunctions, type Pointer, type StatusCode } from './abi.generated.ts';
+import { ABI_VERSION, CALLBACKS, PROTOTYPES, Status, type NativeFunctions, type Pointer, type StatusCode } from './abi.generated.ts';
 import { buildHint, findLibrary, libraryFileName, resolveInstalledPackage, sourceCheckoutRoot } from './library.ts';
 
 /** A failed call. `code` is one of the {@link Status} values, the same in every CoreIdml binding. */
@@ -20,11 +20,25 @@ export interface Native extends NativeFunctions {
   readonly source: string;
 }
 
+// koffi keeps named types per JavaScript thread (Node-API environment): the main thread and every worker register
+// the callback types once, before the prototypes that use them.
+let callbacksRegistered = false;
+
+function registerCallbacks(): void {
+  if (!callbacksRegistered) {
+    for (const prototype of Object.values(CALLBACKS)) {
+      koffi.proto(prototype);
+    }
+    callbacksRegistered = true;
+  }
+}
+
 /**
  * Loads the library at `path` and binds every function from its generated prototype. The ABI is checked first, so
  * a library from another release is reported as that, not as a missing function.
  */
 export function bindLibrary(path: string, source: string): Native {
+  registerCallbacks();
   const library = koffi.load(path);
   const bind = (prototype: string): unknown => {
     try {
@@ -88,6 +102,26 @@ export function takeString(native: Native, pointer: Pointer): string {
   } finally {
     native.free(pointer);
   }
+}
+
+/**
+ * Releases what the out parameters of a failed call may hold. The C API sets them to NULL on failure, so this is a
+ * safety net; call it after {@link check} has read the error message.
+ */
+export function freeAll(native: Native, ...pointers: Pointer[]): void {
+  for (const pointer of pointers) {
+    if (pointer != null) {
+      native.free(pointer);
+    }
+  }
+}
+
+/**
+ * NULL for an optional `const char*` argument. The generated declarations type these as `string`; koffi passes
+ * `null` as NULL, which the C API reads as "not given".
+ */
+export function optionalString(value: string | null | undefined): string {
+  return (value ?? null) as unknown as string;
 }
 
 /** Copies a buffer the library handed out, and releases it. */

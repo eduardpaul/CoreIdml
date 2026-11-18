@@ -176,8 +176,9 @@ COREIDML_API int32_t coreidml_document_import_pages(coreidml_document document, 
 
 /* Renders the document to a PDF file. Options: {"pages":[1,2], "fontDirectories":["/fonts"], "useSystemFonts":true,
    "substitutions":{"Minion Pro":"Liberation Serif"}, "linkDirectories":["/links"], "linkRemap":{"a.jpg":"/b.jpg"},
-   "documentPath":"/docs/a.idml", "maxImageDpi":150, "jpegQuality":85}. Receives a JSON report: pageCount,
-   missingFonts, missingImages, oversetStories, warnings. */
+   "documentPath":"/docs/a.idml", "maxImageDpi":150, "jpegQuality":85}. Pages are numbered from 1. Receives a JSON
+   report: pageCount, missingFonts (every family that was replaced, substitutions included), missingImages,
+   oversetStories, warnings. On failure or cancellation no file is left at path. */
 COREIDML_API int32_t coreidml_document_export_pdf(coreidml_document document, const char* path, const char* options_json, coreidml_progress_callback progress, void* user_data, char** report_json);
 
 /* Renders the document to a PDF in memory. Options and report as for coreidml_document_export_pdf. */
@@ -186,7 +187,8 @@ COREIDML_API int32_t coreidml_document_export_pdf_bytes(coreidml_document docume
 /* Builds an editable document from a PDF held in memory: text frames with inferred styles, image frames, shapes.
    Options: {"pages":[1], "imageDirectory":"/links", "preserveLineBreaks":false, "importShapes":true,
    "fontDirectories":["/fonts"]}. Images are written to imageDirectory, since IDML links images. Receives a JSON
-   report: frames, images, fonts (and whether each is available), warnings. The bytes are not kept. */
+   report: frames, images, fonts (with "available" when fontDirectories were given), warnings. Data that is not a
+   readable PDF is COREIDML_ERR_INVALID_FORMAT. The bytes are not kept. */
 COREIDML_API int32_t coreidml_pdf_import(const uint8_t* data, size_t length, const char* options_json, coreidml_progress_callback progress, void* user_data, coreidml_document* document, char** report_json);
 
 /* coreidml_pdf_import from a PDF file. */

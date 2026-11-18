@@ -1,7 +1,7 @@
 {
   "name": "@coreidml/node",
   "version": "0.1.0",
-  "description": "Read, edit and write Adobe InDesign IDML files from Node.js, without InDesign. Untouched parts are written back byte for byte.",
+  "description": "Create, read, fill and edit Adobe InDesign IDML files from Node.js, and render them to PDF, without InDesign. Untouched parts are written back byte for byte.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -36,11 +36,13 @@
     "dtp",
     "print",
     "publishing",
-    "layout"
+    "layout",
+    "pdf",
+    "template"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {

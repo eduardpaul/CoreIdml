@@ -161,8 +161,9 @@ final class CoreIdmlBindings {
 
   /// Renders the document to a PDF file. Options: {"pages":[1,2], "fontDirectories":["/fonts"], "useSystemFonts":true,
   /// "substitutions":{"Minion Pro":"Liberation Serif"}, "linkDirectories":["/links"], "linkRemap":{"a.jpg":"/b.jpg"},
-  /// "documentPath":"/docs/a.idml", "maxImageDpi":150, "jpegQuality":85}. Receives a JSON report: pageCount,
-  /// missingFonts, missingImages, oversetStories, warnings.
+  /// "documentPath":"/docs/a.idml", "maxImageDpi":150, "jpegQuality":85}. Pages are numbered from 1. Receives a JSON
+  /// report: pageCount, missingFonts (every family that was replaced, substitutions included), missingImages,
+  /// oversetStories, warnings. On failure or cancellation no file is left at path.
   final int Function(int document, Pointer<Utf8> path, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<Pointer<Utf8>> reportJson) documentExportPdf;
 
   /// Renders the document to a PDF in memory. Options and report as for coreidml_document_export_pdf.
@@ -171,7 +172,8 @@ final class CoreIdmlBindings {
   /// Builds an editable document from a PDF held in memory: text frames with inferred styles, image frames, shapes.
   /// Options: {"pages":[1], "imageDirectory":"/links", "preserveLineBreaks":false, "importShapes":true,
   /// "fontDirectories":["/fonts"]}. Images are written to imageDirectory, since IDML links images. Receives a JSON
-  /// report: frames, images, fonts (and whether each is available), warnings. The bytes are not kept.
+  /// report: frames, images, fonts (with "available" when fontDirectories were given), warnings. Data that is not a
+  /// readable PDF is COREIDML_ERR_INVALID_FORMAT. The bytes are not kept.
   final int Function(Pointer<Uint8> data, int length, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<IntPtr> document, Pointer<Pointer<Utf8>> reportJson) pdfImport;
 
   /// coreidml_pdf_import from a PDF file.

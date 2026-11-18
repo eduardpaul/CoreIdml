@@ -2,6 +2,9 @@
 and the fixtures every binding shares.
 
     python -m unittest discover -s bindings/python/tests
+
+With COREIDML_TEST_INSTALLED=1 the tests import the installed package (a wheel and the library it carries) instead
+of bindings/python/src; the fixtures are still read from this checkout.
 """
 
 import os
@@ -13,7 +16,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "bindings" / "python" / "src"))
+INSTALLED = os.environ.get("COREIDML_TEST_INSTALLED") == "1"
+if not INSTALLED:
+    sys.path.insert(0, str(ROOT / "bindings" / "python" / "src"))
 
 import coreidml  # noqa: E402
 from coreidml import Document, IdmlError, Status  # noqa: E402
@@ -27,6 +32,12 @@ class LibraryTests(unittest.TestCase):
         self.assertRegex(coreidml.version(), r"^\d+\.\d+\.\d+")
         self.assertEqual(coreidml.ABI_VERSION, 1)
         self.assertTrue(os.path.isfile(coreidml.library_path()), coreidml.library_path())
+
+    @unittest.skipUnless(INSTALLED and not os.environ.get("COREIDML_LIBRARY"), "testing the installed package")
+    def test_the_installed_package_is_tested_with_the_library_it_carries(self):
+        package = Path(coreidml.__file__).resolve().parent
+        self.assertNotEqual(package, (ROOT / "bindings" / "python" / "src" / "coreidml").resolve())
+        self.assertEqual(Path(coreidml.library_path()).resolve().parent, package / "_lib")
 
     def test_a_second_library_is_refused(self):
         with self.assertRaises(IdmlError) as raised:

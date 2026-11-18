@@ -29,6 +29,18 @@ public sealed partial class IdmlDocument
             }
         }
 
+        if (indices.Distinct().Count() < indices.Length)
+        {
+            // A page listed twice is copied twice, each copy with ids of its own: one call per page keeps the copies
+            // from sharing the id map below.
+            var copies = new List<Page>();
+            foreach (var index in indices)
+            {
+                copies.AddRange(ImportPages(source, index));
+            }
+            return copies;
+        }
+
         MergeResources(source);
         var layerMap = source.Layers.All.ToDictionary(layer => layer.Id, layer => Layers.Add(layer.Name).Id, StringComparer.Ordinal);
 

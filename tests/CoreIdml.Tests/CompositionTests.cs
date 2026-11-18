@@ -80,4 +80,17 @@ public class CompositionTests
         Assert.Equal(["página 3", "página 1"], target.Pages.Skip(1).Select(page => ((TextFrame)page.PageItems.Single()).Story.Text));
         Assert.Throws<IdmlException>(() => target.ImportPages(source, 7));
     }
+
+    [Fact]
+    public void A_page_listed_twice_is_imported_twice_with_ids_of_its_own()
+    {
+        using var book = IdmlDocument.Open(TestFiles.Article);
+        using var source = IdmlDocument.Open(TestFiles.Article);
+
+        var added = book.ImportPages(source, 0, 0);
+
+        Assert.Equal(2, added.Count);
+        Assert.Equal(3, book.Pages.Count);
+        Assert.True(IdmlValidator.Validate(book).IsValid, string.Join("; ", IdmlValidator.Validate(book).Issues));
+    }
 }

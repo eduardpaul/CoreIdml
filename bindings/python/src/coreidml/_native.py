@@ -64,7 +64,7 @@ def _candidates() -> list[tuple[str, str]]:
     return found
 
 
-def load(path: Union[str, os.PathLike, None] = None) -> ctypes.CDLL:
+def load(path: Union[str, "os.PathLike[str]", None] = None) -> ctypes.CDLL:
     """Loads the native library and checks its ABI. Called on first use; call it first to choose the library.
 
     Without ``path`` the library is searched for: the ``COREIDML_LIBRARY`` environment variable, the installed
@@ -125,7 +125,8 @@ def native() -> ctypes.CDLL:
 
 def version() -> str:
     """Version of the native library."""
-    return native().coreidml_version().decode("utf-8")
+    text: bytes = native().coreidml_version()
+    return text.decode("utf-8")
 
 
 def library_path() -> str:

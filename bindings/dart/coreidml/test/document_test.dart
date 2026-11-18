@@ -7,21 +7,13 @@ import 'dart:typed_data';
 import 'package:coreidml/coreidml.dart';
 import 'package:test/test.dart';
 
+import 'support.dart';
+
 const story = 'Stories/Story_u188.xml';
 
-File fixtureFile() {
-  for (var directory = Directory.current; directory.parent.path != directory.path; directory = directory.parent) {
-    final file = File('${directory.path}/tests/fixtures/article-1photo.idml');
-    if (file.existsSync()) return file;
-  }
-  throw StateError('tests/fixtures/article-1photo.idml not found above ${Directory.current.path}');
-}
-
-Matcher throwsIdml(int code) => throwsA(isA<IdmlException>().having((error) => error.code, 'code', code));
-
 void main() {
-  final fixture = fixtureFile();
-  final bytes = fixture.readAsBytesSync();
+  final article = fixture('article-1photo.idml');
+  final bytes = article.readAsBytesSync();
 
   test('the library loads and reports its version', () {
     expect(CoreIdml.version, matches(RegExp(r'^\d+\.\d+\.\d+')));
@@ -31,7 +23,7 @@ void main() {
   });
 
   test('a document is opened and described', () {
-    final doc = IdmlDocument.open(fixture.path);
+    final doc = IdmlDocument.open(article.path);
     addTearDown(doc.close);
 
     final info = doc.info();
@@ -70,8 +62,7 @@ void main() {
   });
 
   test('a document saves to a file with a name that is not ASCII', () {
-    final folder = Directory.systemTemp.createTempSync('coreidml-');
-    addTearDown(() => folder.deleteSync(recursive: true));
+    final folder = tempFolder();
     final path = '${folder.path}${Platform.pathSeparator}ficha-ñ-日本.idml';
     final doc = IdmlDocument.fromBytes(bytes);
     addTearDown(doc.close);

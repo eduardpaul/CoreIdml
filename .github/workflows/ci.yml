@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Every package declares the same version
+        run: node eng/set-version.mjs --check
       - run: dotnet build CoreIdml.slnx -c Release
       - run: dotnet test --solution CoreIdml.slnx -c Release --no-build
 
@@ -67,7 +69,7 @@ jobs:
         run: |
           cc tests/native/smoke.c -Wall -Wextra -Werror -Iinclude -Lartifacts/native/${{ matrix.rid }} -lcoreidml \
             -Wl,-rpath,"$PWD/artifacts/native/${{ matrix.rid }}" -o smoke
-          ./smoke tests/fixtures/article-1photo.idml
+          mkdir -p artifacts/smoke && ./smoke tests/fixtures/article-1photo.idml artifacts/smoke
 
       - name: Python binding
         run: python -m unittest discover -s bindings/python/tests -v
