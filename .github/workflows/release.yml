@@ -101,10 +101,10 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Microsoft C compiler (for the C smoke test)
         if: matrix.msvc
-        with:
-          arch: ${{ matrix.msvc }}
+        shell: pwsh
+        run: ./eng/msvc-env.ps1 ${{ matrix.msvc }}
 
       - name: Native library
         run: dotnet publish src/CoreIdml.Native -c Release -r "$RID" -p:Version="$VERSION" -p:CoreIdmlRelease=true
