@@ -491,7 +491,7 @@ internal sealed class TextComposer
         {
             if (runFirst is not null && run.Count > 0)
             {
-                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()));
+                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()) { VerticalScale = runFirst.Style.VerticalScale });
                 var runWidth = run.Sum(glyph => glyph.Advance);
                 if (runFirst.Style.Underline && runFirst.Style.Fill is { } color)
                 {

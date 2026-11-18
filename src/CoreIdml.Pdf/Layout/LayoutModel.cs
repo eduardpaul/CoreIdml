@@ -20,6 +20,9 @@ internal sealed record RunStyle
     /// <summary>Horizontal scale, 1 = 100%.</summary>
     public double HorizontalScale { get; init; } = 1;
 
+    /// <summary>Vertical scale, 1 = 100%: glyphs are stretched up from the baseline; line spacing is unchanged.</summary>
+    public double VerticalScale { get; init; } = 1;
+
     public double BaselineShift { get; init; }
 
     public string Capitalization { get; init; } = "Normal";
@@ -104,6 +107,9 @@ internal readonly record struct PlacedGlyph(ushort Glyph, string Text, double Ad
 internal sealed record GlyphRunOp(FontFace Font, double Size, double HorizontalScale, ResolvedColor? Color, double X, double Y, IReadOnlyList<PlacedGlyph> Glyphs) : DrawOp
 {
     public string Text => string.Concat(Glyphs.Select(glyph => glyph.Text));
+
+    /// <summary>Vertical glyph scale, 1 = 100%.</summary>
+    public double VerticalScale { get; init; } = 1;
 
     public double Width => Glyphs.Sum(glyph => glyph.Advance);
 

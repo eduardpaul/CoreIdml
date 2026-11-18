@@ -906,7 +906,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             content.Raw($"{Number(run.HorizontalScale * 100)} Tz");
         }
-        content.Raw($"1 0 0 -1 {Number(run.X)} {Number(run.Y)} Tm");
+        content.Raw($"1 0 0 {Number(-run.VerticalScale)} {Number(run.X)} {Number(run.Y)} Tm");
         content.Raw(array.ToString());
         content.Raw("ET");
     }

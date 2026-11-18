@@ -44,4 +44,23 @@ public sealed class ExportTests(ITestOutputHelper output)
         Assert.Contains("PÁGINA 2", second, StringComparison.Ordinal);
 
     }
+
+    [Fact]
+    public void Vertical_scale_stretches_glyphs_up_from_the_baseline()
+    {
+        using var document = IdmlDocument.Create(new DocumentOptions { PageSize = PageSizes.A4 });
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Sans", PointSize = 20, Leading = 24 });
+        document.Pages[0].AddText(new Rect(100, 100, 200, 50), "H", style);
+        var tall = document.Pages[0].AddText(new Rect(100, 200, 200, 50), "H", style);
+        tall.Story.Element.Descendants("CharacterStyleRange").Single().SetAttributeValue("VerticalScale", "150");
+
+        using var reader = PdfDocument.Open(TestSupport.Export(document));
+        var letters = reader.GetPage(1).Letters.Where(l => l.Value == "H").OrderByDescending(l => l.BoundingBox.Bottom).ToList();
+        Assert.Equal(2, letters.Count);
+        var (normal, scaled) = (letters[0].BoundingBox, letters[1].BoundingBox);
+        Assert.Equal(normal.Height * 1.5, scaled.Height, 1);
+        Assert.Equal(normal.Width, scaled.Width, 1);
+        // Same baseline position within each frame: the stretch goes up.
+        Assert.Equal(normal.Bottom - 100, scaled.Bottom, 1);
+    }
 }

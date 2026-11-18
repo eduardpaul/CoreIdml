@@ -246,6 +246,7 @@ internal sealed class StoryReader
             Fill = fill,
             Tracking = Values.Number(Get("Tracking"), 0),
             HorizontalScale = Math.Max(0.01, Values.Number(Get("HorizontalScale"), 100) / 100),
+            VerticalScale = Math.Max(0.01, Values.Number(Get("VerticalScale"), 100) / 100),
             BaselineShift = Values.Number(Get("BaselineShift"), 0),
             Capitalization = Get("Capitalization") ?? "Normal",
             Position = Get("Position") ?? "Normal",
