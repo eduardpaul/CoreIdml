@@ -59,6 +59,13 @@ to 2024-11-05, negotiated):
 - **Paths must be absolute.** A relative path is refused with the path it would have resolved to, unless the server
   runs with `--root <dir>` or the client announces MCP roots (the first one is then the base).
 
+### Claude Desktop
+
+Each release has a one-click extension (an [MCP Bundle](https://github.com/modelcontextprotocol/mcpb)) for Windows
+and macOS: `coreidml-<version>-win-x64.mcpb`, `-win-arm64`, `-osx-arm64` or `-osx-x64`. In Claude Desktop open
+Settings, Extensions and drop the file in (or Advanced settings, Install Extension). It carries the binary and
+PDFium; there is nothing to configure. Give Claude files by their full path.
+
 ## Page previews
 
 Previews (`render`, `idml_render_page`) are drawn by [PDFium](https://pdfium.googlesource.com/pdfium/), Chromium's

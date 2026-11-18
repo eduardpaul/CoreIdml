@@ -44,6 +44,7 @@ const manifests = [
   { path: 'bindings/wasm/package.json', pattern: /^(  "version": ")([^"]+)(",)$/m, format: (v) => v },
   { path: 'bindings/python/pyproject.toml', pattern: /^(version = ")([^"]+)(")$/m, format: pythonVersion },
   { path: 'bindings/dart/coreidml/pubspec.yaml', pattern: /^(version: )(\S+)()$/m, format: (v) => v },
+  { path: 'bindings/mcpb/manifest.json', pattern: /^(  "version": ")([^"]+)(",)$/m, format: (v) => v },
 ];
 
 const props = read('Directory.Build.props');

@@ -325,6 +325,12 @@ jobs:
               tar -czf "release/coreidml-cli-$VERSION-$rid.tar.gz" -C "$folder" .
             fi
           done
+          # MCP Bundles: the MCP server as a one-click install for Claude Desktop (Windows and macOS only). Packed here,
+          # on Linux, so the macOS binaries keep their executable bit; the Linux CLI lists the tools for the manifest.
+          for rid in win-x64 win-arm64 osx-arm64 osx-x64; do
+            node ../eng/pack-mcpb.mjs --rid "$rid" --cli "download/cli-$rid" --tools-from download/cli-linux-x64/coreidml \
+              --version "$VERSION" --out "release/coreidml-$VERSION-$rid.mcpb"
+          done
           (cd download/android-jniLibs && zip -qr "../../release/coreidml-android-$VERSION-jniLibs.zip" .)
           (cd download/wasm && zip -qr "../../release/coreidml-wasm-$VERSION.zip" .)
           cp download/wheel-*/*.whl release/

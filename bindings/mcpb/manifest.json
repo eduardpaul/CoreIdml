@@ -1,0 +1,35 @@
+{
+  "manifest_version": "0.3",
+  "name": "coreidml",
+  "display_name": "CoreIdml: InDesign IDML",
+  "version": "0.0.2",
+  "description": "Read, edit, fill and lay out Adobe InDesign IDML files, export them to PDF and preview pages. No InDesign needed.",
+  "long_description": "CoreIdml gives Claude the tools to work on InDesign documents saved as IDML: summaries of pages, frames and stories; text edits and find and replace; filling templates from data; moving, resizing and duplicating items; adding, deleting and reordering pages; importing XML; merging documents; relinking images; checking whether text fits its frames; PDF export and page previews as images.\n\nEvery edit writes a new file (or replaces the original only when asked), and can be tried first as a dry run that reports the changes.\n\nGive files by their full path (for example C:\\Users\\you\\Documents\\brochure.idml).",
+  "author": {
+    "name": "Eduard Paul",
+    "url": "https://github.com/eduardpaul"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eduardpaul/CoreIdml"
+  },
+  "homepage": "https://github.com/eduardpaul/CoreIdml",
+  "documentation": "https://github.com/eduardpaul/CoreIdml/blob/main/src/CoreIdml.Cli/README.md",
+  "support": "https://github.com/eduardpaul/CoreIdml/issues",
+  "license": "MIT",
+  "keywords": ["indesign", "idml", "pdf", "layout", "publishing", "templates"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/coreidml",
+    "mcp_config": {
+      "command": "${__dirname}/server/coreidml",
+      "args": ["mcp"],
+      "env": {}
+    }
+  },
+  "tools": [],
+  "prompts_generated": true,
+  "compatibility": {
+    "platforms": ["win32", "darwin"]
+  }
+}
