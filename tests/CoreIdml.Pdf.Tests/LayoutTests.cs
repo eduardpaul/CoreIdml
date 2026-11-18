@@ -1,0 +1,248 @@
+using CoreIdml.Dom;
+using CoreIdml.Pdf.Layout;
+using CoreIdml.Pdf.Rendering;
+
+namespace CoreIdml.Pdf.Tests;
+
+/// <summary>The text composer: line breaking, leading, alignment, spacing, columns, threads, tables.</summary>
+public sealed class LayoutTests
+{
+    private const string Lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
+
+    private static (IdmlDocument Document, Page Page) NewDocument()
+    {
+        var document = IdmlDocument.Create(new DocumentOptions { PageSize = PageSizes.A4 });
+        return (document, document.Pages[0]);
+    }
+
+    private static StoryLayout Layout(IdmlDocument document, TextFrame frame)
+    {
+        var renderer = new IdmlRenderer(document, TestSupport.ExportOptions());
+        return renderer.LayoutStory(frame.Story);
+    }
+
+    private static double SerifAscent(double size)
+    {
+        var face = TestSupport.FontLibrary().Resolve("Liberation Serif", "Regular");
+        return face.Ascent * size;
+    }
+
+    [Fact]
+    public void Lines_break_at_spaces_within_the_column_and_keep_every_word()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Leading = 14 });
+        var frame = page.AddText(new Rect(50, 50, 150, 300), Lorem, style);
+        var layout = Layout(document, frame);
+
+        Assert.True(layout.Lines.Count >= 4, $"expected several lines, got {layout.Lines.Count}");
+        Assert.All(layout.Lines, line => Assert.True(line.Width <= 150 + 0.01, $"line '{line.Text}' is {line.Width} pt wide"));
+        Assert.Equal(Lorem, string.Join(" ", layout.Lines.Select(l => l.Text)));
+        Assert.False(layout.Overset);
+    }
+
+    [Fact]
+    public void First_baseline_is_the_ascent_and_following_lines_step_by_the_leading()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, Leading = 20 });
+        var frame = page.AddText(new Rect(0, 0, 120, 400), Lorem, style);
+        var layout = Layout(document, frame);
+        var top = frame.InnerBounds.Y;
+
+        Assert.Equal(top + SerifAscent(10), layout.Lines[0].Baseline, 3);
+        for (var i = 1; i < layout.Lines.Count; i++)
+        {
+            Assert.Equal(20, layout.Lines[i].Baseline - layout.Lines[i - 1].Baseline, 6);
+        }
+    }
+
+    [Fact]
+    public void Auto_leading_is_120_percent_of_the_size()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10 });
+        var layout = Layout(document, page.AddText(new Rect(0, 0, 100, 400), Lorem, style));
+        Assert.Equal(12, layout.Lines[1].Baseline - layout.Lines[0].Baseline, 6);
+    }
+
+    [Theory]
+    [InlineData(Justification.Left, 0)]
+    [InlineData(Justification.Center, 0.5)]
+    [InlineData(Justification.Right, 1)]
+    public void Alignment_positions_the_line_in_the_column(Justification justification, double factor)
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Justification = justification });
+        var frame = page.AddText(new Rect(0, 0, 300, 100), "Short line", style);
+        var layout = Layout(document, frame);
+        var run = layout.OpsByFrame[frame.Id].OfType<GlyphRunOp>().Single();
+        var free = 300 - run.Width;
+        Assert.Equal(frame.InnerBounds.X + (free * factor), run.X, 3);
+    }
+
+    [Fact]
+    public void Justified_lines_fill_the_column_except_the_last()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 11, Justification = Justification.LeftJustified });
+        var frame = page.AddText(new Rect(0, 0, 160, 400), Lorem, style);
+        var layout = Layout(document, frame);
+        foreach (var line in layout.Lines.Take(layout.Lines.Count - 1))
+        {
+            Assert.Equal(160, line.Width, 3);
+        }
+        Assert.True(layout.Lines[^1].Width < 160);
+    }
+
+    [Fact]
+    public void Space_before_is_ignored_at_the_top_of_a_frame_and_applied_between_paragraphs()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, Leading = 12, SpaceBefore = 9, SpaceAfter = 4 });
+        var frame = page.AddText(new Rect(0, 0, 400, 400), "One\nTwo", style);
+        var layout = Layout(document, frame);
+        Assert.Equal(frame.InnerBounds.Y + SerifAscent(10), layout.Lines[0].Baseline, 3);
+        Assert.Equal(12 + 4 + 9, layout.Lines[1].Baseline - layout.Lines[0].Baseline, 6);
+    }
+
+    [Fact]
+    public void Indents_shift_and_narrow_the_lines()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, LeftIndent = 20, FirstLineIndent = 15, RightIndent = 30 });
+        var frame = page.AddText(new Rect(0, 0, 200, 400), Lorem, style);
+        var layout = Layout(document, frame);
+        Assert.Equal(35, layout.Lines[0].Left - frame.InnerBounds.X, 6);
+        Assert.Equal(20, layout.Lines[1].Left - frame.InnerBounds.X, 6);
+        Assert.All(layout.Lines.Skip(1), line => Assert.True(line.Width <= 150 + 0.01));
+    }
+
+    [Fact]
+    public void Text_flows_through_columns_and_threaded_frames_then_reports_overset()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, Leading = 12 });
+        var first = page.AddTextFrame(new Rect(0, 0, 300, 60));
+        first.Columns = 2;
+        first.ColumnGutter = 10;
+        var second = page.AddTextFrame(new Rect(0, 100, 300, 40));
+        first.ThreadTo(second);
+        for (var i = 0; i < 6; i++)
+        {
+            first.Story.AddParagraph(Lorem, style);
+        }
+        var layout = Layout(document, first);
+
+        Assert.Contains(layout.Lines, line => line.FrameIndex == 0 && line.Column == 0);
+        Assert.Contains(layout.Lines, line => line.FrameIndex == 0 && line.Column == 1);
+        Assert.Contains(layout.Lines, line => line.FrameIndex == 1);
+        var secondColumn = layout.Lines.First(line => line.FrameIndex == 0 && line.Column == 1);
+        Assert.Equal(155, secondColumn.Left - first.InnerBounds.X, 6);
+        Assert.True(layout.Overset);
+        Assert.All(layout.Lines.Where(l => l.FrameIndex == 0), line => Assert.True(line.Baseline <= first.InnerBounds.Bottom));
+    }
+
+    [Fact]
+    public void Vertical_justification_centres_the_text()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, Leading = 12 });
+        var frame = page.AddText(new Rect(0, 0, 200, 100), "Centred", style);
+        frame.VerticalJustification = VerticalJustification.Center;
+        var layout = Layout(document, frame);
+        var run = layout.OpsByFrame[frame.Id].OfType<GlyphRunOp>().Single();
+        var face = TestSupport.FontLibrary().Resolve("Liberation Serif", "Regular");
+        // Like InDesign cells (measured on real InDesign exports), the text block ends at the last baseline.
+        var textHeight = face.Ascent * 10;
+        Assert.Equal(frame.InnerBounds.Y + ((100 - textHeight) / 2) + (face.Ascent * 10), run.Y, 3);
+    }
+
+    [Fact]
+    public void Pair_kerning_tightens_AV()
+    {
+        var face = TestSupport.FontLibrary().Resolve("Liberation Serif", "Regular");
+        Assert.True(face.TryMap('A', out var a));
+        Assert.True(face.TryMap('V', out var v));
+        Assert.True(face.Kerning(a, v) < 0);
+    }
+
+    [Fact]
+    public void Tables_place_rows_at_least_their_stored_height_and_grow_to_fit()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Cell", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, Leading = 12 });
+        var frame = page.AddTextFrame(new Rect(0, 0, 200, 300));
+        var table = frame.AddTable(2, 2, new TableOptions { RowHeight = 20, CellParagraphStyle = style, CellInset = 4 });
+        table.SetRow(0, "A", "B");
+        table.SetRow(1, "A long cell text that needs several lines in a narrow column", "C");
+        var layout = Layout(document, frame);
+        var ops = layout.OpsByFrame[frame.Id];
+
+        var horizontalEdges = ops.OfType<LineOp>().Where(l => Math.Abs(l.From.Y - l.To.Y) < 1e-6 && l.From.X == frame.InnerBounds.X).Select(l => l.From.Y).Distinct().Order().ToList();
+        Assert.Equal(20, horizontalEdges[1] - horizontalEdges[0], 6);
+        Assert.True(horizontalEdges[^1] - horizontalEdges[1] > 20, "the second row grows to fit its text");
+        var cellText = ops.OfType<GlyphRunOp>().Where(r => r.Text.Contains("long", StringComparison.Ordinal)).Single();
+        Assert.True(cellText.X >= frame.InnerBounds.X + 4 - 1e-6);
+        Assert.True(cellText.X + cellText.Width <= frame.InnerBounds.X + 100 - 4 + 1e-6);
+    }
+
+    [Fact]
+    public void Missing_fonts_fall_back_and_are_reported()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Futura PT", FontStyle = "Bold", PointSize = 10 });
+        page.AddText(new Rect(0, 0, 200, 100), "Hola", style);
+        var options = TestSupport.ExportOptions();
+        using var stream = new MemoryStream();
+        var result = IdmlPdf.Export(document, stream, options);
+        var substitution = Assert.Single(result.FontSubstitutions, s => s.RequestedFamily == "Futura PT");
+        Assert.Equal("Liberation Sans Bold", substitution.UsedFont);
+        Assert.Equal(["1"], substitution.Pages);
+        Assert.Single(substitution.Stories);
+        Assert.Contains("\"missingFonts\":[{\"requestedFamily\":\"Futura PT\"", Json.PdfJson.ToJson(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Fonts_load_from_memory_and_restricted_licences_are_not_embedded()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Sans", PointSize = 10 });
+        page.AddText(new Rect(0, 0, 200, 100), "Hola", style);
+
+        // From bytes, as an app would pass a font picked by the user or read from its assets.
+        var bytes = File.ReadAllBytes(Path.Combine(TestSupport.FontDirectory, "LiberationSans-Regular.ttf"));
+        var options = new PdfExportOptions { Fonts = new PdfFontOptions { UseSystemFonts = false }.AddFont("LiberationSans-Regular.ttf", bytes) };
+        using (var stream = new MemoryStream())
+        {
+            Assert.Empty(IdmlPdf.Export(document, stream, options).FontSubstitutions);
+        }
+
+        // The same font with OS/2 fsType = 2 (restricted licence): found, but neither embedded nor used.
+        var restricted = (byte[])bytes.Clone();
+        var font = Fonts.OpenTypeFont.Load(restricted);
+        var os2 = font.Tables["OS/2"].Offset;
+        restricted[os2 + 8] = 0;
+        restricted[os2 + 9] = 2;
+        options = new PdfExportOptions { Fonts = new PdfFontOptions { UseSystemFonts = false }.AddFont("restricted.ttf", restricted) };
+        using (var stream = new MemoryStream())
+        {
+            var substitution = Assert.Single(IdmlPdf.Export(document, stream, options).FontSubstitutions);
+            Assert.True(substitution.EmbeddingRestricted);
+            Assert.Equal("Helvetica", substitution.UsedFont);
+        }
+    }
+
+    [Fact]
+    public void Without_any_font_files_the_standard_pdf_fonts_are_used()
+    {
+        var (document, page) = NewDocument();
+        page.AddText(new Rect(0, 0, 200, 100), "Hola, señor");
+        var options = new PdfExportOptions { Fonts = new PdfFontOptions { UseSystemFonts = false } };
+        using var stream = new MemoryStream();
+        var result = IdmlPdf.Export(document, stream, options);
+        Assert.Contains(result.FontSubstitutions, s => s.UsedFont == "Times-Roman");
+        using var reader = UglyToad.PdfPig.PdfDocument.Open(stream.ToArray());
+        Assert.Contains("señor", reader.GetPage(1).Text, StringComparison.Ordinal);
+    }
+}

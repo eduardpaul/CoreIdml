@@ -29,6 +29,14 @@ export type Pointer = unknown;
 /** An out parameter: koffi writes the value into the single slot. */
 export type Out<T> = [T];
 
+/** The type of `coreidml_progress_callback`: return 0 to continue, anything else to cancel. */
+export type ProgressCallback = (done: number, total: number, userData: Pointer) => number;
+
+/** The koffi prototypes of the callback types; register them with koffi.proto() before {@link PROTOTYPES}. */
+export const CALLBACKS = {
+  progress: 'int32_t coreidml_progress_callback(int32_t done, int32_t total, void *user_data)',
+} as const;
+
 /** The koffi prototype of every function in coreidml.h. */
 export const PROTOTYPES = {
   abiVersion: 'int32_t coreidml_abi_version()',
@@ -44,6 +52,24 @@ export const PROTOTYPES = {
   documentSave: 'int32_t coreidml_document_save(intptr_t document, _Out_ void **data, _Out_ size_t *length)',
   documentSaveFile: 'int32_t coreidml_document_save_file(intptr_t document, const char *path)',
   documentClose: 'void coreidml_document_close(intptr_t document)',
+  documentCreate: 'int32_t coreidml_document_create(const char *spec_json, _Out_ intptr_t *document)',
+  documentApply: 'int32_t coreidml_document_apply(intptr_t document, const char *spec_json)',
+  documentSummary: 'int32_t coreidml_document_summary(intptr_t document, const char *options_json, _Out_ void **json)',
+  documentStory: 'int32_t coreidml_document_story(intptr_t document, const char *story_id, _Out_ void **json)',
+  documentXmlStructure: 'int32_t coreidml_document_xml_structure(intptr_t document, _Out_ void **json)',
+  documentExportXml: 'int32_t coreidml_document_export_xml(intptr_t document, const char *at, _Out_ void **xml)',
+  documentValidate: 'int32_t coreidml_document_validate(intptr_t document, _Out_ void **json)',
+  documentDiff: 'int32_t coreidml_document_diff(intptr_t before, intptr_t after, _Out_ void **json)',
+  documentFill: 'int32_t coreidml_document_fill(intptr_t document, const char *data_json, _Out_ void **report_json)',
+  documentReplaceText: 'int32_t coreidml_document_replace_text(intptr_t document, const char *find, const char *replacement, _Out_ int32_t *count)',
+  documentSetRunText: 'int32_t coreidml_document_set_run_text(intptr_t document, const char *story_id, int32_t run_index, const char *text, int32_t force)',
+  documentRelink: 'int32_t coreidml_document_relink(intptr_t document, const char *link_id, const char *uri_or_path, int32_t refit)',
+  documentImportXml: 'int32_t coreidml_document_import_xml(intptr_t document, const char *xml, const char *at, const char *options_json, _Out_ void **report_json)',
+  documentImportPages: 'int32_t coreidml_document_import_pages(intptr_t document, intptr_t source, const int32_t *pages, size_t count, _Out_ int32_t *added)',
+  documentExportPdf: 'int32_t coreidml_document_export_pdf(intptr_t document, const char *path, const char *options_json, coreidml_progress_callback *progress, void *user_data, _Out_ void **report_json)',
+  documentExportPdfBytes: 'int32_t coreidml_document_export_pdf_bytes(intptr_t document, const char *options_json, coreidml_progress_callback *progress, void *user_data, _Out_ void **data, _Out_ size_t *length, _Out_ void **report_json)',
+  pdfImport: 'int32_t coreidml_pdf_import(const uint8_t *data, size_t length, const char *options_json, coreidml_progress_callback *progress, void *user_data, _Out_ intptr_t *document, _Out_ void **report_json)',
+  pdfImportFile: 'int32_t coreidml_pdf_import_file(const char *path, const char *options_json, coreidml_progress_callback *progress, void *user_data, _Out_ intptr_t *document, _Out_ void **report_json)',
 } as const;
 
 /** The C API as koffi binds it: one JavaScript function per C function. */
@@ -81,4 +107,75 @@ export interface NativeFunctions {
   documentSaveFile(document: number, path: string): number;
   /** Releases a document. Closing a handle twice, or 0, does nothing. */
   documentClose(document: number): void;
+  /**
+   * Creates a document from a JSON document spec (page size, colours, styles, pages of text, images, tables and
+   * shapes; see the README). NULL or "" creates one blank A4 page.
+   */
+  documentCreate(specJson: string, document: Out<number | bigint>): number;
+  /** Adds the colours, styles and pages of a JSON document spec to the document; its pages are appended. */
+  documentApply(document: number, specJson: string): number;
+  /**
+   * A JSON summary for programs and agents: pages, frames with positions and text, stories, links, styles, swatches,
+   * tags. Options: {"maxTextLength":200, "includeRuns":false, "includeResources":true, "pages":[0,2],
+   * "sections":["pages","stories","links","offPage","resources"]}.
+   */
+  documentSummary(document: number, optionsJson: string, json: Out<Pointer>): number;
+  /** One story in full as JSON: its text, frames, and every content run with its index, styles and scope. */
+  documentStory(document: number, storyId: string, json: Out<Pointer>): number;
+  /** The XML structure as a JSON tree (tag, id, path, boundTo, attributes, text, children); "null" without one. */
+  documentXmlStructure(document: number, json: Out<Pointer>): number;
+  /** Exports the XML structure, or the subtree at the path at (e.g. "/Root/article[2]"; NULL for all), as XML. */
+  documentExportXml(document: number, at: string, xml: Out<Pointer>): number;
+  /** Checks references, ids, layers, threads and XML bindings: {"isValid":true, "issues":[...]}. */
+  documentValidate(document: number, json: Out<Pointer>): number;
+  /** What changed between two documents, as JSON: stories run by run, links, page count. */
+  documentDiff(before: number, after: number, json: Out<Pointer>): number;
+  /**
+   * Fills a template from JSON fill data: {"text":{"key":"value"}, "images":{"key":"/path/photo.jpg"}}. Keys match
+   * frame names, script labels, XML tags and {{placeholders}}. Receives a JSON report (filled, missing).
+   */
+  documentFill(document: number, dataJson: string, reportJson: Out<Pointer>): number;
+  /** Replaces text in every story; count receives the number of replacements. */
+  documentReplaceText(document: number, find: string, replacement: string, count: Out<number>): number;
+  /**
+   * Sets the text of content run run_index of a story (indices from coreidml_document_story), keeping its formatting.
+   * A run holding special characters (a page number) is only overwritten when force is not 0.
+   */
+  documentSetRunText(document: number, storyId: string, runIndex: number, text: string, force: number): number;
+  /**
+   * Points the link link_id (from the summary's "links") at another file: a URI or a local path. With refit not 0
+   * and a readable local JPEG or PNG, the image is measured again and fitted to its frame.
+   */
+  documentRelink(document: number, linkId: string, uriOrPath: string, refit: number): number;
+  /**
+   * Imports XML onto the structure element at the path at (NULL for the root), with SimpleIDML's semantics
+   * (simpleidml-setcontent, -ignorecontent, -forcecontent, href). Options: {"fit":"fill",
+   * "characterStyles":{"b":"Bold"}, "relinkOnly":false}. Receives a JSON report (updated, added, deleted,
+   * unmatched, warnings).
+   */
+  documentImportXml(document: number, xml: string, at: string, optionsJson: string, reportJson: Out<Pointer>): number;
+  /**
+   * Appends pages of source to the document, remapping every id; styles, swatches and tags are merged once.
+   * pages lists 0-based page indices (count 0: every page). added receives the number of pages added.
+   * source may be the document itself.
+   */
+  documentImportPages(document: number, source: number, pages: Int32Array | null, count: number, added: Out<number>): number;
+  /**
+   * Renders the document to a PDF file. Options: {"pages":[1,2], "fontDirectories":["/fonts"], "useSystemFonts":true,
+   * "substitutions":{"Minion Pro":"Liberation Serif"}, "linkDirectories":["/links"], "linkRemap":{"a.jpg":"/b.jpg"},
+   * "documentPath":"/docs/a.idml", "maxImageDpi":150, "jpegQuality":85}. Receives a JSON report: pageCount,
+   * missingFonts, missingImages, oversetStories, warnings.
+   */
+  documentExportPdf(document: number, path: string, optionsJson: string, progress: ProgressCallback | null, userData: Pointer, reportJson: Out<Pointer>): number;
+  /** Renders the document to a PDF in memory. Options and report as for coreidml_document_export_pdf. */
+  documentExportPdfBytes(document: number, optionsJson: string, progress: ProgressCallback | null, userData: Pointer, data: Out<Pointer>, length: Out<number | bigint>, reportJson: Out<Pointer>): number;
+  /**
+   * Builds an editable document from a PDF held in memory: text frames with inferred styles, image frames, shapes.
+   * Options: {"pages":[1], "imageDirectory":"/links", "preserveLineBreaks":false, "importShapes":true,
+   * "fontDirectories":["/fonts"]}. Images are written to imageDirectory, since IDML links images. Receives a JSON
+   * report: frames, images, fonts (and whether each is available), warnings. The bytes are not kept.
+   */
+  pdfImport(data: Uint8Array | null, length: number, optionsJson: string, progress: ProgressCallback | null, userData: Pointer, document: Out<number | bigint>, reportJson: Out<Pointer>): number;
+  /** coreidml_pdf_import from a PDF file. */
+  pdfImportFile(path: string, optionsJson: string, progress: ProgressCallback | null, userData: Pointer, document: Out<number | bigint>, reportJson: Out<Pointer>): number;
 }

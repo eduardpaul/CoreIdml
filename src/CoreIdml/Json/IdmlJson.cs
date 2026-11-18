@@ -1,0 +1,430 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using CoreIdml.Dom;
+
+namespace CoreIdml.Json;
+
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    ReadCommentHandling = JsonCommentHandling.Skip,
+    AllowTrailingCommas = true)]
+[JsonSerializable(typeof(DocumentSpec))]
+[JsonSerializable(typeof(FillSpec))]
+[JsonSerializable(typeof(FillReport))]
+[JsonSerializable(typeof(DocumentSummary))]
+[JsonSerializable(typeof(ValidationReport))]
+[JsonSerializable(typeof(SummaryOptions))]
+[JsonSerializable(typeof(StorySummary))]
+[JsonSerializable(typeof(XmlNodeSummary))]
+[JsonSerializable(typeof(XmlImportOptionsSpec))]
+[JsonSerializable(typeof(XmlImportReportSpec))]
+[JsonSerializable(typeof(DiffReport))]
+internal sealed partial class IdmlJsonContext : JsonSerializerContext;
+
+/// <summary>
+/// JSON entry points: build documents from a <see cref="DocumentSpec"/>, fill templates, and read summaries.
+/// Source-generated serialization only, so this works under Native AOT; it is what the C/Dart API exposes.
+/// </summary>
+public static partial class IdmlJson
+{
+    /// <summary>
+    /// Writer options for JSON the library produces: accents and quotes are written as-is instead of \u escapes,
+    /// which keeps Spanish text readable and summaries smaller for agents. Still valid JSON (not meant for HTML).
+    /// </summary>
+    public static readonly JsonWriterOptions WriterOptions = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static readonly IdmlJsonContext Output = new(new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    });
+
+    /// <summary>Creates a document from a JSON <see cref="DocumentSpec"/> (null or empty: blank A4).</summary>
+    public static IdmlDocument CreateDocument(string? json) => CreateDocument(ParseSpec(json));
+
+    public static IdmlDocument CreateDocument(DocumentSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        var unit = spec.Unit;
+        var setup = spec.Page ?? new PageSetupSpec();
+        var size = ResolveSize(setup, unit);
+        var pageCount = Math.Max(1, spec.Pages?.Count(page => page.Index is null) ?? 1);
+        var document = IdmlDocument.Create(new DocumentOptions
+        {
+            PageSize = size,
+            Margins = ToSpacing(setup.Margins, unit) ?? Spacing.All(36),
+            FacingPages = setup.FacingPages ?? false,
+            PageCount = pageCount,
+            Columns = setup.Columns ?? 1,
+            ColumnGutter = setup.ColumnGutter is { } gutter ? Units.FromUnit(gutter, unit) : 12,
+            Bleed = setup.Bleed is { } bleed ? Units.FromUnit(bleed, unit) : 0,
+        });
+        Render(document, spec, reuseExistingPages: true);
+        return document;
+    }
+
+    /// <summary>Adds the colours, styles and pages of a JSON spec to an existing document (pages are appended).</summary>
+    public static void Apply(IdmlDocument document, string json) => Render(document, ParseSpec(json), reuseExistingPages: false);
+
+    public static void Apply(IdmlDocument document, DocumentSpec spec) => Render(document, spec, reuseExistingPages: false);
+
+    /// <summary>Fills a template from a JSON <see cref="FillSpec"/>; returns a JSON <see cref="FillReport"/>.</summary>
+    public static string Fill(IdmlDocument document, string json)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        var spec = JsonSerializer.Deserialize(json, IdmlJsonContext.Default.FillSpec) ?? new FillSpec();
+        var data = new TemplateData
+        {
+            Text = spec.Text ?? [],
+            Images = spec.Images ?? [],
+            ImageFit = ParseFit(spec.Fit),
+            PlaceholderFormat = spec.PlaceholderFormat ?? "{{{{{0}}}}}",
+        };
+        var result = document.Fill(data);
+        return JsonSerializer.Serialize(new FillReport { Filled = result.Filled, Missing = result.Missing }, Output.FillReport);
+    }
+
+    public static string ValidateToJson(IdmlDocument document)
+    {
+        var result = IdmlValidator.Validate(document);
+        var report = new ValidationReport
+        {
+            IsValid = result.IsValid,
+            Issues = result.Issues.Select(issue => new IssueReport
+            {
+                Severity = issue.Severity.ToString().ToLowerInvariant(),
+                Code = issue.Code,
+                Message = issue.Message,
+                Part = issue.Part,
+            }).ToList(),
+        };
+        return JsonSerializer.Serialize(report, Output.ValidationReport);
+    }
+
+    public static DocumentSpec ParseSpec(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? new DocumentSpec()
+            : JsonSerializer.Deserialize(json, IdmlJsonContext.Default.DocumentSpec) ?? new DocumentSpec();
+
+    // ---- rendering --------------------------------------------------------------------------------
+
+    private static void Render(IdmlDocument document, DocumentSpec spec, bool reuseExistingPages)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(spec);
+        var unit = spec.Unit;
+
+        foreach (var color in spec.Colors ?? [])
+        {
+            if (color.Cmyk is { Length: 4 } cmyk)
+            {
+                document.Swatches.AddCmyk(color.Name, cmyk[0], cmyk[1], cmyk[2], cmyk[3]);
+            }
+            else if (color.Rgb is { Length: 3 } rgb)
+            {
+                document.Swatches.AddRgb(color.Name, rgb[0], rgb[1], rgb[2]);
+            }
+            else if (color.Hex is { } hex)
+            {
+                document.Swatches.AddHex(color.Name, hex);
+            }
+            else
+            {
+                throw new IdmlException($"Colour '{color.Name}' needs cmyk, rgb or hex.");
+            }
+        }
+
+        foreach (var style in spec.CharacterStyles ?? [])
+        {
+            var basedOn = style.BasedOn is { } baseName ? RequireCharacterStyle(document, baseName) : null;
+            document.Styles.AddCharacterStyle(style.Name, ToCharacterFormat(document, style), basedOn);
+        }
+        foreach (var style in spec.ParagraphStyles ?? [])
+        {
+            var basedOn = style.BasedOn is { } baseName ? RequireParagraphStyle(document, baseName) : null;
+            document.Styles.AddParagraphStyle(style.Name, ToParagraphFormat(document, style), basedOn);
+        }
+
+        var nextExisting = 0;
+        foreach (var pageSpec in spec.Pages ?? [])
+        {
+            Page page;
+            if (pageSpec.Index is { } index)
+            {
+                var pages = document.Pages;
+                page = index >= 0 && index < pages.Count ? pages[index] : throw new IdmlException(IdmlErrorKind.NotFound, $"Page index {index} does not exist.");
+            }
+            else if (reuseExistingPages && nextExisting < document.Pages.Count)
+            {
+                page = document.Pages[nextExisting++];
+            }
+            else
+            {
+                page = document.AddPage();
+            }
+            if (ToSpacing(pageSpec.Margins, unit) is { } margins)
+            {
+                page.Margins = margins;
+            }
+            foreach (var item in pageSpec.Items ?? [])
+            {
+                RenderItem(document, page, item, unit);
+            }
+        }
+    }
+
+    private static void RenderItem(IdmlDocument document, Page page, ItemSpec item, string? unit)
+    {
+        double U(double value) => Units.FromUnit(value, unit);
+        var bounds = new Rect(U(item.X), U(item.Y), U(item.Width), U(item.Height));
+        var shape = new ShapeStyle
+        {
+            Fill = item.Fill is { } fill ? RequireSwatch(document, fill) : null,
+            FillTint = item.FillTint,
+            Stroke = item.Stroke is { } stroke ? RequireSwatch(document, stroke) : null,
+            StrokeWeight = item.StrokeWeight,
+            CornerRadius = item.CornerRadius is { } radius ? U(radius) : null,
+            Rotation = item.Rotation,
+        };
+
+        var type = item.Type.ToLowerInvariant();
+        PageItem created;
+        switch (type)
+        {
+            case "text":
+            {
+                var frame = page.AddTextFrame(bounds, item.Name);
+                if (item.Columns is { } columns)
+                {
+                    frame.Columns = columns;
+                }
+                if (item.ColumnGutter is { } gutter)
+                {
+                    frame.ColumnGutter = U(gutter);
+                }
+                if (ToSpacing(item.Inset, unit) is { } inset)
+                {
+                    frame.Inset = inset;
+                }
+                if (item.VerticalAlign is { } align)
+                {
+                    frame.VerticalJustification = Enum.Parse<VerticalJustification>(align, ignoreCase: true);
+                }
+                if (item.ContinueFrom is { } previousName)
+                {
+                    var previous = document.FindPageItem(previousName) as TextFrame
+                        ?? throw new IdmlException(IdmlErrorKind.NotFound, $"continueFrom: no text frame named '{previousName}'.");
+                    previous.ThreadTo(frame);
+                }
+                else
+                {
+                    RenderText(document, frame.Story, item);
+                }
+                created = frame;
+                break;
+            }
+            case "rectangle":
+                created = page.AddRectangle(bounds, null, item.Name);
+                break;
+            case "ellipse":
+                created = page.AddEllipse(bounds, null, item.Name);
+                break;
+            case "line":
+                created = page.AddLine(
+                    new Point(U(item.X), U(item.Y)),
+                    new Point(U(item.X2 ?? item.X + item.Width), U(item.Y2 ?? item.Y + item.Height)),
+                    new ShapeStyle { Stroke = Swatch.Black, StrokeWeight = 1 },
+                    item.Name);
+                break;
+            case "image":
+            {
+                var path = item.Path ?? throw new IdmlException("Image items need a path.");
+                created = page.AddImage(bounds, path, ParseFit(item.Fit), item.Name);
+                break;
+            }
+            case "table":
+            {
+                var frame = page.AddTextFrame(bounds, item.Name);
+                var rows = item.Rows ?? [];
+                var columnCount = Math.Max(1, rows.Count == 0 ? item.ColumnWidths?.Length ?? 1 : rows.Max(row => row.Count));
+                var table = frame.AddTable(Math.Max(1, rows.Count), columnCount, new TableOptions
+                {
+                    ColumnWidths = item.ColumnWidths?.Select(U).ToArray(),
+                    HeaderRows = item.HeaderRows ?? 0,
+                    RowHeight = item.RowHeight is { } height ? U(height) : 18,
+                    CellParagraphStyle = item.CellStyle is { } cellStyle ? RequireParagraphStyle(document, cellStyle) : null,
+                    HeaderParagraphStyle = item.HeaderStyle is { } headerStyle ? RequireParagraphStyle(document, headerStyle) : null,
+                    HeaderFill = item.HeaderFill is { } headerFill ? RequireSwatch(document, headerFill) : null,
+                    Stroke = shape.Stroke,
+                    StrokeWeight = item.StrokeWeight,
+                    CellInset = item.CellInset is { } cellInset ? U(cellInset) : null,
+                });
+                for (var row = 0; row < rows.Count; row++)
+                {
+                    table.SetRow(row, [.. rows[row]]);
+                }
+                created = frame;
+                shape = new ShapeStyle { Fill = shape.Fill, FillTint = shape.FillTint, Rotation = shape.Rotation };
+                break;
+            }
+            default:
+                throw new IdmlException($"Unknown item type '{item.Type}'. Use text, rectangle, ellipse, line, image or table.");
+        }
+
+        if (type != "line")
+        {
+            created.ApplyStyle(shape);
+        }
+        else if (shape.Stroke is not null || shape.StrokeWeight is not null || shape.Rotation is not null)
+        {
+            created.ApplyStyle(new ShapeStyle { Stroke = shape.Stroke, StrokeWeight = shape.StrokeWeight, Rotation = shape.Rotation });
+        }
+        if (item.Label is { } label)
+        {
+            created.Label = label;
+        }
+        if (item.Layer is { } layerName)
+        {
+            created.MoveToLayer(document.Layers.Add(layerName));
+        }
+        if (item.Tag is { } tag)
+        {
+            document.Tags.TagPageItem(created, tag);
+        }
+    }
+
+    private static void RenderText(IdmlDocument document, Story story, ItemSpec item)
+    {
+        if (item.Text is { } text)
+        {
+            var style = item.Style is { } styleName ? RequireParagraphStyle(document, styleName) : null;
+            story.AddParagraph(text, style);
+        }
+        foreach (var paragraphSpec in item.Paragraphs ?? [])
+        {
+            var style = paragraphSpec.Style is { } styleName ? RequireParagraphStyle(document, styleName) : null;
+            var paragraph = story.AddParagraph(style, ToParagraphFormatOrNull(document, paragraphSpec));
+            if (paragraphSpec.Text is { } paragraphText)
+            {
+                paragraph.AddText(paragraphText);
+            }
+            foreach (var run in paragraphSpec.Runs ?? [])
+            {
+                var characterStyle = run.Style is { } runStyle ? RequireCharacterStyle(document, runStyle) : null;
+                paragraph.AddText(run.Text, characterStyle, ToCharacterFormatOrNull(document, run));
+            }
+        }
+    }
+
+    // ---- conversions ------------------------------------------------------------------------------
+
+    private static Size ResolveSize(PageSetupSpec setup, string? unit)
+    {
+        var size = setup.Width is { } width && setup.Height is { } height
+            ? new Size(Units.FromUnit(width, unit), Units.FromUnit(height, unit))
+            : (setup.Size ?? "A4").ToUpperInvariant() switch
+            {
+                "A3" => PageSizes.A3,
+                "A4" => PageSizes.A4,
+                "A5" => PageSizes.A5,
+                "LETTER" => PageSizes.Letter,
+                "LEGAL" => PageSizes.Legal,
+                var other => throw new IdmlException($"Unknown page size '{other}'. Use A3, A4, A5, Letter, Legal or width/height."),
+            };
+        return setup.Landscape == true && size.Height > size.Width ? new Size(size.Height, size.Width) : size;
+    }
+
+    private static Spacing? ToSpacing(SpacingSpec? spec, string? unit)
+    {
+        if (spec is null)
+        {
+            return null;
+        }
+        var all = spec.All ?? 0;
+        return new Spacing(
+            Units.FromUnit(spec.Top ?? all, unit),
+            Units.FromUnit(spec.Right ?? all, unit),
+            Units.FromUnit(spec.Bottom ?? all, unit),
+            Units.FromUnit(spec.Left ?? all, unit));
+    }
+
+    private static ImageFit ParseFit(string? fit) =>
+        string.IsNullOrEmpty(fit) ? ImageFit.Fill : Enum.Parse<ImageFit>(fit, ignoreCase: true);
+
+    private static ParagraphFormat ToParagraphFormat(IdmlDocument document, TextFormatSpec spec) => new()
+    {
+        FontFamily = spec.Font,
+        FontStyle = spec.FontStyle,
+        PointSize = spec.Size,
+        Leading = spec.Leading,
+        FillColor = spec.Color is { } color ? RequireSwatch(document, color) : null,
+        FillTint = spec.Tint,
+        Justification = ParseJustification(spec.Align),
+        SpaceBefore = spec.SpaceBefore,
+        SpaceAfter = spec.SpaceAfter,
+        FirstLineIndent = spec.FirstLineIndent,
+        LeftIndent = spec.LeftIndent,
+        RightIndent = spec.RightIndent,
+        Underline = spec.Underline,
+        StrikeThrough = spec.StrikeThrough,
+        Tracking = spec.Tracking,
+        Capitalization = ParseCaps(spec.Caps),
+        Position = ParsePosition(spec.Position),
+    };
+
+    private static CharacterFormat ToCharacterFormat(IdmlDocument document, TextFormatSpec spec) => new()
+    {
+        FontFamily = spec.Font,
+        FontStyle = spec.FontStyle,
+        PointSize = spec.Size,
+        FillColor = spec.Color is { } color ? RequireSwatch(document, color) : null,
+        FillTint = spec.Tint,
+        Underline = spec.Underline,
+        StrikeThrough = spec.StrikeThrough,
+        Tracking = spec.Tracking,
+        Capitalization = ParseCaps(spec.Caps),
+        Position = ParsePosition(spec.Position),
+    };
+
+    private static ParagraphFormat? ToParagraphFormatOrNull(IdmlDocument document, TextFormatSpec spec) =>
+        HasFormatting(spec) ? ToParagraphFormat(document, spec) : null;
+
+    private static CharacterFormat? ToCharacterFormatOrNull(IdmlDocument document, TextFormatSpec spec) =>
+        HasFormatting(spec) ? ToCharacterFormat(document, spec) : null;
+
+    private static bool HasFormatting(TextFormatSpec spec) =>
+        spec.Font is not null || spec.FontStyle is not null || spec.Size is not null || spec.Leading is not null || spec.Color is not null
+        || spec.Tint is not null || spec.Align is not null || spec.SpaceBefore is not null || spec.SpaceAfter is not null
+        || spec.FirstLineIndent is not null || spec.LeftIndent is not null || spec.RightIndent is not null || spec.Underline is not null
+        || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null;
+
+    private static Justification? ParseJustification(string? align) => align?.ToLowerInvariant() switch
+    {
+        null => null,
+        "left" => Justification.Left,
+        "center" or "centre" => Justification.Center,
+        "right" => Justification.Right,
+        "justify" => Justification.LeftJustified,
+        "justifyall" => Justification.FullyJustified,
+        var other => throw new IdmlException($"Unknown align '{other}'. Use left, center, right, justify or justifyAll."),
+    };
+
+    private static Capitalization? ParseCaps(string? caps) => caps is null ? null : Enum.Parse<Capitalization>(caps, ignoreCase: true);
+
+    private static TextPosition? ParsePosition(string? position) => position is null ? null : Enum.Parse<TextPosition>(position, ignoreCase: true);
+
+    private static Swatch RequireSwatch(IdmlDocument document, string name) =>
+        document.Swatches.Find(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown swatch '{name}'. Declare it in colors first.");
+
+    private static ParagraphStyle RequireParagraphStyle(IdmlDocument document, string name) =>
+        document.Styles.FindParagraphStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown paragraph style '{name}'.");
+
+    private static CharacterStyle RequireCharacterStyle(IdmlDocument document, string name) =>
+        document.Styles.FindCharacterStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown character style '{name}'.");
+}

@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CoreIdml\CoreIdml.csproj" />
+    <ProjectReference Include="..\CoreIdml.Pdf\CoreIdml.Pdf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

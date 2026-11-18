@@ -22,6 +22,24 @@ public enum IdmlErrorKind
 /// <summary>A failure the caller can act on: bad input, a missing part, an unsupported document.</summary>
 public sealed class IdmlException : Exception
 {
+    /// <summary>Creates the exception for an operation the document cannot satisfy (<see cref="IdmlErrorKind.InvalidOperation"/>).</summary>
+    public IdmlException()
+        : this(IdmlErrorKind.InvalidOperation, "The operation is not valid for this document.")
+    {
+    }
+
+    /// <summary>Creates the exception for an operation the document cannot satisfy (<see cref="IdmlErrorKind.InvalidOperation"/>).</summary>
+    public IdmlException(string message)
+        : this(IdmlErrorKind.InvalidOperation, message)
+    {
+    }
+
+    /// <summary>Creates the exception for an operation the document cannot satisfy (<see cref="IdmlErrorKind.InvalidOperation"/>).</summary>
+    public IdmlException(string message, Exception innerException)
+        : this(IdmlErrorKind.InvalidOperation, message, innerException)
+    {
+    }
+
     /// <summary>Creates the exception.</summary>
     public IdmlException(IdmlErrorKind kind, string message, Exception? innerException = null)
         : base(message, innerException)

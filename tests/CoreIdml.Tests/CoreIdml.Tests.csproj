@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CoreIdml\CoreIdml.csproj" />
+    <!-- The CLI and MCP tests drive the tool catalogue in process, and the CLI as a process. -->
+    <ProjectReference Include="..\..\src\CoreIdml.Cli\CoreIdml.Cli.csproj" />
   </ItemGroup>
 
 </Project>

@@ -26,6 +26,9 @@ class Status(enum.IntEnum):
     IO = -9
 
 
+#: coreidml_progress_callback: return 0 to continue, anything else to cancel.
+PROGRESS_CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p)
+
 #: Every function of coreidml.h: name -> (restype, argtypes).
 SIGNATURES = {
     "coreidml_abi_version": (ctypes.c_int32, ()),
@@ -41,4 +44,22 @@ SIGNATURES = {
     "coreidml_document_save": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t))),
     "coreidml_document_save_file": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p)),
     "coreidml_document_close": (None, (ctypes.c_ssize_t,)),
+    "coreidml_document_create": (ctypes.c_int32, (ctypes.c_char_p, ctypes.POINTER(ctypes.c_ssize_t))),
+    "coreidml_document_apply": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p)),
+    "coreidml_document_summary": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_story": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_xml_structure": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_export_xml": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_validate": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_diff": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_ssize_t, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_fill": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_replace_text": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int32))),
+    "coreidml_document_set_run_text": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32)),
+    "coreidml_document_relink": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int32)),
+    "coreidml_document_import_xml": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_import_pages": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_ssize_t, ctypes.POINTER(ctypes.c_int32), ctypes.c_size_t, ctypes.POINTER(ctypes.c_int32))),
+    "coreidml_document_export_pdf": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, ctypes.c_char_p, PROGRESS_CALLBACK, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_document_export_pdf_bytes": (ctypes.c_int32, (ctypes.c_ssize_t, ctypes.c_char_p, PROGRESS_CALLBACK, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_pdf_import": (ctypes.c_int32, (ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p, PROGRESS_CALLBACK, ctypes.c_void_p, ctypes.POINTER(ctypes.c_ssize_t), ctypes.POINTER(ctypes.c_void_p))),
+    "coreidml_pdf_import_file": (ctypes.c_int32, (ctypes.c_char_p, ctypes.c_char_p, PROGRESS_CALLBACK, ctypes.c_void_p, ctypes.POINTER(ctypes.c_ssize_t), ctypes.POINTER(ctypes.c_void_p))),
 }

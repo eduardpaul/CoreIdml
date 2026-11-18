@@ -25,6 +25,9 @@ abstract final class CoreIdmlStatus {
   static const int io = -9;
 }
 
+/// `coreidml_progress_callback`: return 0 to continue, anything else to cancel.
+typedef CoreIdmlProgressNative = Int32 Function(Int32 done, Int32 total, Pointer<Void> userData);
+
 /// The functions of coreidml.h, looked up in a loaded library.
 final class CoreIdmlBindings {
   CoreIdmlBindings(DynamicLibrary library)
@@ -41,6 +44,24 @@ final class CoreIdmlBindings {
         documentSave = library.lookupFunction<Int32 Function(IntPtr, Pointer<Pointer<Uint8>>, Pointer<Size>), int Function(int document, Pointer<Pointer<Uint8>> data, Pointer<Size> length)>('coreidml_document_save'),
         documentSaveFile = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>), int Function(int document, Pointer<Utf8> path)>('coreidml_document_save_file'),
         documentClose = library.lookupFunction<Void Function(IntPtr), void Function(int document)>('coreidml_document_close'),
+        documentCreate = library.lookupFunction<Int32 Function(Pointer<Utf8>, Pointer<IntPtr>), int Function(Pointer<Utf8> specJson, Pointer<IntPtr> document)>('coreidml_document_create'),
+        documentApply = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>), int Function(int document, Pointer<Utf8> specJson)>('coreidml_document_apply'),
+        documentSummary = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> optionsJson, Pointer<Pointer<Utf8>> json)>('coreidml_document_summary'),
+        documentStory = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> storyId, Pointer<Pointer<Utf8>> json)>('coreidml_document_story'),
+        documentXmlStructure = library.lookupFunction<Int32 Function(IntPtr, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Pointer<Utf8>> json)>('coreidml_document_xml_structure'),
+        documentExportXml = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> at, Pointer<Pointer<Utf8>> xml)>('coreidml_document_export_xml'),
+        documentValidate = library.lookupFunction<Int32 Function(IntPtr, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Pointer<Utf8>> json)>('coreidml_document_validate'),
+        documentDiff = library.lookupFunction<Int32 Function(IntPtr, IntPtr, Pointer<Pointer<Utf8>>), int Function(int before, int after, Pointer<Pointer<Utf8>> json)>('coreidml_document_diff'),
+        documentFill = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> dataJson, Pointer<Pointer<Utf8>> reportJson)>('coreidml_document_fill'),
+        documentReplaceText = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Utf8>, Pointer<Int32>), int Function(int document, Pointer<Utf8> find, Pointer<Utf8> replacement, Pointer<Int32> count)>('coreidml_document_replace_text'),
+        documentSetRunText = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Int32, Pointer<Utf8>, Int32), int Function(int document, Pointer<Utf8> storyId, int runIndex, Pointer<Utf8> text, int force)>('coreidml_document_set_run_text'),
+        documentRelink = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Utf8>, Int32), int Function(int document, Pointer<Utf8> linkId, Pointer<Utf8> uriOrPath, int refit)>('coreidml_document_relink'),
+        documentImportXml = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> xml, Pointer<Utf8> at, Pointer<Utf8> optionsJson, Pointer<Pointer<Utf8>> reportJson)>('coreidml_document_import_xml'),
+        documentImportPages = library.lookupFunction<Int32 Function(IntPtr, IntPtr, Pointer<Int32>, Size, Pointer<Int32>), int Function(int document, int source, Pointer<Int32> pages, int count, Pointer<Int32> added)>('coreidml_document_import_pages'),
+        documentExportPdf = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<Utf8>, Pointer<NativeFunction<CoreIdmlProgressNative>>, Pointer<Void>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> path, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<Pointer<Utf8>> reportJson)>('coreidml_document_export_pdf'),
+        documentExportPdfBytes = library.lookupFunction<Int32 Function(IntPtr, Pointer<Utf8>, Pointer<NativeFunction<CoreIdmlProgressNative>>, Pointer<Void>, Pointer<Pointer<Uint8>>, Pointer<Size>, Pointer<Pointer<Utf8>>), int Function(int document, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<Pointer<Uint8>> data, Pointer<Size> length, Pointer<Pointer<Utf8>> reportJson)>('coreidml_document_export_pdf_bytes'),
+        pdfImport = library.lookupFunction<Int32 Function(Pointer<Uint8>, Size, Pointer<Utf8>, Pointer<NativeFunction<CoreIdmlProgressNative>>, Pointer<Void>, Pointer<IntPtr>, Pointer<Pointer<Utf8>>), int Function(Pointer<Uint8> data, int length, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<IntPtr> document, Pointer<Pointer<Utf8>> reportJson)>('coreidml_pdf_import'),
+        pdfImportFile = library.lookupFunction<Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<NativeFunction<CoreIdmlProgressNative>>, Pointer<Void>, Pointer<IntPtr>, Pointer<Pointer<Utf8>>), int Function(Pointer<Utf8> path, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<IntPtr> document, Pointer<Pointer<Utf8>> reportJson)>('coreidml_pdf_import_file'),
         documentCloseFinalizer = library.lookup<NativeFinalizerFunction>('coreidml_document_close');
 
   /// ABI version of the loaded library; compare with COREIDML_ABI_VERSION before calling anything else.
@@ -84,6 +105,77 @@ final class CoreIdmlBindings {
 
   /// Releases a document. Closing a handle twice, or 0, does nothing.
   final void Function(int document) documentClose;
+
+  /// Creates a document from a JSON document spec (page size, colours, styles, pages of text, images, tables and
+  /// shapes; see the README). NULL or "" creates one blank A4 page.
+  final int Function(Pointer<Utf8> specJson, Pointer<IntPtr> document) documentCreate;
+
+  /// Adds the colours, styles and pages of a JSON document spec to the document; its pages are appended.
+  final int Function(int document, Pointer<Utf8> specJson) documentApply;
+
+  /// A JSON summary for programs and agents: pages, frames with positions and text, stories, links, styles, swatches,
+  /// tags. Options: {"maxTextLength":200, "includeRuns":false, "includeResources":true, "pages":[0,2],
+  /// "sections":["pages","stories","links","offPage","resources"]}.
+  final int Function(int document, Pointer<Utf8> optionsJson, Pointer<Pointer<Utf8>> json) documentSummary;
+
+  /// One story in full as JSON: its text, frames, and every content run with its index, styles and scope.
+  final int Function(int document, Pointer<Utf8> storyId, Pointer<Pointer<Utf8>> json) documentStory;
+
+  /// The XML structure as a JSON tree (tag, id, path, boundTo, attributes, text, children); "null" without one.
+  final int Function(int document, Pointer<Pointer<Utf8>> json) documentXmlStructure;
+
+  /// Exports the XML structure, or the subtree at the path at (e.g. "/Root/article[2]"; NULL for all), as XML.
+  final int Function(int document, Pointer<Utf8> at, Pointer<Pointer<Utf8>> xml) documentExportXml;
+
+  /// Checks references, ids, layers, threads and XML bindings: {"isValid":true, "issues":[...]}.
+  final int Function(int document, Pointer<Pointer<Utf8>> json) documentValidate;
+
+  /// What changed between two documents, as JSON: stories run by run, links, page count.
+  final int Function(int before, int after, Pointer<Pointer<Utf8>> json) documentDiff;
+
+  /// Fills a template from JSON fill data: {"text":{"key":"value"}, "images":{"key":"/path/photo.jpg"}}. Keys match
+  /// frame names, script labels, XML tags and {{placeholders}}. Receives a JSON report (filled, missing).
+  final int Function(int document, Pointer<Utf8> dataJson, Pointer<Pointer<Utf8>> reportJson) documentFill;
+
+  /// Replaces text in every story; count receives the number of replacements.
+  final int Function(int document, Pointer<Utf8> find, Pointer<Utf8> replacement, Pointer<Int32> count) documentReplaceText;
+
+  /// Sets the text of content run run_index of a story (indices from coreidml_document_story), keeping its formatting.
+  /// A run holding special characters (a page number) is only overwritten when force is not 0.
+  final int Function(int document, Pointer<Utf8> storyId, int runIndex, Pointer<Utf8> text, int force) documentSetRunText;
+
+  /// Points the link link_id (from the summary's "links") at another file: a URI or a local path. With refit not 0
+  /// and a readable local JPEG or PNG, the image is measured again and fitted to its frame.
+  final int Function(int document, Pointer<Utf8> linkId, Pointer<Utf8> uriOrPath, int refit) documentRelink;
+
+  /// Imports XML onto the structure element at the path at (NULL for the root), with SimpleIDML's semantics
+  /// (simpleidml-setcontent, -ignorecontent, -forcecontent, href). Options: {"fit":"fill",
+  /// "characterStyles":{"b":"Bold"}, "relinkOnly":false}. Receives a JSON report (updated, added, deleted,
+  /// unmatched, warnings).
+  final int Function(int document, Pointer<Utf8> xml, Pointer<Utf8> at, Pointer<Utf8> optionsJson, Pointer<Pointer<Utf8>> reportJson) documentImportXml;
+
+  /// Appends pages of source to the document, remapping every id; styles, swatches and tags are merged once.
+  /// pages lists 0-based page indices (count 0: every page). added receives the number of pages added.
+  /// source may be the document itself.
+  final int Function(int document, int source, Pointer<Int32> pages, int count, Pointer<Int32> added) documentImportPages;
+
+  /// Renders the document to a PDF file. Options: {"pages":[1,2], "fontDirectories":["/fonts"], "useSystemFonts":true,
+  /// "substitutions":{"Minion Pro":"Liberation Serif"}, "linkDirectories":["/links"], "linkRemap":{"a.jpg":"/b.jpg"},
+  /// "documentPath":"/docs/a.idml", "maxImageDpi":150, "jpegQuality":85}. Receives a JSON report: pageCount,
+  /// missingFonts, missingImages, oversetStories, warnings.
+  final int Function(int document, Pointer<Utf8> path, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<Pointer<Utf8>> reportJson) documentExportPdf;
+
+  /// Renders the document to a PDF in memory. Options and report as for coreidml_document_export_pdf.
+  final int Function(int document, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<Pointer<Uint8>> data, Pointer<Size> length, Pointer<Pointer<Utf8>> reportJson) documentExportPdfBytes;
+
+  /// Builds an editable document from a PDF held in memory: text frames with inferred styles, image frames, shapes.
+  /// Options: {"pages":[1], "imageDirectory":"/links", "preserveLineBreaks":false, "importShapes":true,
+  /// "fontDirectories":["/fonts"]}. Images are written to imageDirectory, since IDML links images. Receives a JSON
+  /// report: frames, images, fonts (and whether each is available), warnings. The bytes are not kept.
+  final int Function(Pointer<Uint8> data, int length, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<IntPtr> document, Pointer<Pointer<Utf8>> reportJson) pdfImport;
+
+  /// coreidml_pdf_import from a PDF file.
+  final int Function(Pointer<Utf8> path, Pointer<Utf8> optionsJson, Pointer<NativeFunction<CoreIdmlProgressNative>> progress, Pointer<Void> userData, Pointer<IntPtr> document, Pointer<Pointer<Utf8>> reportJson) pdfImportFile;
 
   /// `coreidml_document_close` as a native finalizer: an intptr_t argument is passed like a pointer.
   final Pointer<NativeFinalizerFunction> documentCloseFinalizer;

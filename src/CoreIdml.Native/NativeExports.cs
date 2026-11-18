@@ -10,7 +10,7 @@ namespace CoreIdml.Native;
 /// <c>tests/CoreIdml.Abi.Tests</c> fails when the two disagree on a name, a parameter or a type.
 /// Everything here converts pointers to managed values and back, and calls <see cref="IdmlInterop"/>.
 /// </summary>
-internal static unsafe class NativeExports
+internal static unsafe partial class NativeExports
 {
     private static byte* version;
 

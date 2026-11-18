@@ -22,7 +22,16 @@ public static partial class HeaderParser
         ["void*"] = AbiType.Memory,
         ["coreidml_document"] = AbiType.Document,
         ["coreidml_document*"] = AbiType.DocumentOut,
+        ["const int32_t*"] = AbiType.Numbers,
+        ["int32_t*"] = AbiType.NumberOut,
+        ["coreidml_progress_callback"] = AbiType.Progress,
     };
+
+    /// <summary>
+    /// The one callback type, exactly as every emitter maps it. A header that changes it must change the emitters
+    /// too, so a different declaration is refused.
+    /// </summary>
+    public const string ProgressTypedef = "typedef int32_t (*coreidml_progress_callback)(int32_t done, int32_t total, void* user_data);";
 
     /// <summary>Parses the text of the header.</summary>
     /// <exception cref="FormatException">The header uses something the generator does not know.</exception>
@@ -35,6 +44,11 @@ public static partial class HeaderParser
         if (!version.Success)
         {
             throw new FormatException("The header does not define COREIDML_ABI_VERSION.");
+        }
+
+        if (header.Contains("coreidml_progress_callback", StringComparison.Ordinal) && !header.Contains(ProgressTypedef, StringComparison.Ordinal))
+        {
+            throw new FormatException($"coreidml_progress_callback must be declared exactly as: {ProgressTypedef}");
         }
 
         List<AbiStatus> statuses = [];

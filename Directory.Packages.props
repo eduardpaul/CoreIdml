@@ -5,9 +5,20 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <ItemGroup Label="Libraries">
+    <!-- PDF -> IDML in CoreIdml.Pdf: a managed PDF reader (Apache-2.0). -->
+    <PackageVersion Include="PdfPig" Version="0.1.16" />
+    <!-- Page previews in the CLI only: PDFium builds from github.com/bblanchon/pdfium-binaries (BSD-3/Apache-2.0). -->
+    <PackageVersion Include="bblanchon.PDFium.Linux" Version="152.0.7961" />
+    <PackageVersion Include="bblanchon.PDFium.Win32" Version="152.0.7961" />
+    <PackageVersion Include="bblanchon.PDFium.macOS" Version="152.0.7961" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <!-- xUnit v3 on Microsoft.Testing.Platform (the runner global.json selects for `dotnet test`). -->
     <PackageVersion Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    <!-- Test-only PDF rasterizer for the visual harness of CoreIdml.Pdf.Tests (MIT OR Apache-2.0, native code). -->
+    <PackageVersion Include="PdfOxide" Version="0.3.78" />
   </ItemGroup>
 
 </Project>

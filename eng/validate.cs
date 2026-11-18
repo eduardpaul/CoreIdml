@@ -62,7 +62,7 @@ if (!OperatingSystem.IsWindows() && Has("cc"))
     Directory.CreateDirectory(smokeDirectory);
     var smoke = Path.Combine(smokeDirectory, "smoke");
     Step("C smoke test: compile", "cc", $"tests/native/smoke.c -Wall -Wextra -Werror -Iinclude -L{nativeDirectory} -lcoreidml -Wl,-rpath,{nativeDirectory} -o {smoke}");
-    Step("C smoke test (header + linking)", smoke, "tests/fixtures/article-1photo.idml");
+    Step("C smoke test (header + linking)", smoke, $"tests/fixtures/article-1photo.idml {smokeDirectory}");
 }
 else if (OperatingSystem.IsWindows() && rid == "win-x64" && FindVcVars() is { } vcvars)
 {
@@ -74,7 +74,7 @@ else if (OperatingSystem.IsWindows() && rid == "win-x64" && FindVcVars() is { } 
     {
         File.Copy(Path.Combine(nativeDirectory, "coreidml.dll"), Path.Combine(smokeDirectory, "coreidml.dll"), overwrite: true);
     }
-    Step("C smoke test (header + linking)", $"\"{smoke}\"", "tests/fixtures/article-1photo.idml");
+    Step("C smoke test (header + linking)", $"\"{smoke}\"", $"tests/fixtures/article-1photo.idml \"{smokeDirectory}\"");
 }
 else
 {

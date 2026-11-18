@@ -38,6 +38,15 @@ public enum AbiType
 
     /// <summary><c>coreidml_document*</c>: receives a document handle.</summary>
     DocumentOut,
+
+    /// <summary><c>const int32_t*</c>: numbers in, with their count in a separate <c>size_t</c>.</summary>
+    Numbers,
+
+    /// <summary><c>int32_t*</c>: receives a number.</summary>
+    NumberOut,
+
+    /// <summary><c>coreidml_progress_callback</c>: a function the library calls back; may be NULL.</summary>
+    Progress,
 }
 
 /// <summary>A <c>#define COREIDML_OK</c> / <c>COREIDML_ERR_*</c> line.</summary>

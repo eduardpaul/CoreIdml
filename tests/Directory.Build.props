@@ -13,6 +13,8 @@
   <ItemGroup>
     <PackageReference Include="xunit.v3.mtp-v2" />
     <Using Include="Xunit" />
+    <Using Include="CoreIdml.TestSupport" />
+    <Using Include="CoreIdml.Xml" />
     <!-- Helpers every test project uses (fixtures live in tests/fixtures, shared with the language bindings). -->
     <Compile Include="$(MSBuildThisFileDirectory)Shared\*.cs" LinkBase="Shared" />
   </ItemGroup>

@@ -10,6 +10,8 @@
     <!-- Turns on the trim, single-file and AOT analyzers; their warnings are build errors. -->
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Not every public member of the document model is documented yet. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <IsPackable>true</IsPackable>
     <PackageId>CoreIdml</PackageId>
@@ -23,7 +25,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Blank-document skeleton taken from a real InDesign CS5.5 export (see THIRD-PARTY-NOTICES.md). -->
+    <EmbeddedResource Include="Blank\*.xml" LogicalName="CoreIdml.Blank.%(Filename)%(Extension)" />
+    <Using Include="CoreIdml.Xml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="CoreIdml.Tests" />
+    <!-- The PDF renderer reuses a few document internals (frame thread order, for one) instead of copying them. -->
+    <InternalsVisibleTo Include="CoreIdml.Pdf" />
   </ItemGroup>
 
 </Project>

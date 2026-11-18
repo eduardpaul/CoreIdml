@@ -15,7 +15,7 @@ namespace CoreIdml.Interop;
 /// The transports (<c>CoreIdml.Native</c>, <c>CoreIdml.Wasm</c>) only convert arguments and results; they hold no
 /// behaviour of their own.
 /// </summary>
-public static class IdmlInterop
+public static partial class IdmlInterop
 {
     /// <summary>Bumped on any breaking change to the binding contract (<c>COREIDML_ABI_VERSION</c>).</summary>
     public const int AbiVersion = 1;
@@ -44,7 +44,7 @@ public static class IdmlInterop
     public static IdmlStatus DocumentOpen(Stream data, out nint document)
     {
         nint handle = 0;
-        var status = Run(() => handle = Documents.Add(new Slot(IdmlDocument.Open(data))));
+        var status = Run(() => handle = Register(IdmlDocument.Open(data)));
         document = handle;
         return status;
     }
@@ -53,7 +53,7 @@ public static class IdmlInterop
     public static IdmlStatus DocumentOpenFile(string path, out nint document)
     {
         nint handle = 0;
-        var status = Run(() => handle = Documents.Add(new Slot(IdmlDocument.Open(path))));
+        var status = Run(() => handle = Register(IdmlDocument.Open(path)));
         document = handle;
         return status;
     }
@@ -144,6 +144,40 @@ public static class IdmlInterop
         return Fail(status, status == IdmlStatus.Failed ? $"{exception.GetType().Name}: {exception.Message}" : exception.Message);
     }
 
+    private static nint Register(IdmlDocument document) => Documents.Add(new Slot(document));
+
+    private static IdmlStatus WithDocument(nint document, Func<IdmlDocument, string> action, out string result)
+    {
+        var value = string.Empty;
+        var status = WithDocument(document, idml => value = action(idml));
+        result = value;
+        return status;
+    }
+
+    /// <summary>Runs with both documents locked, always in handle order, so two threads cannot deadlock.</summary>
+    private static IdmlStatus WithDocuments(nint first, nint second, Action<IdmlDocument, IdmlDocument> action)
+    {
+        if (!Documents.TryGet(first, out var a) || !Documents.TryGet(second, out var b))
+        {
+            return Fail(IdmlStatus.InvalidHandle, "The handle is not an open document.");
+        }
+        if (ReferenceEquals(a, b))
+        {
+            lock (a.Gate)
+            {
+                return Run(() => action(a.Document, a.Document));
+            }
+        }
+        var (outer, inner) = first < second ? (a, b) : (b, a);
+        lock (outer.Gate)
+        {
+            lock (inner.Gate)
+            {
+                return Run(() => action(a.Document, b.Document));
+            }
+        }
+    }
+
     private static IdmlStatus WithDocument(nint document, Action<IdmlDocument> action)
     {
         if (!Documents.TryGet(document, out var slot))
@@ -165,6 +199,10 @@ public static class IdmlInterop
             action();
             return IdmlStatus.Ok;
         }
+        catch (RecordedFailure)
+        {
+            return lastErrorStatus;
+        }
 #pragma warning disable CA1031 // Nothing may escape into another language's runtime.
         catch (Exception exception)
 #pragma warning restore CA1031
@@ -172,6 +210,9 @@ public static class IdmlInterop
             return Fail(exception);
         }
     }
+
+    /// <summary>Unwinds out of <see cref="Run"/> after a nested call already recorded its failure.</summary>
+    private sealed class RecordedFailure : Exception;
 
     /// <summary>A document and the lock that serializes calls on it.</summary>
     private sealed class Slot(IdmlDocument document)

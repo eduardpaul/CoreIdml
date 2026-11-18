@@ -38,6 +38,12 @@ public static class Emitters
         text.Append("/** An out parameter: koffi writes the value into the single slot. */\n");
         text.Append("export type Out<T> = [T];\n\n");
 
+        text.Append("/** The type of `coreidml_progress_callback`: return 0 to continue, anything else to cancel. */\n");
+        text.Append("export type ProgressCallback = (done: number, total: number, userData: Pointer) => number;\n\n");
+        text.Append("/** The koffi prototypes of the callback types; register them with koffi.proto() before {@link PROTOTYPES}. */\n");
+        text.Append("export const CALLBACKS = {\n");
+        text.Append("  progress: 'int32_t coreidml_progress_callback(int32_t done, int32_t total, void *user_data)',\n");
+        text.Append("} as const;\n\n");
         text.Append("/** The koffi prototype of every function in coreidml.h. */\n");
         text.Append("export const PROTOTYPES = {\n");
         foreach (var function in abi.Functions)
@@ -107,6 +113,9 @@ public static class Emitters
         AbiType.Memory => $"void *{parameter.Name}",
         AbiType.Document => $"intptr_t {parameter.Name}",
         AbiType.DocumentOut => $"_Out_ intptr_t *{parameter.Name}",
+        AbiType.Numbers => $"const int32_t *{parameter.Name}",
+        AbiType.NumberOut => $"_Out_ int32_t *{parameter.Name}",
+        AbiType.Progress => $"coreidml_progress_callback *{parameter.Name}",
         AbiType.Nothing => throw Unsupported(parameter.Type, "a parameter", "TypeScript"),
     };
 
@@ -126,6 +135,9 @@ public static class Emitters
         AbiType.TextOut or AbiType.DataOut => "Out<Pointer>",
         AbiType.LengthOut or AbiType.DocumentOut => "Out<number | bigint>",
         AbiType.Memory => "Pointer",
+        AbiType.Numbers => "Int32Array | null",
+        AbiType.NumberOut => "Out<number>",
+        AbiType.Progress => "ProgressCallback | null",
         AbiType.Nothing => throw Unsupported(type, "a parameter", "TypeScript"),
     };
 
@@ -150,7 +162,9 @@ public static class Emitters
         {
             text.Append(CultureInfo.InvariantCulture, $"    {Naming.UpperSnake(status.Words)} = {status.Value}\n");
         }
-        text.Append("\n\n#: Every function of coreidml.h: name -> (restype, argtypes).\n");
+        text.Append("\n\n#: coreidml_progress_callback: return 0 to continue, anything else to cancel.\n");
+        text.Append("PROGRESS_CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p)\n");
+        text.Append("\n#: Every function of coreidml.h: name -> (restype, argtypes).\n");
         text.Append("SIGNATURES = {\n");
         foreach (var function in abi.Functions)
         {
@@ -178,6 +192,8 @@ public static class Emitters
         AbiType.Memory => "ctypes.c_void_p",
         AbiType.Document => "ctypes.c_ssize_t",
         AbiType.DocumentOut => "ctypes.POINTER(ctypes.c_ssize_t)",
+        AbiType.Numbers or AbiType.NumberOut => "ctypes.POINTER(ctypes.c_int32)",
+        AbiType.Progress => "PROGRESS_CALLBACK",
     };
 
     // ---- Dart -------------------------------------------------------------------------------------------------
@@ -202,6 +218,8 @@ public static class Emitters
             text.Append(CultureInfo.InvariantCulture, $"  static const int {Naming.Camel(status.Words)} = {status.Value};\n");
         }
         text.Append("}\n\n");
+        text.Append("/// `coreidml_progress_callback`: return 0 to continue, anything else to cancel.\n");
+        text.Append("typedef CoreIdmlProgressNative = Int32 Function(Int32 done, Int32 total, Pointer<Void> userData);\n\n");
 
         // A function of the shape void f(coreidml_document) can release a document from a NativeFinalizer.
         var finalizers = abi.Functions.Where(f => f.ReturnType == AbiType.Nothing && f.Parameters is [{ Type: AbiType.Document }]).ToList();
@@ -264,6 +282,8 @@ public static class Emitters
         AbiType.LengthOut => "Pointer<Size>",
         AbiType.Memory => "Pointer<Void>",
         AbiType.DocumentOut => "Pointer<IntPtr>",
+        AbiType.Numbers or AbiType.NumberOut => "Pointer<Int32>",
+        AbiType.Progress => "Pointer<NativeFunction<CoreIdmlProgressNative>>",
     };
 
     // ---- shared -----------------------------------------------------------------------------------------------

@@ -1,0 +1,80 @@
+<Project>
+
+  <!--
+    coreidml: the command line and the MCP server (for Claude and other MCP agents) over the same tools.
+
+      dotnet publish src/CoreIdml.Cli -c Release -r <rid>    one native binary, no .NET needed: artifacts/cli/<rid>/
+      dotnet pack src/CoreIdml.Cli -c Release                the .NET tool: dotnet tool install -g CoreIdml.Cli
+
+    The SDK is imported explicitly for the same reason as in CoreIdml.Native: the binary is called "coreidml", and
+    an assembly of that name would collide with the CoreIdml library (assembly names ignore case).
+  -->
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CoreIdml.Cli</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <StripSymbols>true</StripSymbols>
+    <!-- PDFium interop for page previews. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <CliBinaryName>coreidml</CliBinaryName>
+    <CliDistDir>$(ArtifactsPath)\cli\$(RuntimeIdentifier)\</CliDistDir>
+
+    <!-- Also a .NET tool, framework-dependent (needs the .NET 11 runtime); PublishAot applies to dotnet publish -r. -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>$(CliBinaryName)</ToolCommandName>
+    <PackageId>CoreIdml.Cli</PackageId>
+    <Description>coreidml: command line and MCP server for Adobe InDesign IDML files. Summaries for agents, surgical edits, templates, layout tools, PDF export with page previews.</Description>
+    <PackageTags>$(PackageTags);mcp;pdf;cli</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CoreIdml\CoreIdml.csproj" />
+    <ProjectReference Include="..\CoreIdml.Pdf\CoreIdml.Pdf.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <Using Include="CoreIdml.Xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      PDFium (Chromium's PDF renderer) for page previews, CLI only. A RID-specific publish copies the one library
+      next to the binary. Without it, idml_render_page reports that previews are unavailable and everything else
+      keeps working.
+    -->
+    <PackageReference Include="bblanchon.PDFium.Linux" />
+    <PackageReference Include="bblanchon.PDFium.Win32" />
+    <PackageReference Include="bblanchon.PDFium.macOS" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoreIdml.Tests" />
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+  <!-- The native binary is "coreidml" (see the comment at the top). Set after the ILCompiler targets. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(NativeBinaryExt)' != ''">
+    <NativeBinary>$(NativeOutputPath)$(CliBinaryName)$(NativeBinaryExt)</NativeBinary>
+    <_LinkNativeOutputs>$(NativeBinary)</_LinkNativeOutputs>
+  </PropertyGroup>
+
+  <!-- artifacts/cli/<rid>/: the binary and PDFium, what a release archive holds. -->
+  <Target Name="CopyCliToDist" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != '' and '$(PublishAot)' == 'true'">
+    <Error Condition="!Exists('$(NativeBinary)')" Text="The coreidml binary was not linked at $(NativeBinary); see the end of CoreIdml.Cli.csproj." />
+    <ItemGroup>
+      <_CliDistFile Include="$(NativeBinary)" />
+      <_CliDistFile Include="$(PublishDir)*pdfium*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(CliDistDir)" />
+    <Copy SourceFiles="@(_CliDistFile)" DestinationFolder="$(CliDistDir)" />
+    <Message Importance="high" Text="coreidml -> $(CliDistDir)" />
+  </Target>
+
+</Project>

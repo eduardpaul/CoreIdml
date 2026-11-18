@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    IDML <-> PDF for the CoreIdml library.
+    - IDML -> PDF: its own PDF writer, font parser and subsetter, image codecs and text composer, on the BCL only.
+    - PDF -> IDML: PdfPig (Apache-2.0, fully managed) reads text, images and vector paths.
+    Both are trim and Native AOT safe, and run on Mono in the browser, so the PDF engine is the same in .NET, in the
+    native library (Node, Python, Dart/Flutter, C) and in WebAssembly.
+  -->
+  <PropertyGroup>
+    <RootNamespace>CoreIdml.Pdf</RootNamespace>
+    <CoreIdmlRunsOnMono>true</CoreIdmlRunsOnMono>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Not every public member is documented yet. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>CoreIdml.Pdf</PackageId>
+    <Description>Export Adobe InDesign IDML documents to PDF and rebuild editable IDML from PDF, without InDesign. Fonts, images and text composition in managed code; trim, Native AOT and WebAssembly safe.</Description>
+    <PackageTags>$(PackageTags);pdf</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CoreIdml\CoreIdml.csproj" />
+    <PackageReference Include="PdfPig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <Using Include="CoreIdml.Xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoreIdml.Pdf.Tests" />
+    <InternalsVisibleTo Include="CoreIdml.Benchmarks" />
+  </ItemGroup>
+
+</Project>

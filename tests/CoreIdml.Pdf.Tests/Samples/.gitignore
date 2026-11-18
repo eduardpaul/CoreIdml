@@ -1,0 +1,4 @@
+# Real documents never enter git: only this file and the README are tracked.
+*
+!.gitignore
+!README.md

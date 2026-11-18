@@ -104,6 +104,8 @@ public class AbiTests
         AbiType.Memory => "System.Void*",
         AbiType.Document => "System.IntPtr",
         AbiType.DocumentOut => "System.IntPtr*",
+        AbiType.Numbers or AbiType.NumberOut => "System.Int32*",
+        AbiType.Progress => "System.IntPtr",
         _ => throw new NotSupportedException($"{type} has no managed type yet."),
     };
 }

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Writes demo .idml files to open in InDesign. Run it with the output folder (and optionally a photo) as arguments.
+    Publishing it with Native AOT (dotnet publish -r <rid>) also proves the library is trim and AOT clean.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CoreIdml\CoreIdml.csproj" />
+  </ItemGroup>
+
+</Project>

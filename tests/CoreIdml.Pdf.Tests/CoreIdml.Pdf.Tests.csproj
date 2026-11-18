@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CoreIdml\CoreIdml.csproj" />
+    <ProjectReference Include="..\..\src\CoreIdml.Pdf\CoreIdml.Pdf.csproj" />
+    <!--
+      Test-only rasterizer for the visual diff harness (pdf_oxide). Its package ships native binaries for linux, osx
+      and win on x64 and arm64 only, which is one reason the shipped CoreIdml.Pdf does not use it.
+    -->
+    <PackageReference Include="PdfOxide" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The sample app's ficha demo, so the visual harness runs on the same document. -->
+    <Compile Include="..\..\samples\CoreIdml.Sample\FichaDemo.cs" Link="FichaDemo.cs" />
+  </ItemGroup>
+
+</Project>
