@@ -14,7 +14,7 @@ namespace CoreIdml.Pdf.Rendering;
 /// strokes (CMYK/RGB swatches, tints, opacity, rounded corners, stroke alignment), placed JPEG/PNG images clipped to
 /// their frames, and story text laid out by <see cref="TextComposer"/>.
 /// </summary>
-internal sealed class IdmlRenderer : IDisposable
+internal sealed partial class IdmlRenderer : IDisposable
 {
     private readonly IdmlDocument document;
     private readonly PdfExportOptions options;
@@ -558,8 +558,7 @@ internal sealed class IdmlRenderer : IDisposable
         var type = resolver.Item(element, "StrokeType") ?? string.Empty;
         if (type.Contains("Dashed", StringComparison.Ordinal))
         {
-            var custom = Values.List(element.Element("Properties")?.Element("StrokeDashAndGap")?.Value);
-            content.Dash(custom.Length >= 2 ? custom : [weight * 3, weight * 2]);
+            content.Dash(DashPattern(element, type, weight));
         }
         else if (type.Contains("Dotted", StringComparison.Ordinal))
         {
@@ -585,6 +584,30 @@ internal sealed class IdmlRenderer : IDisposable
         content.Stroke();
         content.Restore();
     }
+
+    /// <summary>
+    /// Dash lengths of a dashed stroke in points. The canned styles ("Canned Dashed 3x2", "... 4x4") scale with the
+    /// weight; the custom "Dashed" style has its lengths in StrokeDashAndGap, which InDesign writes as an attribute
+    /// ("2.5 3.39") or, from a style, as a Properties list of ListItem values.
+    /// </summary>
+    private double[] DashPattern(XElement element, string type, double weight)
+    {
+        var canned = CannedDash().Match(type);
+        if (canned.Success)
+        {
+            return [weight * Values.Number(canned.Groups[1].Value, 3), weight * Values.Number(canned.Groups[2].Value, 2)];
+        }
+        var source = resolver.ObjectChain(element)
+            .Select(e => e.Element(IdmlXml.Properties)?.Element("StrokeDashAndGap") is { } list && list.HasElements
+                ? string.Join(' ', list.Elements().Select(item => item.Value))
+                : e.Attribute("StrokeDashAndGap")?.Value)
+            .FirstOrDefault(value => value is not null);
+        var custom = Values.List(source);
+        return custom.Length >= 2 && custom.Any(length => length > 0) ? custom : [weight * 3, weight * 2];
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"Canned Dashed (\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)")]
+    private static partial System.Text.RegularExpressions.Regex CannedDash();
 
     private void DrawGraphic(GraphicFrame frame, IReadOnlyList<PathContour> contours, ContentBuilder content)
     {
