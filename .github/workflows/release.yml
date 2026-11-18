@@ -183,17 +183,17 @@ jobs:
             "$python" -m auditwheel show artifacts/python/*.whl
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: artifacts/native/${{ matrix.rid }}
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.rid }}
           path: artifacts/cli/${{ matrix.rid }}
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.rid }}
           path: artifacts/python/*.whl
@@ -214,7 +214,7 @@ jobs:
         run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" > /dev/null
       - name: Build the Android libraries
         run: bash eng/build-android.sh -p:Version="$VERSION" -p:CoreIdmlRelease=true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-jniLibs
           path: artifacts/native/jniLibs
@@ -242,7 +242,7 @@ jobs:
           npm run typecheck
           npm test
           npm run test:browser
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wasm
           path: artifacts/wasm
@@ -263,7 +263,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts/download
 
@@ -338,7 +338,7 @@ jobs:
           cp npm-tarballs/*.tgz release/
           cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release
           path: artifacts/release
@@ -362,7 +362,7 @@ jobs:
       FONTS: ${{ github.workspace }}/tests/fixtures/fonts
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release
           path: release
@@ -472,7 +472,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release
           path: release
@@ -493,7 +493,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release
           path: release
@@ -521,7 +521,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release
           path: release
@@ -540,7 +540,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release
           path: release

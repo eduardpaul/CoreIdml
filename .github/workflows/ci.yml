@@ -88,7 +88,7 @@ jobs:
           dart analyze --fatal-infos
           dart test
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: artifacts/native/${{ matrix.rid }}
@@ -126,7 +126,7 @@ jobs:
         working-directory: bindings/wasm
         run: npm run test:browser
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: matrix.runtime == 'Mono'
         with:
           name: wasm
@@ -148,7 +148,7 @@ jobs:
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" > /dev/null
       - name: Build the Android libraries
         run: bash eng/build-android.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-jniLibs
           path: artifacts/native/jniLibs
