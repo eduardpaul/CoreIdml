@@ -141,6 +141,10 @@ jobs:
 
       - name: Python wheel
         run: |
+          # On failure, the end of the output becomes an annotation (readable without access to the job log).
+          log="$RUNNER_TEMP/python-wheel.log"
+          exec > >(tee "$log") 2>&1
+          trap 'echo "::error title=Python wheel ($RID)::$(tail -60 "$log" | sed -e "s/%/%25/g" -e "s/\r//g" | sed -e ":a" -e "N" -e "\$!ba" -e "s/\n/%0A/g")"' ERR
           python="python"
           [[ -n "${{ matrix.container }}" ]] && python="python3.12"
           tag="${{ matrix.wheel }}"
