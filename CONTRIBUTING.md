@@ -136,7 +136,7 @@ A release is a tag. Bump `VersionPrefix` (and the manifests: `node eng/set-versi
 2. packs everything once: NuGet packages, the npm packages (one per platform plus `@coreidml/node` and
    `@coreidml/wasm`), the wheels, and archives of the native libraries, command lines, Android libraries and
    WebAssembly engine, the Claude Desktop extensions (`eng/pack-mcpb.mjs`: the command line as an MCP Bundle for
-   Windows and macOS, from `bindings/mcpb/manifest.json`) with a `SHA256SUMS`, and checks that the staged npm
+   each desktop platform, from `bindings/mcpb/manifest.json`) with a `SHA256SUMS`, and checks that the staged npm
    package installs and runs;
 3. publishes to NuGet, npm and PyPI, then creates the GitHub release with every file attached.
 
