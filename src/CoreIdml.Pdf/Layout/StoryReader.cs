@@ -254,6 +254,7 @@ internal sealed class StoryReader
             Underline = Get("Underline") == "true",
             StrikeThrough = Get("StrikeThru") == "true",
             Kerning = kerning is not ("None" or "$ID/None"),
+            Ligatures = Get("Ligatures") != "false",
             Leading = leading is > 0 ? leading : null,
             AutoLeading = Values.Number(Get("AutoLeading"), 120) / 100,
             Language = Get("AppliedLanguage"),

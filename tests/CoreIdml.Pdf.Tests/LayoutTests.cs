@@ -158,6 +158,60 @@ public sealed class LayoutTests
         Assert.Equal(frame.InnerBounds.Y + ((100 - textHeight) / 2) + (face.Ascent * 10), run.Y, 3);
     }
 
+    [Theory]
+    [InlineData(null, "fi")]
+    [InlineData("false", "f|i")]
+    public void Standard_ligatures_replace_fi_unless_turned_off(string? ligatures, string expected)
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12 });
+        var frame = page.AddText(new Rect(0, 0, 300, 100), "fin", style);
+        frame.Story.Element.Descendants("CharacterStyleRange").Single().SetAttributeValue("Ligatures", ligatures);
+        var options = new PdfExportOptions { Fonts = new PdfFontOptions { UseSystemFonts = false }.AddFont("LiberationSerif-Regular.ttf", SerifWithStandardLigatures()) };
+
+        var run = Assert.Single(new IdmlRenderer(document, options).LayoutStory(frame.Story).OpsByFrame[frame.Id].OfType<GlyphRunOp>());
+        Assert.Equal(expected, string.Join("|", run.Glyphs.Take(run.Glyphs.Count - 1).Select(g => g.Text)));
+        Assert.Equal("fin", run.Text);
+        if (ligatures is null)
+        {
+            // One glyph, narrower than f and i set apart.
+            var separate = Layout(document, frame).OpsByFrame[frame.Id].OfType<GlyphRunOp>().Single();
+            Assert.True(run.Glyphs[0].Advance < separate.Glyphs[0].Advance + separate.Glyphs[1].Advance);
+        }
+    }
+
+    /// <summary>
+    /// Liberation Serif has an fi glyph (U+FB01) but no standard ligature using it; its one ligature lookup (under
+    /// dlig) is rewritten to make f + i -> fi a liga ligature, the way fonts such as Raleway define it.
+    /// </summary>
+    private static byte[] SerifWithStandardLigatures()
+    {
+        var face = TestSupport.FontLibrary().Resolve("Liberation Serif", "Regular");
+        Assert.True(face.TryMap('f', out var f));
+        Assert.True(face.TryMap('i', out var i));
+        Assert.True(face.TryMap(0xFB01, out var fi));
+        var data = File.ReadAllBytes(Path.Combine(TestSupport.FontDirectory, "LiberationSerif-Regular.ttf"));
+        int U16(int at) => System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(at));
+        void Set(int at, int value) => System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(data.AsSpan(at), (ushort)value);
+        var gsub = Enumerable.Range(0, U16(4)).Select(t => 12 + (16 * t)).Single(record => System.Text.Encoding.ASCII.GetString(data, record, 4) == "GSUB");
+        var table = (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(gsub + 8));
+        var features = table + U16(table + 6);
+        var lookups = table + U16(table + 8);
+        var record = Enumerable.Range(0, U16(features)).Select(n => features + 2 + (6 * n)).Single(r => System.Text.Encoding.ASCII.GetString(data, r, 4) == "dlig");
+        "liga"u8.CopyTo(data.AsSpan(record));
+        var feature = features + U16(record + 4);
+        var lookup = lookups + U16(lookups + 2 + (2 * U16(feature + 4)));
+        var subtable = lookup + U16(lookup + 6);
+        Set(lookup + 2, 0); // lookup flags: none
+        Set(subtable + U16(subtable + 2) + 4, f); // coverage (format 1, one glyph): the first component
+        var set = subtable + U16(subtable + 6);
+        var ligature = set + U16(set + 2);
+        Set(ligature, fi);
+        Assert.Equal(2, U16(ligature + 2));
+        Set(ligature + 4, i);
+        return data;
+    }
+
     [Fact]
     public void Pair_kerning_tightens_AV()
     {

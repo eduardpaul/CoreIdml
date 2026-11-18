@@ -41,6 +41,9 @@ internal sealed record RunStyle
 
     public bool Kerning { get; init; } = true;
 
+    /// <summary>Standard ligatures (fi, fl, ...) from the font, InDesign's default.</summary>
+    public bool Ligatures { get; init; } = true;
+
     /// <summary>Fixed leading in points; null means Auto.</summary>
     public double? Leading { get; init; }
 

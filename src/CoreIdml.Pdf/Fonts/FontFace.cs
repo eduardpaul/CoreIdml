@@ -72,6 +72,14 @@ internal sealed class FontFace
         ? font.Advance(glyph) / (double)font.UnitsPerEm
         : Standard!.Width((byte)glyph) / 1000.0;
 
+    /// <summary>The standard ligature starting <paramref name="glyphs"/> (none for standard fonts).</summary>
+    public bool TryLigature(ReadOnlySpan<ushort> glyphs, out ushort ligature, out int length)
+    {
+        ligature = 0;
+        length = 0;
+        return OpenType is { } font && font.TryLigature(glyphs, out ligature, out length);
+    }
+
     /// <summary>Kerning between two glyphs in em (0 for standard fonts).</summary>
     public double Kerning(ushort left, ushort right)
     {

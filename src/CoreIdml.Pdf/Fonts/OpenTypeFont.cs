@@ -5,8 +5,8 @@ namespace CoreIdml.Pdf.Fonts;
 
 /// <summary>
 /// A parsed TrueType/OpenType face (.ttf, .otf, or one face of a .ttc): names, metrics, character map, advances
-/// and pair kerning (legacy <c>kern</c> table and GPOS pair adjustment). No shaping beyond that: no ligatures,
-/// contextual forms or mark positioning. Immutable once parsed (shared through <see cref="FontCache"/>).
+/// pair kerning (legacy <c>kern</c> table and GPOS pair adjustment) and standard ligatures (GSUB <c>liga</c>).
+/// No shaping beyond that: no contextual forms or mark positioning. Immutable once parsed (shared through <see cref="FontCache"/>).
 /// </summary>
 internal sealed class OpenTypeFont
 {
@@ -16,6 +16,8 @@ internal sealed class OpenTypeFont
     private readonly ushort[] advances;
     private readonly Dictionary<uint, short> kernPairs = [];
     private readonly List<PairSubtable> gposPairs = [];
+    // Standard ligatures by first glyph, in the font's order of preference.
+    private readonly Dictionary<ushort, List<(ushort[] Following, ushort Ligature)>> ligatures = [];
 
     private OpenTypeFont(byte[] data, int fontOffset, string sourcePath, int faceIndex)
     {
@@ -93,6 +95,7 @@ internal sealed class OpenTypeFont
         ReadCmap();
         ReadKern();
         ReadGpos();
+        ReadGsubLigatures();
     }
 
     public string SourcePath { get; }
@@ -193,6 +196,30 @@ internal sealed class OpenTypeFont
             value = legacy;
         }
         return value;
+    }
+
+    /// <summary>
+    /// The standard ligature (GSUB <c>liga</c>) that starts <paramref name="glyphs"/>, if any: its glyph and how
+    /// many glyphs it replaces.
+    /// </summary>
+    public bool TryLigature(ReadOnlySpan<ushort> glyphs, out ushort ligature, out int length)
+    {
+        ligature = 0;
+        length = 0;
+        if (glyphs.Length < 2 || !ligatures.TryGetValue(glyphs[0], out var candidates))
+        {
+            return false;
+        }
+        foreach (var (rest, glyph) in candidates)
+        {
+            if (rest.Length < glyphs.Length && glyphs.Slice(1, rest.Length).SequenceEqual(rest))
+            {
+                ligature = glyph;
+                length = rest.Length + 1;
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Every code point the font maps (for ToUnicode and fallback decisions).</summary>
@@ -523,6 +550,102 @@ internal sealed class OpenTypeFont
         }
     }
 
+    private void ReadGsubLigatures()
+    {
+        if (!tables.TryGetValue("GSUB", out var gsub) || gsub.Length < 10)
+        {
+            return;
+        }
+        try
+        {
+            var baseOffset = gsub.Offset;
+            var featureList = baseOffset + U16(baseOffset + 6);
+            var lookupList = baseOffset + U16(baseOffset + 8);
+            var lookupIndices = new SortedSet<int>();
+            var featureCount = U16(featureList);
+            for (var f = 0; f < featureCount; f++)
+            {
+                var record = featureList + 2 + (6 * f);
+                if (Encoding.ASCII.GetString(data, record, 4) != "liga")
+                {
+                    continue;
+                }
+                var feature = featureList + U16(record + 4);
+                var lookups = U16(feature + 2);
+                for (var l = 0; l < lookups; l++)
+                {
+                    lookupIndices.Add(U16(feature + 4 + (2 * l)));
+                }
+            }
+            var lookupCount = U16(lookupList);
+            foreach (var index in lookupIndices)
+            {
+                if (index >= lookupCount)
+                {
+                    continue;
+                }
+                var lookup = lookupList + U16(lookupList + 2 + (2 * index));
+                var type = U16(lookup);
+                var subtableCount = U16(lookup + 4);
+                for (var s = 0; s < subtableCount; s++)
+                {
+                    var subtable = lookup + U16(lookup + 6 + (2 * s));
+                    var subtableType = type;
+                    if (type == 7)
+                    {
+                        // Extension: the real subtable is further away (32-bit offset).
+                        subtableType = U16(subtable + 2);
+                        subtable += (int)U32(subtable + 4);
+                    }
+                    if (subtableType == 4 && U16(subtable) == 1)
+                    {
+                        ReadLigatureSubtable(subtable);
+                    }
+                }
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // A damaged GSUB table: no ligatures.
+            ligatures.Clear();
+        }
+    }
+
+    /// <summary>GSUB ligature substitution, format 1: per first glyph (coverage), ligatures and their other components.</summary>
+    private void ReadLigatureSubtable(int subtable)
+    {
+        var coverage = PairSubtable.ReadCoverage(this, subtable + U16(subtable + 2));
+        var setCount = U16(subtable + 4);
+        foreach (var (first, coverageIndex) in coverage.OrderBy(pair => pair.Value))
+        {
+            if (coverageIndex >= setCount)
+            {
+                continue;
+            }
+            var set = subtable + U16(subtable + 6 + (2 * coverageIndex));
+            var count = U16(set);
+            if (!ligatures.TryGetValue(first, out var list))
+            {
+                ligatures[first] = list = [];
+            }
+            for (var i = 0; i < count; i++)
+            {
+                var ligature = set + U16(set + 2 + (2 * i));
+                var components = U16(ligature + 2);
+                if (components < 2)
+                {
+                    continue;
+                }
+                var rest = new ushort[components - 1];
+                for (var c = 0; c < rest.Length; c++)
+                {
+                    rest[c] = U16(ligature + 4 + (2 * c));
+                }
+                list.Add((rest, U16(ligature)));
+            }
+        }
+    }
+
     /// <summary>One GPOS pair adjustment subtable (format 1: glyph pairs, format 2: class pairs).</summary>
     private sealed class PairSubtable
     {
@@ -642,7 +765,7 @@ internal sealed class OpenTypeFont
             return 0;
         }
 
-        private static Dictionary<ushort, int> ReadCoverage(OpenTypeFont font, int at)
+        internal static Dictionary<ushort, int> ReadCoverage(OpenTypeFont font, int at)
         {
             var result = new Dictionary<ushort, int>();
             var coverageFormat = font.U16(at);

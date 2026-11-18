@@ -158,6 +158,7 @@ internal sealed class TextComposer
             }
         }
         var nextHyphen = 0;
+        var firstShaped = output.Count;
         for (var i = 0; i < text.Length; i++)
         {
             var index = i;
@@ -241,6 +242,55 @@ internal sealed class TextComposer
             {
                 output.Add(new Shaped { Kind = GlyphKind.SoftHyphen, Style = style, Font = style.Font, Size = size, Rise = rise, BreakAfter = true, Text = string.Empty });
             }
+        }
+        if (style.Ligatures)
+        {
+            ApplyLigatures(output, firstShaped, style);
+        }
+    }
+
+    /// <summary>
+    /// Replaces runs of glyphs by the font's standard ligatures (fi, fl, ...), as InDesign does by default. Only
+    /// glyphs of one font, size and position combine; a space or a hyphenation point keeps them apart.
+    /// </summary>
+    private static void ApplyLigatures(List<Shaped> output, int start, RunStyle style)
+    {
+        const int MaxComponents = 4;
+        Span<ushort> glyphs = stackalloc ushort[MaxComponents];
+        for (var i = start; i < output.Count; i++)
+        {
+            var first = output[i];
+            if (first.Kind != GlyphKind.Normal)
+            {
+                continue;
+            }
+            var count = 0;
+            while (count < MaxComponents && i + count < output.Count && output[i + count] is { Kind: GlyphKind.Normal } next
+                && ReferenceEquals(next.Font, first.Font) && next.Size == first.Size && next.Rise == first.Rise)
+            {
+                glyphs[count] = next.Glyph;
+                count++;
+            }
+            if (count < 2 || !first.Font.TryLigature(glyphs[..count], out var ligature, out var length))
+            {
+                continue;
+            }
+            var natural = first.Font.Advance(ligature) * first.Size * style.HorizontalScale;
+            var last = output[i + length - 1];
+            output[i] = new Shaped
+            {
+                Kind = GlyphKind.Normal,
+                Font = first.Font,
+                Glyph = ligature,
+                Text = string.Concat(output.GetRange(i, length).Select(glyph => glyph.Text)),
+                Advance = natural + (style.Tracking / 1000 * first.Size),
+                Natural = natural,
+                Size = first.Size,
+                Rise = first.Rise,
+                Style = first.Style,
+                BreakAfter = last.BreakAfter,
+            };
+            output.RemoveRange(i + 1, length - 1);
         }
     }
 
