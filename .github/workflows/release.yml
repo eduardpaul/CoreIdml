@@ -372,7 +372,14 @@ jobs:
       - name: npm, through a registry
         run: |
           npm install -g npm@11 verdaccio@6 > /dev/null
-          verdaccio --listen 4873 > "$RUNNER_TEMP/verdaccio.log" 2>&1 &
+          # Verdaccio's default body limit (10 MB) is far below npmjs.org's; a platform package is about 11 MB as sent.
+          config="$RUNNER_TEMP/verdaccio.yaml"
+          printf '%s\n' "storage: $RUNNER_TEMP/verdaccio-storage" 'max_body_size: 200mb' \
+            'auth:' '  htpasswd:' "    file: $RUNNER_TEMP/verdaccio-htpasswd" \
+            'uplinks:' '  npmjs:' '    url: https://registry.npmjs.org/' \
+            'packages:' "  '**':" '    access: $all' '    publish: $authenticated' '    proxy: npmjs' \
+            'log: { type: stdout, format: pretty, level: warn }' > "$config"
+          verdaccio --config "$config" --listen 4873 > "$RUNNER_TEMP/verdaccio.log" 2>&1 &
           for i in $(seq 60); do curl -fs http://localhost:4873/-/ping > /dev/null && break; sleep 1; done
           token=$(curl -fs -X PUT -H 'content-type: application/json' -d '{"name":"rehearsal","password":"rehearsal-password"}' \
             http://localhost:4873/-/user/org.couchdb.user:rehearsal | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
