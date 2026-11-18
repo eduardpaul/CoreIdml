@@ -656,7 +656,7 @@ internal sealed class TextComposer
         var edges = new Dictionary<(long, long, long, long), LineOp>();
         void FlushEdges()
         {
-            foreach (var edge in edges.Values)
+            foreach (var edge in MergeEdges(edges.Values))
             {
                 flow.Add(edge);
             }
@@ -728,6 +728,76 @@ internal sealed class TextComposer
         FlushEdges();
         flow.EndBlock(top + spaceAfter);
     }
+
+    /// <summary>
+    /// One stroke per stretch of a table rule. Cells on either side of a rule can describe it with different extents
+    /// (a merged cell's whole bottom edge, the top edges of the cells below it): each rule is split at every cell
+    /// boundary, the heavier stroke wins each piece (the first drawn on a tie), and neighbouring pieces with the same
+    /// stroke are joined again. Drawing overlapping copies would darken the shared part of the rule.
+    /// </summary>
+    private static List<LineOp> MergeEdges(IEnumerable<LineOp> edges)
+    {
+        const double Tolerance = 1e-4;
+        var result = new List<LineOp>();
+        var ordered = edges.ToList();
+        foreach (var horizontal in new[] { true, false })
+        {
+            var axis = ordered.Where(e => horizontal ? Math.Abs(e.From.Y - e.To.Y) < Tolerance : Math.Abs(e.From.X - e.To.X) < Tolerance && Math.Abs(e.From.Y - e.To.Y) >= Tolerance);
+            foreach (var line in axis.GroupBy(e => Math.Round(horizontal ? e.From.Y : e.From.X, 3)))
+            {
+                var position = line.First();
+                double Start(LineOp e) => horizontal ? Math.Min(e.From.X, e.To.X) : Math.Min(e.From.Y, e.To.Y);
+                double End(LineOp e) => horizontal ? Math.Max(e.From.X, e.To.X) : Math.Max(e.From.Y, e.To.Y);
+                var cuts = line.SelectMany(e => new[] { Start(e), End(e) }).Order().ToList();
+                LineOp? current = null;
+                double currentStart = 0, currentEnd = 0;
+                void Emit()
+                {
+                    if (current is not null)
+                    {
+                        result.Add(horizontal
+                            ? current with { From = new Point(currentStart, position.From.Y), To = new Point(currentEnd, position.From.Y) }
+                            : current with { From = new Point(position.From.X, currentStart), To = new Point(position.From.X, currentEnd) });
+                    }
+                    current = null;
+                }
+                for (var i = 0; i + 1 < cuts.Count; i++)
+                {
+                    var (a, b) = (cuts[i], cuts[i + 1]);
+                    if (b - a < Tolerance)
+                    {
+                        continue;
+                    }
+                    LineOp? winner = null;
+                    foreach (var edge in line)
+                    {
+                        if (Start(edge) <= a + Tolerance && End(edge) >= b - Tolerance && (winner is null || edge.Width > winner.Width))
+                        {
+                            winner = edge;
+                        }
+                    }
+                    if (winner is null || current is null || Math.Abs(currentEnd - a) > Tolerance || !SameStroke(current, winner))
+                    {
+                        Emit();
+                        if (winner is null)
+                        {
+                            continue;
+                        }
+                        current = winner;
+                        currentStart = a;
+                    }
+                    currentEnd = b;
+                }
+                Emit();
+            }
+        }
+        // Anything not horizontal or vertical as it came.
+        result.AddRange(ordered.Where(e => Math.Abs(e.From.Y - e.To.Y) >= Tolerance && Math.Abs(e.From.X - e.To.X) >= Tolerance));
+        return result;
+    }
+
+    private static bool SameStroke(LineOp a, LineOp b) =>
+        a.Width == b.Width && a.Color.Space == b.Color.Space && a.Color.Components.SequenceEqual(b.Color.Components);
 
     private static double LastDescent(StoryLayout text)
     {

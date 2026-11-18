@@ -216,6 +216,23 @@ public sealed class LayoutTests
     }
 
     [Fact]
+    public void A_rule_shared_by_a_merged_cell_and_the_cells_below_is_drawn_once()
+    {
+        var (document, page) = NewDocument();
+        var frame = page.AddTextFrame(new Rect(0, 0, 200, 300));
+        var table = frame.AddTable(2, 2, new TableOptions { ColumnWidths = [80, 120], RowHeight = 20, StrokeWeight = 0.75 });
+        // A heading merged across both columns, like the sample's section titles.
+        table[0, 0].Element.SetAttributeValue("ColumnSpan", "2");
+        table[0, 1].Element.Remove();
+        var ops = Layout(document, frame).OpsByFrame[frame.Id];
+
+        var y = frame.InnerBounds.Y + 20;
+        var rule = Assert.Single(ops.OfType<LineOp>(), l => Math.Abs(l.From.Y - y) < 1e-6 && Math.Abs(l.To.Y - y) < 1e-6);
+        Assert.Equal(frame.InnerBounds.X, Math.Min(rule.From.X, rule.To.X), 6);
+        Assert.Equal(frame.InnerBounds.X + 200, Math.Max(rule.From.X, rule.To.X), 6);
+    }
+
+    [Fact]
     public void Rows_joined_by_a_merged_cell_go_overset_together()
     {
         var (document, page) = NewDocument();
