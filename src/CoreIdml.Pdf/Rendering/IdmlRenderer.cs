@@ -187,6 +187,11 @@ internal sealed partial class IdmlRenderer : IDisposable
         var chain = master.AllPageItems.OfType<TextFrame>().Where(f => f.StoryId == frame.StoryId).ToList();
         var ordered = OrderThread(chain);
         var layout = composer.Compose(story.Element, ordered.Select(f => FrameArea(f, pageName)).ToList());
+        // Reported like a page story; overset on any page it is drawn on counts.
+        if (layout.Overset || !storyLayouts.ContainsKey(story.Id))
+        {
+            storyLayouts[story.Id] = layout;
+        }
         foreach (var (frameId, ops) in layout.OpsByFrame)
         {
             frameOps[frameId + "@" + pageName] = ops;

@@ -237,6 +237,19 @@ public sealed class LayoutTests
     }
 
     [Fact]
+    public void Overset_master_page_stories_are_reported()
+    {
+        var (document, page) = NewDocument();
+        var master = Assert.IsType<MasterSpread>(page.AppliedMaster);
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Leading = 14 });
+        var frame = master.Pages[0].AddText(new Rect(50, 50, 60, 20), Lorem, style);
+
+        using var stream = new MemoryStream();
+        var result = IdmlPdf.Export(document, stream, TestSupport.ExportOptions());
+        Assert.Contains(frame.StoryId, result.OversetStories);
+    }
+
+    [Fact]
     public void Missing_fonts_fall_back_and_are_reported()
     {
         var (document, page) = NewDocument();
