@@ -1,0 +1,99 @@
+<Project>
+
+  <!--
+    The C ABI transport: CoreIdml.Interop behind the functions declared in include/coreidml.h, compiled with Native
+    AOT into a self-contained shared library (no .NET runtime on the target). Node, Python and Dart/Flutter load it.
+
+      dotnet publish src/CoreIdml.Native -c Release -r <rid>
+        -> artifacts/native/<rid>/   coreidml.dll (+ coreidml.lib) | libcoreidml.so | libcoreidml.dylib
+
+    Native AOT does not cross-compile between operating systems: build each RID on its own OS (CI does).
+    A static library for iOS: add -p:NativeLib=Static.
+
+    The SDK is imported explicitly (instead of <Project Sdk="...">) because the name of the native file has to be
+    set after the SDK's targets; see the end of this file.
+  -->
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CoreIdml.Native</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <NativeLib Condition="'$(NativeLib)' == ''">Shared</NativeLib>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <!--
+      Size matters to an app that bundles the library. UseSystemResourceKeys would save more, but it replaces .NET's
+      own messages with resource keys, and errors here quote them: "Not an IDML package: CDCorrupt" instead of
+      "...: Central Directory corrupt.", and XML errors without their text. The bindings' tests check the wording.
+    -->
+    <OptimizationPreference>Size</OptimizationPreference>
+    <UseSystemResourceKeys>false</UseSystemResourceKeys>
+    <StripSymbols>true</StripSymbols>
+
+    <!-- The native file: coreidml.dll, libcoreidml.so, libcoreidml.dylib (the SDK adds "lib" outside Windows). -->
+    <NativeLibraryName>coreidml</NativeLibraryName>
+    <NativeDistDir>$(ArtifactsPath)\native\$(RuntimeIdentifier)\</NativeDistDir>
+
+    <!--
+      Android is .NET's linux-bionic target, experimental for Native AOT: it has to be allowed, and compiled from
+      the runtime pack. eng/build-android.sh adds the NDK's compiler and sysroot.
+    -->
+    <DisableUnsupportedError Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">true</DisableUnsupportedError>
+    <PublishAotUsingRuntimePack Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">true</PublishAotUsingRuntimePack>
+
+    <!-- The name other code links against: Apple's install name here, the ELF SONAME below. -->
+    <SharedLibraryInstallName Condition="$(RuntimeIdentifier.StartsWith('osx')) or $(RuntimeIdentifier.StartsWith('ios')) or $(RuntimeIdentifier.StartsWith('maccatalyst'))">@rpath/lib$(NativeLibraryName).dylib</SharedLibraryInstallName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CoreIdml.Interop\CoreIdml.Interop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoreIdml.Abi.Tests" />
+  </ItemGroup>
+
+  <!--
+    Without a SONAME, Android's linker cannot resolve the library for code that links against it, and the version
+    definition would carry the build path.
+  -->
+  <ItemGroup Condition="'$(NativeLib)' == 'Shared' and ($(RuntimeIdentifier.StartsWith('linux')) or $(RuntimeIdentifier.StartsWith('android')) or $(RuntimeIdentifier.StartsWith('freebsd')))">
+    <LinkerArg Include="-Wl,-soname,lib$(NativeLibraryName).so" />
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+  <!--
+    Why the native file is named here and not through the assembly name.
+
+    Native AOT names its output after the assembly. An assembly called "coreidml" cannot work: the AOT compiler
+    finds assemblies by name without regard to case, so every reference to the core library (CoreIdml) resolved to
+    this assembly itself, and the published library threw TypeLoadException on first use, with no build warning
+    (seen on .NET 11.0.0). So the assembly keeps its own name, CoreIdml.Native, and only the linked file is renamed.
+    These properties are set by the ILCompiler targets, hence after the import above.
+
+    The copy the SDK puts in artifacts/publish keeps the assembly's name; use artifacts/native/<rid>/.
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(NativeBinaryExt)' != ''">
+    <NativeBinary>$(NativeOutputPath)$(NativeBinaryPrefix)$(NativeLibraryName)$(NativeBinaryExt)</NativeBinary>
+    <NativeImportLibrary Condition="'$(NativeImportLibrary)' != ''">$(NativeOutputPath)$(NativeLibraryName)$(LibFileExt)</NativeImportLibrary>
+    <_LinkNativeOutputs>$(NativeBinary)</_LinkNativeOutputs>
+    <_LinkNativeOutputs Condition="'$(NativeImportLibrary)' != ''">$(NativeBinary);$(NativeImportLibrary)</_LinkNativeOutputs>
+  </PropertyGroup>
+
+  <!-- The one place every binding and every packaging step looks for the library: artifacts/native/<rid>/. -->
+  <Target Name="CopyNativeLibraryToDist" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != ''">
+    <Error Condition="!Exists('$(NativeBinary)')" Text="The native library was not linked at $(NativeBinary). The ILCompiler targets may have changed how they name their output; see the end of CoreIdml.Native.csproj." />
+    <ItemGroup>
+      <_NativeDistFile Include="$(NativeBinary)" />
+      <_NativeDistFile Include="$(NativeImportLibrary)" Condition="'$(NativeImportLibrary)' != '' and Exists('$(NativeImportLibrary)')" />
+      <_NativeDistFile Include="$(RepositoryRoot)include\coreidml.h" />
+    </ItemGroup>
+    <RemoveDir Directories="$(NativeDistDir)" />
+    <Copy SourceFiles="@(_NativeDistFile)" DestinationFolder="$(NativeDistDir)" />
+    <Message Importance="high" Text="CoreIdml native library -> $(NativeDistDir)" />
+  </Target>
+
+</Project>

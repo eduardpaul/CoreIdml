@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CoreIdml.Interop\CoreIdml.Interop.csproj" />
+  </ItemGroup>
+
+</Project>

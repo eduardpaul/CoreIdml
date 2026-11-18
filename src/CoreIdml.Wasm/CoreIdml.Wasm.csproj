@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!--
+    The WebAssembly transport: CoreIdml.Interop behind [JSExport] functions, for browsers and for JavaScript
+    runtimes without a native library (bindings/wasm wraps it). Needs no workload.
+
+      dotnet publish src/CoreIdml.Wasm -c Release
+        -> artifacts/wasm/_framework/   (dotnet.js, the runtime and the trimmed assemblies)
+
+    Runtime flavor: Mono is the .NET 11 default for browser-wasm and what ships. CoreCLR on WebAssembly is opt-in
+    (-p:CoreIdmlWasmRuntime=CoreCLR); it was verified to load and run this library too. Do a clean build when
+    switching: the two flavors share intermediate files and a mixed build does not start.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CoreIdml.Wasm</RootNamespace>
+    <CoreIdmlRunsOnMono>true</CoreIdmlRunsOnMono>
+    <!-- The JSExport source generator emits unsafe marshalling code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <UseMonoRuntime Condition="'$(CoreIdmlWasmRuntime)' == 'CoreCLR'">false</UseMonoRuntime>
+    <!-- Errors quote .NET's own messages (zip, XML); keep their text, as the native library does. -->
+    <UseSystemResourceKeys>false</UseSystemResourceKeys>
+    <!-- Servers and CDNs compress on their own; skipping .br/.gz copies keeps the publish fast and the package small. -->
+    <CompressionEnabled>false</CompressionEnabled>
+
+    <WasmDistDir>$(ArtifactsPath)\wasm\</WasmDistDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CoreIdml.Interop\CoreIdml.Interop.csproj" />
+  </ItemGroup>
+
+  <!--
+    Publishing never removes what an earlier publish left behind, so after switching runtime flavor the folder held
+    the files of both, and all of them would be copied below (and shipped in the npm package, at twice the size).
+  -->
+  <Target Name="CleanWasmPublishDir" BeforeTargets="PrepareForPublish">
+    <RemoveDir Directories="$(PublishDir)" />
+  </Target>
+
+  <!-- The one place the JavaScript binding and its packaging look for the runtime: artifacts/wasm/_framework/. -->
+  <Target Name="CopyWasmToDist" AfterTargets="Publish">
+    <ItemGroup>
+      <_WasmDistFile Include="$(PublishDir)wwwroot\_framework\**\*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(WasmDistDir)_framework" />
+    <Copy SourceFiles="@(_WasmDistFile)" DestinationFolder="$(WasmDistDir)_framework\%(RecursiveDir)" />
+    <Message Importance="high" Text="CoreIdml wasm build -> $(WasmDistDir)_framework" />
+  </Target>
+
+</Project>

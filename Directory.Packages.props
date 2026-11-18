@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- Every package version in the repository is set here (central package management). -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Tests">
+    <!-- xUnit v3 on Microsoft.Testing.Platform (the runner global.json selects for `dotnet test`). -->
+    <PackageVersion Include="xunit.v3.mtp-v2" Version="3.2.2" />
+  </ItemGroup>
+
+</Project>

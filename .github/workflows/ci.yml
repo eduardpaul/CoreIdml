@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # The managed code: build with warnings as errors, then the core, interop-contract and ABI-conformance tests.
+  dotnet:
+    name: .NET (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build CoreIdml.slnx -c Release
+      - run: dotnet test --solution CoreIdml.slnx -c Release --no-build
+
+  # The native library per platform (Native AOT does not cross-compile between operating systems), and every
+  # binding that loads it, tested against the binary that was just built.
+  native:
+    name: native ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: ubuntu-24.04-arm, rid: linux-arm64 }
+          - { os: windows-latest, rid: win-x64 }
+          - { os: macos-latest, rid: osx-arm64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Publish the native library
+        run: dotnet publish src/CoreIdml.Native -c Release -r ${{ matrix.rid }}
+
+      - name: C smoke test (header, linking, calls)
+        if: runner.os != 'Windows'
+        run: |
+          cc tests/native/smoke.c -Wall -Wextra -Werror -Iinclude -Lartifacts/native/${{ matrix.rid }} -lcoreidml \
+            -Wl,-rpath,"$PWD/artifacts/native/${{ matrix.rid }}" -o smoke
+          ./smoke tests/fixtures/article-1photo.idml
+
+      - name: Python binding
+        run: python -m unittest discover -s bindings/python/tests -v
+
+      - name: Node binding
+        working-directory: bindings/node
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Dart binding
+        working-directory: bindings/dart/coreidml
+        run: |
+          dart pub get
+          dart analyze --fatal-infos
+          dart test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: artifacts/native/${{ matrix.rid }}
+          if-no-files-found: error
+
+  # The WebAssembly build on the runtime that ships (Mono) and on the opt-in CoreCLR flavor, with the JavaScript
+  # binding tested on each. This is the job that catches code the browser cannot run.
+  wasm:
+    name: wasm (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [Mono, CoreCLR]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Publish the WebAssembly build
+        run: dotnet publish src/CoreIdml.Wasm -c Release -p:CoreIdmlWasmRuntime=${{ matrix.runtime }}
+
+      - name: JavaScript binding
+        working-directory: bindings/wasm
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: JavaScript binding in a real browser (headless Chrome)
+        working-directory: bindings/wasm
+        run: npm run test:browser
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.runtime == 'Mono'
+        with:
+          name: wasm
+          path: artifacts/wasm
+          if-no-files-found: error
+
+  # The Android libraries (arm64-v8a, x86_64) with the pinned NDK. Running them needs an emulator:
+  # eng/android-smoke.sh and samples/flutter_app do that locally.
+  android:
+    name: android (linux-bionic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Install the pinned NDK
+        run: |
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" > /dev/null
+      - name: Build the Android libraries
+        run: bash eng/build-android.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-jniLibs
+          path: artifacts/native/jniLibs
+          if-no-files-found: error

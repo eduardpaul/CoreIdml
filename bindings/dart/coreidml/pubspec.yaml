@@ -1,0 +1,16 @@
+name: coreidml
+description: Read, edit and write Adobe InDesign IDML files from Dart and Flutter, without InDesign. Untouched parts are written back byte for byte.
+version: 0.1.0
+repository: https://github.com/eduardpaul/CoreIdml/tree/main/bindings/dart/coreidml
+issue_tracker: https://github.com/eduardpaul/CoreIdml/issues
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  ffi: ^2.1.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

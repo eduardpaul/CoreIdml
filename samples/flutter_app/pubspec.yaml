@@ -1,0 +1,27 @@
+name: coreidml_flutter_app
+description: "CoreIdml in a Flutter app: the Dart binding over the native library."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  material_ui: ^1.1.0
+  coreidml:
+    path: ../../bindings/dart/coreidml
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    # Copied from tests/fixtures by tool/prepare.sh, with the native libraries.
+    - assets/article-1photo.idml

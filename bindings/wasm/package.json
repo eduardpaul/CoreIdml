@@ -1,0 +1,53 @@
+{
+  "name": "@coreidml/wasm",
+  "version": "0.1.0",
+  "description": "Read, edit and write Adobe InDesign IDML files in the browser, without InDesign and without a server. WebAssembly, no native code.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eduardpaul/CoreIdml.git",
+    "directory": "bindings/wasm"
+  },
+  "homepage": "https://github.com/eduardpaul/CoreIdml#readme",
+  "bugs": {
+    "url": "https://github.com/eduardpaul/CoreIdml/issues"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "indesign",
+    "idml",
+    "adobe",
+    "wasm",
+    "webassembly",
+    "browser",
+    "dtp",
+    "publishing"
+  ],
+  "scripts": {
+    "build:wasm": "dotnet publish ../../src/CoreIdml.Wasm -c Release",
+    "build": "tsc -p tsconfig.json && node scripts/copy-framework.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:browser": "npm run build && node scripts/browser-test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

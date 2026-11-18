@@ -1,0 +1,40 @@
+<Project>
+
+  <!-- Applies to every project in the repository. Per-project files only say what is different about them. -->
+
+  <PropertyGroup Label="Toolchain">
+    <!-- net11.0 brings C# 15 as the default language version (unions, closed hierarchies, with() arguments). -->
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- No ICU on Android, iOS or in the browser; the library never does culture-sensitive work. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Output">
+    <!-- bin/ and obj/ of every project live under artifacts/, next to the native and wasm builds. -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <!-- A release build (-p:CoreIdmlRelease=true) reports "0.1.0"; any other build "0.1.0-dev+<commit>". -->
+    <VersionSuffix Condition="'$(VersionSuffix)' == '' and '$(CoreIdmlRelease)' != 'true'">dev</VersionSuffix>
+    <IncludeSourceRevisionInInformationalVersion Condition="'$(CoreIdmlRelease)' == 'true'">false</IncludeSourceRevisionInInformationalVersion>
+    <Authors>Eduard Paul</Authors>
+    <Copyright>Copyright (c) 2026 Eduard Paul</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/eduardpaul/CoreIdml</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/eduardpaul/CoreIdml</RepositoryUrl>
+    <PackageTags>idml;indesign;print;layout;aot;wasm</PackageTags>
+    <!-- Projects opt in to packing. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

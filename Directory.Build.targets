@@ -1,0 +1,31 @@
+<Project>
+
+  <!--
+    Runtime Async (.NET 11) policy.
+
+    Verified on .NET 11.0.0: browser-wasm runs on Mono by default, and Mono throws "Runtime Async is not supported on
+    this platform" as soon as a runtime-async method awaits. CoreCLR and Native AOT support it, and so does the opt-in
+    CoreCLR-on-wasm flavor.
+
+    So an assembly that can be loaded by Mono (CoreIdmlRunsOnMono=true: the core library, the interop layer, the wasm
+    transport) is compiled with ordinary async state machines, and everything else gets runtime async.
+    tests/CoreIdml.Interop.Tests/PortabilityTests.cs fails if a portable assembly ends up with a runtime-async method.
+
+    This file is evaluated after the project body, so it can read properties the project sets.
+  -->
+  <PropertyGroup>
+    <CoreIdmlRuntimeAsync Condition="'$(CoreIdmlRuntimeAsync)' == '' and '$(CoreIdmlRunsOnMono)' == 'true'">false</CoreIdmlRuntimeAsync>
+    <CoreIdmlRuntimeAsync Condition="'$(CoreIdmlRuntimeAsync)' == ''">true</CoreIdmlRuntimeAsync>
+    <Features Condition="'$(CoreIdmlRuntimeAsync)' == 'true'">$(Features);runtime-async=on</Features>
+  </PropertyGroup>
+
+  <!--
+    Portable libraries are analyzed as if they targeted the browser too: calling an API marked
+    [UnsupportedOSPlatform("browser")] (threads, processes, sockets...) is then a build error (CA1416).
+    The wasm project itself gets this from its SDK.
+  -->
+  <ItemGroup Condition="'$(CoreIdmlRunsOnMono)' == 'true' and '$(RuntimeIdentifier)' != 'browser-wasm'">
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+</Project>

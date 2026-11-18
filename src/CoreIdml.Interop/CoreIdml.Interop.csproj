@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The binding contract, once, in managed code: handles, status codes, JSON payloads, error capture.
+    CoreIdml.Native (C ABI) and CoreIdml.Wasm (JavaScript) are thin transports over this assembly, so every language
+    gets the same behaviour, and that behaviour is tested with plain `dotnet test` (no native build needed).
+  -->
+  <PropertyGroup>
+    <RootNamespace>CoreIdml.Interop</RootNamespace>
+    <CoreIdmlRunsOnMono>true</CoreIdmlRunsOnMono>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CoreIdml\CoreIdml.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoreIdml.Interop.Tests" />
+  </ItemGroup>
+
+</Project>

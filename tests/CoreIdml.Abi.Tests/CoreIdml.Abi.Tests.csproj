@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Keeps the C ABI honest: the header, the exports of the native library, the status codes and the generated
+    binding files must all say the same thing.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CoreIdml.Native\CoreIdml.Native.csproj" />
+    <ProjectReference Include="..\..\tools\CoreIdml.AbiGen\CoreIdml.AbiGen.csproj" />
+  </ItemGroup>
+
+</Project>

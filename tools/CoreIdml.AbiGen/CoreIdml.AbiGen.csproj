@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Reads include/coreidml.h and writes the low-level layer of each language binding, so the C ABI is described
+    once. Run this project after changing the header; Program.cs shows the command line, including the check mode
+    that writes nothing and fails when a file is out of date.
+
+    tests/CoreIdml.Abi.Tests runs the same check, so `dotnet test` is enough to catch drift.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CoreIdml.AbiGen</RootNamespace>
+    <!--
+      The emitters switch over AbiType without a default arm, so a new ABI type that an emitter does not map is a
+      build error (CS8509). CS8524 asks for a default arm for values no member names, which would hide exactly that.
+    -->
+    <NoWarn>$(NoWarn);CS8524</NoWarn>
+  </PropertyGroup>
+
+</Project>

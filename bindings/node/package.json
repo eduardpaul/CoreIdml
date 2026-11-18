@@ -1,0 +1,53 @@
+{
+  "name": "@coreidml/node",
+  "version": "0.1.0",
+  "description": "Read, edit and write Adobe InDesign IDML files from Node.js, without InDesign. Untouched parts are written back byte for byte.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eduardpaul/CoreIdml.git",
+    "directory": "bindings/node"
+  },
+  "homepage": "https://github.com/eduardpaul/CoreIdml#readme",
+  "bugs": {
+    "url": "https://github.com/eduardpaul/CoreIdml/issues"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "indesign",
+    "idml",
+    "adobe",
+    "dtp",
+    "print",
+    "publishing",
+    "layout"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "koffi": "3.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

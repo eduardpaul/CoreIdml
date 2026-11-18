@@ -1,0 +1,36 @@
+[project]
+name = "coreidml"
+version = "0.1.0"
+description = "Read, edit and write Adobe InDesign IDML files without InDesign. Untouched parts are written back byte for byte."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Eduard Paul" }]
+keywords = ["indesign", "idml", "adobe", "dtp", "print", "publishing", "layout"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Printing",
+    "Topic :: Text Processing :: Markup :: XML",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/eduardpaul/CoreIdml"
+Repository = "https://github.com/eduardpaul/CoreIdml"
+Issues = "https://github.com/eduardpaul/CoreIdml/issues"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# A platform wheel carries the native library in coreidml/_lib/ (tools/build_wheel.py puts it there; setup.py then
+# tags the wheel for that platform).
+coreidml = ["py.typed", "_lib/*"]

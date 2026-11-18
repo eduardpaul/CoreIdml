@@ -1,0 +1,43 @@
+# Build output of every .NET project, plus the native and wasm builds (see Directory.Build.props)
+artifacts/
+bin/
+obj/
+
+# Internal working documents (plans, validation records); never published
+/docs/internal/
+
+# IDEs
+.vs/
+.idea/
+*.user
+*.suo
+.vscode/*
+!.vscode/extensions.json
+
+# Node
+node_modules/
+bindings/node/dist/
+bindings/wasm/dist/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+bindings/python/build/
+bindings/python/dist/
+# The native library, copied in only while a platform wheel is built
+bindings/python/src/coreidml/_lib/
+
+# Dart
+.dart_tool/
+pubspec.lock
+
+# Local test samples that must never be committed
+real_samples*/
+
+# OS
+.DS_Store
+Thumbs.db

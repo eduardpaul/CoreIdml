@@ -1,0 +1,9 @@
+# LF everywhere, on every OS: generated binding files are compared byte for byte by the ABI tests.
+* text=auto eol=lf
+
+*.idml binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ttf binary
+*.otf binary

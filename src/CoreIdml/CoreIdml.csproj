@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The core library: package, document model, templates, composition. BCL only, no reflection.
+    It runs unchanged on CoreCLR, Native AOT (CoreIdml.Native) and Mono in the browser (CoreIdml.Wasm).
+  -->
+  <PropertyGroup>
+    <RootNamespace>CoreIdml</RootNamespace>
+    <CoreIdmlRunsOnMono>true</CoreIdmlRunsOnMono>
+    <!-- Turns on the trim, single-file and AOT analyzers; their warnings are build errors. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>CoreIdml</PackageId>
+    <Description>Read, edit and write Adobe InDesign IDML files without InDesign. Untouched parts are written back byte for byte. No dependencies; trim, Native AOT and WebAssembly safe.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The README shown on nuget.org. -->
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoreIdml.Tests" />
+  </ItemGroup>
+
+</Project>
