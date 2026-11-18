@@ -10,7 +10,7 @@ Build platform wheels with tools/build_wheel.py.
 import os
 from pathlib import Path
 
-from setuptools import setup
+from setuptools import Distribution, setup
 from setuptools.command.bdist_wheel import bdist_wheel
 
 LIBRARY_FOLDER = Path(__file__).parent / "src" / "coreidml" / "_lib"
@@ -20,12 +20,15 @@ def has_native_library() -> bool:
     return LIBRARY_FOLDER.is_dir() and any(LIBRARY_FOLDER.glob("*coreidml*"))
 
 
-class PlatformWheel(bdist_wheel):
-    def finalize_options(self):
-        super().finalize_options()
-        if has_native_library():
-            self.root_is_pure = False
+class PlatformDistribution(Distribution):
+    """With the library inside, the package is platform specific: its files go to the wheel's root (platlib), not to
+    a purelib folder, which tools such as auditwheel require of a platform wheel."""
 
+    def has_ext_modules(self):
+        return has_native_library()
+
+
+class PlatformWheel(bdist_wheel):
     def get_tag(self):
         python, abi, platform = super().get_tag()
         if not has_native_library():
@@ -35,4 +38,4 @@ class PlatformWheel(bdist_wheel):
         return "py3", "none", os.environ.get("COREIDML_WHEEL_PLATFORM") or platform
 
 
-setup(cmdclass={"bdist_wheel": PlatformWheel})
+setup(distclass=PlatformDistribution, cmdclass={"bdist_wheel": PlatformWheel})
