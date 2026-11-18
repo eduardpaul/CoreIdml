@@ -31,7 +31,15 @@ internal sealed class FontLibrary
     private static readonly string[] SansFamilies = ["Liberation Sans", "Arimo", "Arial", "Helvetica", "Helvetica Neue", "Roboto", "Noto Sans", "DejaVu Sans", "Open Sans"];
     private static readonly string[] SerifFamilies = ["Liberation Serif", "Tinos", "Times New Roman", "Times", "Noto Serif", "DejaVu Serif", "Georgia"];
     private static readonly string[] MonoFamilies = ["Liberation Mono", "Cousine", "Courier New", "Courier", "DejaVu Sans Mono", "Noto Sans Mono", "Roboto Mono"];
-    private static readonly string[] SansHints = ["sans", "grotesk", "grotesque", "gothic", "helvet", "arial", "myriad", "futura", "frutiger", "univers", "din", "roboto", "verdana", "tahoma", "segoe", "calibri", "avenir", "gill", "lato", "montserrat", "inter", "source sans", "proxima"];
+    // A family whose name matches none of these falls back to a serif.
+    private static readonly string[] SansHints =
+    [
+        "sans", "grotesk", "grotesque", "gothic", "helvet", "arial", "myriad", "futura", "frutiger", "univers", "din", "roboto", "verdana", "tahoma", "segoe", "calibri", "avenir", "gill", "lato", "montserrat", "inter", "source sans", "proxima",
+        // Common sans families whose names say nothing about it (many from Google Fonts).
+        "raleway", "poppins", "nunito", "oswald", "ubuntu", "barlow", "rubik", "mulish", "quicksand", "karla", "josefin", "fira", "titillium",
+        "cabin", "manrope", "figtree", "archivo", "overpass", "oxygen", "catamaran", "heebo", "kanit", "gotham", "akzidenz", "haas", "franklin",
+        "avant garde", "eurostile", "bahnschrift", "corbel", "candara", "trebuchet", "lucida grande", "optima", "brandon", "graphik", "aktiv",
+    ];
     private static readonly string[] MonoHints = ["mono", "courier", "code", "consol", "menlo"];
 
     private readonly PdfFontOptions options;

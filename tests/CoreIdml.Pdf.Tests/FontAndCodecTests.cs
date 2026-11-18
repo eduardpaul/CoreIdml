@@ -49,6 +49,16 @@ public sealed class FontAndCodecTests
         Assert.Single(library.Substitutions);
     }
 
+    [Theory]
+    [InlineData("Raleway", "Light", "Liberation Sans Regular")]
+    [InlineData("Raleway (TT)", "SemiBold", "Liberation Sans Bold")]
+    [InlineData("Poppins", "Regular", "Liberation Sans Regular")]
+    [InlineData("Unheard Of Display", "Regular", "Liberation Serif Regular")]
+    public void Missing_fonts_fall_back_to_a_face_of_the_same_kind(string family, string style, string expected)
+    {
+        Assert.Equal(expected, TestSupport.FontLibrary().Resolve(family, style).DisplayName);
+    }
+
     [Fact]
     public void Standard_font_metrics_match_the_PDF_core_fonts()
     {
