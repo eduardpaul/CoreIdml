@@ -10,6 +10,12 @@ internal sealed record RunStyle
 {
     public required FontFace Font { get; init; }
 
+    /// <summary>
+    /// <see cref="Font"/> stands in for a family that is not installed. Only then do characters it lacks come from
+    /// fallback fonts; InDesign prints nothing for characters missing from the document's own font.
+    /// </summary>
+    public bool FontIsSubstitute { get; init; }
+
     public double Size { get; init; } = 12;
 
     public ResolvedColor? Fill { get; init; } = new(ColorSpaceKind.Cmyk, [0, 0, 0, 1]);

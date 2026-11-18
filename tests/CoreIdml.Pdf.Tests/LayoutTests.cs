@@ -250,6 +250,23 @@ public sealed class LayoutTests
     }
 
     [Fact]
+    public void Characters_the_document_font_lacks_are_left_out_and_reported()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12 });
+        var frame = page.AddText(new Rect(0, 0, 300, 100), "A\u4E2DB", style);
+
+        // Like InDesign: no glyph from another font, no space taken.
+        var run = Assert.Single(Layout(document, frame).OpsByFrame[frame.Id].OfType<GlyphRunOp>());
+        Assert.Equal("AB", run.Text);
+        Assert.Equal(TestSupport.FontLibrary().Resolve("Liberation Serif", "Regular").DisplayName, run.Font.DisplayName);
+
+        using var stream = new MemoryStream();
+        var result = IdmlPdf.Export(document, stream, TestSupport.ExportOptions());
+        Assert.Contains(result.Warnings, warning => warning.Contains("U+4E2D", StringComparison.Ordinal) && warning.Contains("Liberation Serif", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Missing_fonts_fall_back_and_are_reported()
     {
         var (document, page) = NewDocument();

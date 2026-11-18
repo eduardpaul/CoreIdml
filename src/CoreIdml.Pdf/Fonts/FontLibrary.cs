@@ -131,6 +131,21 @@ internal sealed class FontLibrary
         }
     }
 
+    /// <summary>Characters a document font has no glyph for, by font display name (in code point order).</summary>
+    public IReadOnlyDictionary<string, SortedSet<int>> MissingGlyphs => missingGlyphs;
+
+    private readonly SortedDictionary<string, SortedSet<int>> missingGlyphs = new(StringComparer.Ordinal);
+
+    /// <summary>Records a character the requested (not substituted) font cannot show.</summary>
+    public void NoteMissingGlyph(FontFace face, int codePoint)
+    {
+        if (!missingGlyphs.TryGetValue(face.DisplayName, out var set))
+        {
+            missingGlyphs[face.DisplayName] = set = [];
+        }
+        set.Add(codePoint);
+    }
+
     /// <summary>A face that has a glyph for <paramref name="codePoint"/>, trying the fallback families.</summary>
     public FontFace? FallbackFor(int codePoint, FontFace primary)
     {

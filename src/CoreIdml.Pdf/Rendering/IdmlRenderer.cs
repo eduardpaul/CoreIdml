@@ -134,6 +134,11 @@ internal sealed partial class IdmlRenderer : IDisposable
             substitution.Pages.Clear();
             substitution.Pages.AddRange(substitution.Stories.SelectMany(story => pagesByStory.GetValueOrDefault(story) ?? []).Distinct().Order(StringComparer.Ordinal));
         }
+        foreach (var (font, codePoints) in fonts.MissingGlyphs)
+        {
+            var characters = string.Join(" ", codePoints.Select(c => string.Create(CultureInfo.InvariantCulture, $"{char.ConvertFromUtf32(c)} (U+{c:X4})")));
+            warnings.Add($"{font} has no glyph for {characters}: left out, as InDesign does (it highlights them in pink).");
+        }
         return new PdfExportResult
         {
             PageCount = Pdf.PageCount,

@@ -203,6 +203,13 @@ internal sealed class TextComposer
                 {
                     glyph = spaceGlyph;
                 }
+                else if (!style.FontIsSubstitute)
+                {
+                    // The document's own font cannot show it: InDesign prints nothing and takes no space (it only
+                    // highlights the character on screen). Reported in the export warnings.
+                    fonts.NoteMissingGlyph(font, codePoint);
+                    continue;
+                }
                 else if (fonts.FallbackFor(codePoint, font) is { } fallback && fallback.TryMap(codePoint, out var fallbackGlyph))
                 {
                     font = fallback;

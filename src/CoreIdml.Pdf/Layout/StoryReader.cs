@@ -242,6 +242,7 @@ internal sealed class StoryReader
         var style = new RunStyle
         {
             Font = fonts.Resolve(family, fontStyle, PostScriptName(family, fontStyle), run.AncestorsAndSelf("Story").FirstOrDefault()?.Attribute("Self")?.Value),
+            FontIsSubstitute = !fonts.IsAvailable(family, fontStyle),
             Size = size,
             Fill = fill,
             Tracking = Values.Number(Get("Tracking"), 0),
