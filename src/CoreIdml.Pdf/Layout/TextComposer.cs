@@ -121,10 +121,16 @@ internal sealed class TextComposer
                     break;
             }
         }
-        // Pair kerning between neighbours in the same font and size.
+        // Pair kerning between neighbours in the same font and size. A hyphenation point between two letters does not
+        // separate them (only an actual break there would).
         for (var i = 1; i < result.Count; i++)
         {
-            var previous = result[i - 1];
+            var before = i - 1;
+            while (before > 0 && result[before].Kind == GlyphKind.SoftHyphen)
+            {
+                before--;
+            }
+            var previous = result[before];
             var current = result[i];
             if (previous.Kind is GlyphKind.Normal or GlyphKind.Space && current.Kind is GlyphKind.Normal or GlyphKind.Space
                 && ReferenceEquals(previous.Font, current.Font) && previous.Size == current.Size && previous.Style.Kerning && current.Style.Kerning)

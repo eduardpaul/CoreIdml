@@ -213,6 +213,20 @@ public sealed class LayoutTests
     }
 
     [Fact]
+    public void Kerning_applies_across_a_hyphenation_point_that_is_not_used()
+    {
+        // LA-VA-DO-RA: a Spanish hyphenation point sits inside the kerned pair AV.
+        double Width(bool hyphenation)
+        {
+            var (document, page) = NewDocument();
+            var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Language = Languages.Spanish, Hyphenation = hyphenation });
+            var frame = page.AddText(new Rect(0, 0, 300, 100), "LAVADORA", style);
+            return Assert.Single(Layout(document, frame).Lines).Width;
+        }
+        Assert.Equal(Width(hyphenation: false), Width(hyphenation: true), 6);
+    }
+
+    [Fact]
     public void Pair_kerning_tightens_AV()
     {
         var face = TestSupport.FontLibrary().Resolve("Liberation Serif", "Regular");
