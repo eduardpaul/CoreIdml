@@ -24,6 +24,9 @@ internal sealed class StoryReader
     private readonly Dictionary<XElement, RunStyle> runStyles = [];
     private readonly Dictionary<XElement, ParagraphFormatting> paragraphFormats = [];
 
+    // Anchored items live in a story, not a spread; their geometry does not depend on the spread they are wrapped with.
+    private Spread? anchorSpread;
+
     public StoryReader(IdmlDocument document, AttributeResolver resolver, FontLibrary fonts)
     {
         this.document = document;
@@ -73,6 +76,13 @@ internal sealed class StoryReader
                         break;
                     case "Cell" or "Row" or "Column":
                         break;
+                    case "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "TextFrame" or "Group":
+                        if (InlineObject(child) is { } inline)
+                        {
+                            currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                            items.Add(inline);
+                        }
+                        break;
                     case var _ when Skipped.Contains(name):
                         break;
                     case var _ when Transparent.Contains(name):
@@ -92,6 +102,57 @@ internal sealed class StoryReader
             EndParagraph(null);
         }
         return paragraphs;
+    }
+
+    /// <summary>
+    /// A page item anchored in the text, when it flows inline (InDesign's default; above-line and custom-positioned
+    /// objects are not drawn).
+    /// </summary>
+    private InlineObjectItem? InlineObject(XElement element)
+    {
+        var setting = resolver.ObjectChain(element)
+            .Select(source => source.Element("AnchoredObjectSetting"))
+            .FirstOrDefault(candidate => candidate?.Attribute("AnchoredPosition") is not null);
+        if ((setting?.Attribute("AnchoredPosition")?.Value ?? "InlinePosition") != "InlinePosition")
+        {
+            return null;
+        }
+        anchorSpread ??= new Spread(document, string.Empty, new XElement("Spread"));
+        if (PageItem.TryWrap(document, anchorSpread, element) is not { } item)
+        {
+            return null;
+        }
+        var bounds = VisibleBounds(item);
+        if (bounds.Width <= 0 && bounds.Height <= 0)
+        {
+            return null;
+        }
+        // Inline: a positive Y offset raises the object above the baseline.
+        return new InlineObjectItem(element, bounds, Values.Number(setting?.Attribute("AnchorYoffset")?.Value, 0), StyleOf(element));
+    }
+
+    /// <summary>Bounds including the part of the stroke outside the path, as InDesign sizes an inline object.</summary>
+    private Rect VisibleBounds(PageItem item)
+    {
+        if (item is Group group && group.Items.Count > 0)
+        {
+            var children = group.Items.Select(VisibleBounds).ToList();
+            return Rect.FromEdges(children.Min(r => r.Left), children.Min(r => r.Top), children.Max(r => r.Right), children.Max(r => r.Bottom));
+        }
+        var bounds = item.SpreadBounds;
+        var weight = Values.Number(resolver.Item(item.Element, "StrokeWeight"), 0);
+        var color = resolver.Item(item.Element, "StrokeColor");
+        if (weight <= 0 || color is null || color == "Swatch/None")
+        {
+            return bounds;
+        }
+        var outside = (resolver.Item(item.Element, "StrokeAlignment") ?? "CenterAlignment") switch
+        {
+            "InsideAlignment" => 0,
+            "OutsideAlignment" => weight,
+            _ => weight / 2,
+        };
+        return Rect.FromEdges(bounds.Left - outside, bounds.Top - outside, bounds.Right + outside, bounds.Bottom + outside);
     }
 
     private static void AddContent(XElement content, RunStyle style, List<InlineItem> items)

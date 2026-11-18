@@ -82,6 +82,13 @@ internal sealed record PageNumberItem(RunStyle Style) : InlineItem(Style);
 
 internal sealed record TableItem(XElement Table, RunStyle Style) : InlineItem(Style);
 
+/// <summary>
+/// A page item anchored inline in the text (a shape, frame or group that flows like a character): its bounds in its
+/// own parent coordinates (where its ItemTransform puts it; the composer moves it to the line) and how far above the
+/// baseline its bottom sits.
+/// </summary>
+internal sealed record InlineObjectItem(XElement Element, Rect Bounds, double YOffset, RunStyle Style) : InlineItem(Style);
+
 /// <summary>A paragraph: its formatting, content, and the style of its paragraph mark (height of an empty line).</summary>
 internal sealed record ParagraphModel(ParagraphFormatting Format, IReadOnlyList<InlineItem> Items, RunStyle MarkStyle);
 
@@ -112,6 +119,12 @@ internal sealed record LineOp(Point From, Point To, double Width, ResolvedColor 
 {
     public override DrawOp Offset(double dx, double dy) =>
         this with { From = new Point(From.X + dx, From.Y + dy), To = new Point(To.X + dx, To.Y + dy) };
+}
+
+/// <summary>A page item anchored in text, drawn through <paramref name="Placement"/> (its parent coordinates to the frame's).</summary>
+internal sealed record PageItemOp(XElement Element, Matrix Placement) : DrawOp
+{
+    public override DrawOp Offset(double dx, double dy) => this with { Placement = Placement.Then(Matrix.Translation(dx, dy)) };
 }
 
 /// <summary>Where a story is laid out: one entry per threaded frame, columns in the frame's inner coordinates.</summary>

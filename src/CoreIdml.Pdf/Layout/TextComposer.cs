@@ -19,6 +19,9 @@ internal sealed class TextComposer
     private const double Epsilon = 0.01;
     private const double DefaultTabInterval = 36;
 
+    // U+FFFC OBJECT REPLACEMENT CHARACTER: what an inline object reads as in a line's text.
+    private static readonly string ObjectReplacement = ((char)0xFFFC).ToString();
+
     private readonly StoryReader reader;
     private readonly FontLibrary fonts;
     private readonly IdmlDocument document;
@@ -67,6 +70,7 @@ internal sealed class TextComposer
         Break,
         Table,
         SoftHyphen,
+        Inline,
     }
 
     private sealed class Shaped
@@ -83,6 +87,7 @@ internal sealed class TextComposer
         public bool BreakAfter;
         public TabItem? Tab;
         public XElement? Table;
+        public InlineObjectItem? Object;
     }
 
     private List<Shaped> Shape(ParagraphModel paragraph, string pageName)
@@ -106,6 +111,13 @@ internal sealed class TextComposer
                     break;
                 case TableItem table:
                     result.Add(new Shaped { Kind = GlyphKind.Table, Style = table.Style, Font = table.Style.Font, Size = table.Style.Size, Table = table.Table });
+                    break;
+                case InlineObjectItem inline:
+                    result.Add(new Shaped
+                    {
+                        Kind = GlyphKind.Inline, Style = inline.Style, Font = inline.Style.Font, Size = inline.Style.Size, Text = ObjectReplacement,
+                        Advance = inline.Bounds.Width, Natural = inline.Bounds.Width, Rise = inline.YOffset, Object = inline,
+                    });
                     break;
             }
         }
@@ -400,6 +412,16 @@ internal sealed class TextComposer
                 continue;
             }
             any = true;
+            if (glyph.Object is { } inline)
+            {
+                // Like a tall glyph: the object stands on the baseline (raised by its offset); with auto leading the
+                // line makes room for it.
+                var height = inline.Bounds.Height;
+                ascent = Math.Max(ascent, height + glyph.Rise);
+                descent = Math.Max(descent, -Math.Min(0, glyph.Rise));
+                leading = Math.Max(leading, glyph.Style.Leading ?? (glyph.Style.AutoLeading * (height + Math.Max(0, glyph.Rise))));
+                continue;
+            }
             ascent = Math.Max(ascent, (glyph.Style.Font.Ascent * glyph.Size) + Math.Max(0, glyph.Rise));
             descent = Math.Max(descent, (glyph.Style.Font.Descent * glyph.Size) - Math.Min(0, glyph.Rise));
             leading = Math.Max(leading, glyph.Style.EffectiveLeading);
@@ -495,6 +517,16 @@ internal sealed class TextComposer
                 x += advance;
                 runStart = x;
                 lineText.Append('\t');
+                continue;
+            }
+            if (glyph.Object is { } inline)
+            {
+                FlushRun();
+                var bounds = inline.Bounds;
+                flow.Add(new PageItemOp(inline.Element, Matrix.Translation(x - bounds.Left, baseline - glyph.Rise - bounds.Bottom)));
+                x += advance;
+                runStart = x;
+                lineText.Append(glyph.Text);
                 continue;
             }
             if (runFirst is not null && (!ReferenceEquals(runFirst.Font, glyph.Font) || runFirst.Size != glyph.Size || runFirst.Rise != glyph.Rise

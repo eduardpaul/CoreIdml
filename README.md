@@ -140,8 +140,8 @@ x64 processors need x86-64-v2, as .NET 11 itself does.
 
 CoreIdml writes IDML, so what InDesign renders is what the designer made. Its own PDF export approximates InDesign:
 the line breaker is greedy (InDesign defaults to the paragraph composer), hyphenation is Spanish only, and gradients,
-effects, text wrap and placed EPS/AI graphics are not drawn. Missing fonts change line breaks, so give the export the
-document's fonts.
+effects, text wrap, placed EPS/AI graphics and objects anchored above the line or at a custom position are not drawn
+(inline ones are). Missing fonts change line breaks, so give the export the document's fonts.
 
 ## Building from source, contributing
 

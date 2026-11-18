@@ -373,10 +373,12 @@ internal sealed partial class IdmlRenderer : IDisposable
                 DrawGraphic(frame, contours, content);
                 break;
             case TextFrame textFrame:
-                var ops = master is null
-                    ? frameOps.GetValueOrDefault(textFrame.Id) ?? []
-                    : MasterFrameOps(textFrame, master, pageName);
-                DrawOps(ops, content);
+                var ops = IsInStory(textFrame.Element)
+                    ? AnchoredFrameOps(textFrame, pageName)
+                    : master is null
+                        ? frameOps.GetValueOrDefault(textFrame.Id) ?? []
+                        : MasterFrameOps(textFrame, master, pageName);
+                DrawOps(ops, content, item, pageName, master);
                 break;
         }
         // Items pasted inside the frame, clipped to it. Their SpreadTransform already includes this frame's.
@@ -821,12 +823,41 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     // ---- composed text -------------------------------------------------------------------------------
 
-    private void DrawOps(IReadOnlyList<DrawOp> ops, ContentBuilder content)
+    private static bool IsInStory(XElement element) => element.Ancestors("Story").Any();
+
+    /// <summary>
+    /// The text of a frame anchored in another story: its own story, composed into it alone (anchored frames are not
+    /// on a spread, so <see cref="ComposeStories"/> does not see them).
+    /// </summary>
+    private List<DrawOp> AnchoredFrameOps(TextFrame frame, string pageName)
+    {
+        var key = frame.Id + "@" + pageName;
+        if (frameOps.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+        frameOps[key] = [];
+        if (document.FindStory(frame.StoryId) is { } story)
+        {
+            var layout = composer.Compose(story.Element, [FrameArea(frame, pageName)]);
+            frameOps[key] = layout.OpsByFrame.GetValueOrDefault(frame.Id) ?? [];
+        }
+        return frameOps[key];
+    }
+
+    // Ops of the frame they were laid out in; items anchored in its text are wrapped on that frame's spread.
+    private void DrawOps(IReadOnlyList<DrawOp> ops, ContentBuilder content, PageItem frame, string pageName, MasterSpread? master)
     {
         foreach (var op in ops)
         {
             switch (op)
             {
+                case PageItemOp anchored when PageItem.TryWrap(document, frame.Spread, anchored.Element) is { } item:
+                    content.Save();
+                    content.Transform(anchored.Placement);
+                    DrawItem(item, content, pageName, master);
+                    content.Restore();
+                    break;
                 case RectOp rect:
                     content.FillColor(rect.Color).Rectangle(rect.Rect.X, rect.Rect.Y, rect.Rect.Width, rect.Rect.Height).Fill();
                     break;
