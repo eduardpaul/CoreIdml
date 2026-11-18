@@ -1,0 +1,39 @@
+{
+  "name": "@coreidml/cli",
+  "version": "0.0.3",
+  "description": "The coreidml command line and MCP server for Adobe InDesign IDML files, as a native binary for your platform: summaries for AI agents, edits, templates, layout, PDF export and page previews. No InDesign or .NET needed.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eduardpaul/CoreIdml.git",
+    "directory": "bindings/cli"
+  },
+  "homepage": "https://github.com/eduardpaul/CoreIdml/blob/main/src/CoreIdml.Cli/README.md",
+  "bugs": {
+    "url": "https://github.com/eduardpaul/CoreIdml/issues"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "coreidml": "bin/coreidml.js"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "indesign",
+    "idml",
+    "adobe",
+    "pdf",
+    "cli",
+    "mcp",
+    "mcp-server",
+    "claude",
+    "publishing",
+    "layout"
+  ]
+}

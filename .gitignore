@@ -2,6 +2,8 @@
 artifacts/
 bin/
 obj/
+# ...but the launcher of the npm package @coreidml/cli is source
+!/bindings/cli/bin/
 
 # Internal working documents (plans, validation records); never published
 /docs/internal/
