@@ -666,11 +666,34 @@ internal sealed class TextComposer
             }
         }
 
+        // Rows joined by a merged cell move together (InDesign never splits a merged cell between frames):
+        // blockEnd[r] is the last row of the block starting at r.
+        var blockEnd = new int[rows.Count];
+        for (var r = 0; r < rows.Count;)
+        {
+            var end = r;
+            for (var row = r; row <= end; row++)
+            {
+                foreach (var cell in cells.Where(c => c.Row == row))
+                {
+                    end = Math.Max(end, Math.Min(rows.Count - 1, cell.Row + cell.RowSpan - 1));
+                }
+            }
+            for (var row = r; row <= end; row++)
+            {
+                blockEnd[row] = end;
+            }
+            r = end + 1;
+        }
+
         var startRow = 0;
         for (var r = 0; r < rows.Count; r++)
         {
             var height = heights[r];
-            var fits = top + height <= flow.Column.Bottom + Epsilon;
+            // The first row of a block needs room for the whole block; the rest of the block follows it.
+            var firstOfBlock = r == 0 || blockEnd[r - 1] < r;
+            var needed = firstOfBlock ? heights.Skip(r).Take(blockEnd[r] - r + 1).Sum() : 0;
+            var fits = !firstOfBlock || top + needed <= flow.Column.Bottom + Epsilon;
             if (!fits && !(flow.AtColumnTop && r == startRow))
             {
                 FlushEdges();

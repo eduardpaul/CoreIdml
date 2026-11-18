@@ -216,6 +216,27 @@ public sealed class LayoutTests
     }
 
     [Fact]
+    public void Rows_joined_by_a_merged_cell_go_overset_together()
+    {
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Cell", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 8, Leading = 10 });
+        var frame = page.AddTextFrame(new Rect(0, 0, 200, 50));
+        var table = frame.AddTable(3, 2, new TableOptions { RowHeight = 20, CellParagraphStyle = style, CellInset = 2, StrokeWeight = 1 });
+        table.SetRow(0, "First", "Row");
+        table.SetRow(1, "Box", "Merged");
+        table.SetRow(2, "Box", "");
+        // The second column of the last two rows is one cell; the pair needs 40 pt and only 30 are left.
+        table[1, 1].Element.SetAttributeValue("RowSpan", "2");
+        table[2, 1].Element.Remove();
+        var layout = Layout(document, frame);
+        var ops = layout.OpsByFrame[frame.Id];
+
+        Assert.True(layout.Overset);
+        Assert.DoesNotContain(ops.OfType<GlyphRunOp>(), run => run.Text is "Merged" or "Box");
+        Assert.All(ops.OfType<LineOp>(), line => Assert.True(Math.Max(line.From.Y, line.To.Y) <= frame.InnerBounds.Y + 20 + 1e-6, $"edge drawn at {line.From.Y}..{line.To.Y}"));
+    }
+
+    [Fact]
     public void Missing_fonts_fall_back_and_are_reported()
     {
         var (document, page) = NewDocument();
