@@ -46,6 +46,11 @@ const manifests = [
   { path: 'bindings/python/pyproject.toml', pattern: /^(version = ")([^"]+)(")$/m, format: pythonVersion },
   { path: 'bindings/dart/coreidml/pubspec.yaml', pattern: /^(version: )(\S+)()$/m, format: (v) => v },
   { path: 'bindings/mcpb/manifest.json', pattern: /^(  "version": ")([^"]+)(",)$/m, format: (v) => v },
+  // The Claude plugin: its own version, the npm package its MCP server runs (pinned exactly: npx would otherwise
+  // fetch whatever is newest), and its entry in the marketplace at the repository root.
+  { path: 'plugins/coreidml/.claude-plugin/plugin.json', pattern: /^(  "version": ")([^"]+)(",)$/m, format: (v) => v },
+  { path: 'plugins/coreidml/.mcp.json', pattern: /("@coreidml\/cli@)([^"]+)(")/, format: (v) => v },
+  { path: '.claude-plugin/marketplace.json', pattern: /^(      "version": ")([^"]+)(",)$/m, format: (v) => v },
 ];
 
 const props = read('Directory.Build.props');
