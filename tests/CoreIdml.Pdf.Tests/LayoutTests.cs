@@ -188,6 +188,34 @@ public sealed class LayoutTests
     }
 
     [Fact]
+    public void A_merged_cell_without_an_edge_weight_leaves_each_segment_to_its_neighbours()
+    {
+        var (document, page) = NewDocument();
+        var frame = page.AddTextFrame(new Rect(0, 0, 200, 300));
+        var table = frame.AddTable(3, 2, new TableOptions { ColumnWidths = [20, 180], RowHeight = 20, StrokeWeight = 1 });
+        // Column 1 merged over the three rows, as InDesign writes it: no Left/Right weight because the segments
+        // differ (only the middle cell of column 0, a checkbox, has a right edge).
+        var merged = table[0, 1].Element;
+        merged.SetAttributeValue("RowSpan", "3");
+        merged.SetAttributeValue("LeftEdgeStrokeWeight", null);
+        merged.SetAttributeValue("RightEdgeStrokeWeight", null);
+        table[1, 1].Element.Remove();
+        table[2, 1].Element.Remove();
+        for (var row = 0; row < 3; row++)
+        {
+            table[row, 0].Element.SetAttributeValue("RightEdgeStrokeWeight", row == 1 ? "0.5" : "0");
+        }
+        var ops = Layout(document, frame).OpsByFrame[frame.Id];
+
+        var x = frame.InnerBounds.X;
+        var vertical = ops.OfType<LineOp>().Where(l => Math.Abs(l.From.X - l.To.X) < 1e-6).ToList();
+        var between = Assert.Single(vertical, l => Math.Abs(l.From.X - (x + 20)) < 1e-6);
+        Assert.Equal(0.5, between.Width, 6);
+        Assert.Equal(20, Math.Abs(between.To.Y - between.From.Y), 6);
+        Assert.DoesNotContain(vertical, l => Math.Abs(l.From.X - (x + 200)) < 1e-6);
+    }
+
+    [Fact]
     public void Missing_fonts_fall_back_and_are_reported()
     {
         var (document, page) = NewDocument();

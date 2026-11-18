@@ -705,7 +705,15 @@ internal sealed class TextComposer
         }
         void Edge(string side, Point from, Point to)
         {
-            var weight = Values.Number(resolver.Cell(element, side + "EdgeStrokeWeight"), 1);
+            var stored = resolver.Cell(element, side + "EdgeStrokeWeight");
+            // A merged cell borders several cells along its spanning sides. InDesign leaves the weight out when the
+            // segments differ ("mixed"); the neighbouring cells then hold each segment's stroke, so draw nothing here.
+            var spans = side is "Left" or "Right" ? cell.RowSpan > 1 : cell.ColumnSpan > 1;
+            if (stored is null && spans)
+            {
+                return;
+            }
+            var weight = Values.Number(stored, 1);
             if (weight <= 0)
             {
                 return;
