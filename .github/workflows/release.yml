@@ -8,8 +8,9 @@ name: Release
 #   run by hand             a dry run of the chosen ref
 #
 # Publishing uses trusted publishing (OpenID Connect), so no long-lived secret is needed once the registries trust
-# this workflow; see CONTRIBUTING.md for the one-time setup. The publish jobs run in the "release" environment, which
-# can require an approval.
+# this workflow; see CONTRIBUTING.md for the one-time setup. Each registry is opt-in through a repository variable
+# (NUGET_USER, PUBLISH_NPM, PUBLISH_PYPI); the GitHub release with every binary is always created. The publish jobs
+# run in the "release" environment, which can require an approval.
 
 on:
   push:
@@ -458,7 +459,8 @@ jobs:
   nuget:
     name: publish NuGet
     needs: [version, packages]
-    if: needs.version.outputs.publish == 'true'
+    # Opt-in: set the repository variable NUGET_USER once nuget.org trusts this workflow.
+    if: needs.version.outputs.publish == 'true' && vars.NUGET_USER != ''
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -477,7 +479,8 @@ jobs:
   npm:
     name: publish npm
     needs: [version, packages]
-    if: needs.version.outputs.publish == 'true'
+    # Opt-in: set the repository variable PUBLISH_NPM to true once the @coreidml scope is set up.
+    if: needs.version.outputs.publish == 'true' && vars.PUBLISH_NPM == 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -505,7 +508,8 @@ jobs:
   pypi:
     name: publish PyPI
     needs: [version, packages]
-    if: needs.version.outputs.publish == 'true'
+    # Opt-in: set the repository variable PUBLISH_PYPI to true once PyPI trusts this workflow.
+    if: needs.version.outputs.publish == 'true' && vars.PUBLISH_PYPI == 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -521,7 +525,11 @@ jobs:
   github:
     name: GitHub release
     needs: [version, packages, nuget, npm, pypi]
-    if: needs.version.outputs.publish == 'true'
+    # Every tag gets its GitHub release, with or without the registries: a registry that is not set up is skipped, one
+    # that fails stops the release.
+    if: >-
+      !cancelled() && needs.version.outputs.publish == 'true' && needs.packages.result == 'success'
+      && needs.nuget.result != 'failure' && needs.npm.result != 'failure' && needs.pypi.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: write

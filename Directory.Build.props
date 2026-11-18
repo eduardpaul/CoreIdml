@@ -23,8 +23,8 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Package">
-    <VersionPrefix>0.1.0</VersionPrefix>
-    <!-- A release build (-p:CoreIdmlRelease=true) reports "0.1.0"; any other build "0.1.0-dev+<commit>". -->
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <!-- A release build (-p:CoreIdmlRelease=true) reports the plain version; any other build "<version>-dev+<commit>". -->
     <VersionSuffix Condition="'$(VersionSuffix)' == '' and '$(CoreIdmlRelease)' != 'true'">dev</VersionSuffix>
     <IncludeSourceRevisionInInformationalVersion Condition="'$(CoreIdmlRelease)' == 'true'">false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Eduard Paul</Authors>

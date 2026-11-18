@@ -139,15 +139,19 @@ A release is a tag. Bump `VersionPrefix` (and the manifests: `node eng/set-versi
 3. publishes to NuGet, npm and PyPI, then creates the GitHub release with every file attached.
 
 Every push to `main` runs steps 1 and 2 as a dry run (version `<prefix>-ci.<run>`), so the release path is always
-tested. Publishing uses trusted publishing (OpenID Connect); set it up once:
+tested, and its publish steps are rehearsed against throwaway registries (Verdaccio, pypiserver, a local NuGet feed
+and a draft GitHub release that is deleted again).
 
-- **NuGet**: on nuget.org, add a trusted publishing policy for this repository and `release.yml`, and set the
-  repository variable `NUGET_USER` to the nuget.org account name.
+Every tag creates the GitHub release with all the files. Each registry is published to only once it is switched on
+with a repository variable, after its one-time trusted-publishing setup:
+
+- **NuGet**: on nuget.org, add a trusted publishing policy for this repository and `release.yml`, then set the
+  repository variable `NUGET_USER` to the nuget.org account name (this switches NuGet on).
 - **npm**: own the `@coreidml` scope. A package must exist before it can trust a workflow, so the first release needs
   an automation token in the `NPM_TOKEN` secret; then add this repository and `release.yml` as trusted publisher of
-  each package and delete the secret.
+  each package and delete the secret. Switch it on with the repository variable `PUBLISH_NPM` = `true`.
 - **PyPI**: add a (pending) trusted publisher for the project `coreidml`: this repository, workflow `release.yml`,
-  environment `release`.
+  environment `release`. Switch it on with the repository variable `PUBLISH_PYPI` = `true`.
 - **GitHub**: create the environment `release` (Settings, Environments), optionally with required reviewers.
 
 The same packages can be built locally:
