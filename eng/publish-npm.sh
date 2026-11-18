@@ -6,7 +6,8 @@
 #   bash eng/publish-npm.sh <folder of .tgz files> <dist-tag> [extra npm publish arguments...]
 set -euo pipefail
 
-folder="$1"
+# An absolute path: npm reads "folder/file.tgz" as GitHub shorthand (user/repo) and tries to clone it.
+folder="$(cd "$1" && pwd)"
 tag="$2"
 shift 2
 
