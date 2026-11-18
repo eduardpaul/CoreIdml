@@ -64,7 +64,8 @@ to 2024-11-05, negotiated):
 Each release has a one-click extension (an [MCP Bundle](https://github.com/modelcontextprotocol/mcpb)) per platform:
 `coreidml-<version>-win-x64.mcpb`, `-win-arm64`, `-osx-arm64`, `-osx-x64`, `-linux-x64` or `-linux-arm64`. In Claude Desktop open
 Settings, Extensions and drop the file in (or Advanced settings, Install Extension). It carries the binary and
-PDFium; there is nothing to configure. Give Claude files by their full path.
+PDFium; there is nothing to configure. Give Claude files by their full path. The extension is installed from the
+releases: Claude's directory no longer lists MCP Bundles.
 
 ## Page previews
 
