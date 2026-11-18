@@ -138,6 +138,18 @@ jobs:
           grep -q '"pageCount"' summary.json
           run "$cli" to-pdf tests/fixtures/article-1photo.idml -o artifacts/smoke/cli.pdf --fonts tests/fixtures/fonts
           head -c 4 artifacts/smoke/cli.pdf | grep -q '%PDF'
+          # Page previews: PDFium must load next to the binary on this platform.
+          run "$cli" render tests/fixtures/article-1photo.idml --page 0 --dpi 50 -o artifacts/smoke/page.png
+          [[ "$(head -c 4 artifacts/smoke/page.png | tail -c 3)" == PNG ]] || { echo "::error::render did not write a PNG"; exit 1; }
+          # The same binary as an MCP server: initialize, then every tool is listed.
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"release-check","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | run "$cli" mcp > artifacts/smoke/mcp.jsonl
+          tools="$(grep -o '"name":"idml_[a-z_]*"' artifacts/smoke/mcp.jsonl | sort -u | wc -l | tr -d ' ')"
+          echo "MCP server lists $tools tools"
+          [[ "$tools" -ge 33 ]] || { echo "::error::the MCP server listed $tools tools"; cat artifacts/smoke/mcp.jsonl; exit 1; }
 
       - name: Python wheel
         run: |
