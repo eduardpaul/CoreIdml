@@ -150,9 +150,8 @@ jobs:
             arch="${{ matrix.cross || 'arm64' }}"
             tag="macosx_${minos%%.*}_0_${arch}"
           fi
-          node eng/set-version.mjs "$VERSION"
           "$python" -m pip install --quiet build twine
-          "$python" bindings/python/tools/build_wheel.py --rid "$RID" --plat-name "$tag"
+          "$python" bindings/python/tools/build_wheel.py --rid "$RID" --plat-name "$tag" --version "$VERSION"
           "$python" -m twine check --strict artifacts/python/*.whl
           if [[ -z "${{ matrix.cross }}" ]]; then
             "$python" -m venv artifacts/venv
