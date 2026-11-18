@@ -5,6 +5,13 @@ using CoreIdml.Samples;
 // Generates two files to check by hand in InDesign:
 //   ficha-demo.idml     a data sheet built in code (styles, swatches, frames, table, image, two pages)
 //   ficha-template.idml a template with named/tagged slots, then ficha-filled.idml after filling it
+// With "plugin-samples <outDir>" it writes the Claude plugin's sample files instead (plugins/coreidml/samples).
+if (args is ["plugin-samples", var samplesDir])
+{
+    PluginSamples.Write(samplesDir);
+    return;
+}
+
 var outDir = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
 var photo = args.Length > 1 ? Path.GetFullPath(args[1]) : null;
 Directory.CreateDirectory(outDir);

@@ -64,7 +64,7 @@ const summary = (text) => {
 };
 manifest.tools = JSON.parse(listed.stdout).map((tool) => ({ name: tool.name, description: summary(tool.description) }));
 
-// Stage: manifest.json and server/ (everything the CLI build has).
+// Stage: manifest.json, icon.png and server/ (everything the CLI build has).
 const stage = join(root, 'artifacts', 'mcpb', rid);
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(join(stage, 'server'), { recursive: true });
@@ -75,6 +75,7 @@ if (!windows) {
   chmodSync(join(stage, 'server', executable), 0o755);
 }
 writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+cpSync(join(root, 'bindings/mcpb', manifest.icon), join(stage, manifest.icon));
 
 // Pack with the official CLI (it validates the manifest first).
 const out = resolve(options.out ?? join(root, 'artifacts', 'mcpb', `coreidml-${version}-${rid}.mcpb`));
@@ -92,6 +93,7 @@ const entries = zipEntries(readFileSync(out));
 const binary = entries.find((entry) => entry.name === `server/${executable}`);
 const problems = [];
 if (!entries.some((entry) => entry.name === 'manifest.json')) problems.push('manifest.json is missing');
+if (!entries.some((entry) => entry.name === manifest.icon)) problems.push(`${manifest.icon} is missing`);
 if (!binary) problems.push(`server/${executable} is missing`);
 if (binary && !windows && (binary.mode & 0o111) === 0) problems.push(`server/${executable} is not executable in the archive (mode ${binary.mode.toString(8)})`);
 if (problems.length > 0) {

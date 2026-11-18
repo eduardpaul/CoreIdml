@@ -204,6 +204,13 @@ new, Plugin bundle): repository `eduardpaul/CoreIdml`, plugin path `plugins/core
 branch or tag and re-scans each new commit. Follow its pre-submission checklist: everything the plugin runs must be
 inside its folder, no top-level `bin/`, a README of at least 40 words that says what it runs, reads and sends, a
 license, and packages pinned to exact versions (an `npx` package is always held for a reviewer, by design). The
-listing icon is read from the plugin the first time it is submitted and cannot be changed later, so add it before.
+listing icon is read from the plugin the first time it is submitted and cannot be changed later.
+
+The icon's source is `docs/icon/coreidml.svg`. `plugins/coreidml/icon.png` (1024×1024) and `bindings/mcpb/icon.png`
+(512×512) are PNG renders of it with a transparent background; render both again if the SVG changes. The plugin's
+sample files (`plugins/coreidml/samples`), which its README's example prompts use, are written by the sample app:
+`dotnet run --project samples/CoreIdml.Sample -- plugin-samples plugins/coreidml/samples`. If you change them, check
+that the README's prompts still give what it says they give.
+
 The Claude Desktop extension (`bindings/mcpb`, `eng/pack-mcpb.mjs`) stays the way to use the server in Desktop chat,
 where local MCP servers from plugins do not load.

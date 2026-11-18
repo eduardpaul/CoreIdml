@@ -14,6 +14,7 @@
     "url": "https://github.com/eduardpaul/CoreIdml"
   },
   "homepage": "https://github.com/eduardpaul/CoreIdml",
+  "icon": "icon.png",
   "documentation": "https://github.com/eduardpaul/CoreIdml/blob/main/src/CoreIdml.Cli/README.md",
   "support": "https://github.com/eduardpaul/CoreIdml/issues",
   "license": "MIT",

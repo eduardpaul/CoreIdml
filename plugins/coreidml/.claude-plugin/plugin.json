@@ -10,6 +10,7 @@
   "homepage": "https://github.com/eduardpaul/CoreIdml/tree/main/plugins/coreidml",
   "repository": "https://github.com/eduardpaul/CoreIdml",
   "license": "MIT",
+  "icon": "./icon.png",
   "keywords": ["indesign", "idml", "pdf", "layout", "publishing", "templates", "mcp"],
   "documentationUrl": "https://github.com/eduardpaul/CoreIdml/blob/main/src/CoreIdml.Cli/README.md",
   "supportUrl": "https://github.com/eduardpaul/CoreIdml/issues"
