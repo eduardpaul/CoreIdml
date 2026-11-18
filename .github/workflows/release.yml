@@ -337,6 +337,115 @@ jobs:
           path: artifacts/release
           if-no-files-found: error
 
+  # ---- Publishing rehearsal (every run that does not publish) ----------------------------------------------------
+  # The publish steps against throwaway registries, then each package installed from its registry and used, the way a
+  # user gets it: npm (Verdaccio), PyPI (pypiserver), NuGet (a local feed) and a draft GitHub release that is deleted
+  # again. What only the real registries can check is their trust in this workflow (CONTRIBUTING.md).
+
+  rehearsal:
+    name: publish rehearsal
+    needs: [version, packages]
+    if: needs.version.outputs.publish != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      FIXTURE: ${{ github.workspace }}/tests/fixtures/article-1photo.idml
+      FONTS: ${{ github.workspace }}/tests/fixtures/fonts
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: npm, through a registry
+        run: |
+          npm install -g npm@11 verdaccio@6 > /dev/null
+          verdaccio --listen 4873 > "$RUNNER_TEMP/verdaccio.log" 2>&1 &
+          for i in $(seq 60); do curl -fs http://localhost:4873/-/ping > /dev/null && break; sleep 1; done
+          token=$(curl -fs -X PUT -H 'content-type: application/json' -d '{"name":"rehearsal","password":"rehearsal-password"}' \
+            http://localhost:4873/-/user/org.couchdb.user:rehearsal | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          npm config set //localhost:4873/:_authToken "$token"
+          npm config set registry http://localhost:4873/
+          bash eng/publish-npm.sh release ci
+          app="$RUNNER_TEMP/npm-app" && mkdir -p "$app" && cd "$app" && npm init -y > /dev/null
+          npm install "@coreidml/node@$VERSION" "@coreidml/wasm@$VERSION"
+          ls node_modules/@coreidml
+          node --input-type=module -e "
+            import { CoreIdml } from '@coreidml/node';
+            const idml = CoreIdml.load();
+            const doc = idml.open(process.env.FIXTURE);
+            const { pdf } = await doc.exportPdfBytesAsync({ useSystemFonts: false, fontDirectories: [process.env.FONTS] });
+            doc.close();
+            if (!idml.libraryPath.includes('node-linux-x64')) throw new Error('library not from its platform package: ' + idml.libraryPath);
+            console.log('@coreidml/node', idml.version, 'from', idml.libraryPath, '- PDF', pdf.length, 'bytes');
+          "
+
+      - name: PyPI, through a package index
+        run: |
+          python -m pip install --quiet pypiserver twine passlib
+          mkdir -p "$RUNNER_TEMP/pypi"
+          pypi-server run -p 8080 -a . -P . --disable-fallback "$RUNNER_TEMP/pypi" > "$RUNNER_TEMP/pypi.log" 2>&1 &
+          for i in $(seq 60); do curl -fs http://localhost:8080/ > /dev/null && break; sleep 1; done
+          python -m twine upload --non-interactive --repository-url http://localhost:8080/ -u rehearsal -p rehearsal release/*.whl
+          python -m venv "$RUNNER_TEMP/venv"
+          pyversion=$(ls release/coreidml-*-py3-none-manylinux_2_28_x86_64.whl | sed -E 's/.*coreidml-([^-]+)-py3.*/\1/')
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --index-url http://localhost:8080/simple/ "coreidml==$pyversion"
+          "$RUNNER_TEMP/venv/bin/python" -c "
+          import os, coreidml
+          with coreidml.Document.open(os.environ['FIXTURE']) as doc:
+              pdf, report = doc.export_pdf_bytes({'useSystemFonts': False, 'fontDirectories': [os.environ['FONTS']]})
+          assert '_lib' in coreidml.library_path(), coreidml.library_path()
+          print('coreidml', coreidml.version(), 'from', coreidml.library_path(), '- PDF', len(pdf), 'bytes')
+          "
+
+      - name: NuGet, through a feed
+        run: |
+          feed="$RUNNER_TEMP/feed" && mkdir -p "$feed"
+          for package in release/*.nupkg; do dotnet nuget push "$package" --source "$feed"; done
+          app="$RUNNER_TEMP/dotnet-app" && mkdir -p "$app" && cd "$app"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<configuration><packageSources><clear />' \
+            "<add key=\"rehearsal\" value=\"$feed\" />" '<add key="nuget.org" value="https://api.nuget.org/v3/index.json" />' \
+            '</packageSources></configuration>' > nuget.config
+          echo '{ "sdk": { "version": "11.0.100", "rollForward": "latestFeature" } }' > global.json
+          dotnet new console --framework net11.0 > /dev/null
+          dotnet add package CoreIdml.Pdf --version "$VERSION" > /dev/null
+          printf '%s\n' 'using CoreIdml;' 'using CoreIdml.Pdf;' \
+            'using var doc = IdmlDocument.Open(Environment.GetEnvironmentVariable("FIXTURE")!);' \
+            'var options = new PdfExportOptions();' \
+            'options.Fonts.UseSystemFonts = false;' \
+            'options.Fonts.AddDirectory(Environment.GetEnvironmentVariable("FONTS")!);' \
+            'using var output = new MemoryStream();' \
+            'var result = IdmlPdf.Export(doc, output, options);' \
+            'Console.WriteLine($"CoreIdml {IdmlDocument.LibraryVersion}: {doc.Stories.Count} stories, PDF {output.Length} bytes, {result.PageCount} page(s)");' > Program.cs
+          dotnet run
+          dotnet tool install CoreIdml.Cli --version "$VERSION" --tool-path "$RUNNER_TEMP/tools" --add-source "$feed"
+          "$RUNNER_TEMP/tools/coreidml" summary "$FIXTURE" --sections pages | head -c 200; echo
+
+      - name: GitHub release, as a draft deleted again
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="rehearsal-$GITHUB_RUN_ID"
+          trap 'gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag > /dev/null 2>&1 || true' EXIT
+          gh release create "$tag" release/* --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+            --title "Rehearsal $VERSION" --notes "Created and deleted by the release workflow's rehearsal."
+          files=$(ls release | wc -l)
+          assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')
+          echo "draft release with $assets of $files files"
+          [[ "$assets" == "$files" ]]
+
   # ---- Publishing (tags only) -----------------------------------------------------------------------------------
 
   nuget:
@@ -367,6 +476,7 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: release
@@ -383,9 +493,7 @@ jobs:
           npm install -g npm@11
           tag=latest
           [[ "${{ needs.version.outputs.version }}" == *-* ]] && tag=next
-          for tarball in release/coreidml-node-*-*-[0-9]*.tgz release/coreidml-node-[0-9]*.tgz release/coreidml-wasm-*.tgz; do
-            npm publish "$tarball" --access public --provenance --tag "$tag"
-          done
+          bash eng/publish-npm.sh release "$tag" --provenance
 
   pypi:
     name: publish PyPI
