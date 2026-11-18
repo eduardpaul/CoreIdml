@@ -47,6 +47,8 @@ IdmlPdf.Export(template, "x200.pdf", new PdfExportOptions { DocumentPath = "x200
 | Dart and Flutter | [`coreidml`](bindings/dart/coreidml/README.md) | git dependency; see its README |
 | C, C++, Rust, Swift, Kotlin... | [`coreidml.h`](include/coreidml.h) | the native library from the [releases](https://github.com/eduardpaul/CoreIdml/releases) |
 | A shell, CI, Claude and other MCP clients | [`coreidml`](src/CoreIdml.Cli/README.md) | `dotnet tool install -g CoreIdml.Cli`, or a native binary from the releases |
+| A shell or an MCP client, with Node.js | [`@coreidml/cli`](bindings/cli/README.md) | `npx @coreidml/cli <command>`, or `npm install -g @coreidml/cli` |
+| Nothing: Claude Code and Cowork | [plugin](plugins/coreidml/README.md) | `/plugin marketplace add eduardpaul/CoreIdml`, then `/plugin install coreidml@coreidml` |
 | Nothing: Claude Desktop | [extension](src/CoreIdml.Cli/README.md#claude-desktop) | `coreidml-<version>-<platform>.mcpb` from the releases: Settings, Extensions, drop it in |
 
 ## The same task in every language

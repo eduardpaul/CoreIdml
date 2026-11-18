@@ -42,7 +42,8 @@ src/CoreIdml.Native      C ABI transport, Native AOT        -> artifacts/native/
 src/CoreIdml.Wasm        JavaScript transport, browser-wasm -> artifacts/wasm/_framework/
 include/coreidml.h       the C API
 tools/CoreIdml.AbiGen    header -> generated binding tables
-bindings/                node, wasm, python, dart
+bindings/                node, wasm, python, dart; cli (the npm launcher of the command line), mcpb
+plugins/coreidml         the Claude plugin (Claude Code, Cowork); .claude-plugin/marketplace.json lists it
 samples/CoreIdml.Sample  writes demo documents to open in InDesign
 samples/flutter_app      a Flutter app with an on-device integration test
 benchmarks/              BenchmarkDotNet suites and the golden-output check
@@ -124,7 +125,8 @@ that should not alter output must leave every hash the same. Real documents make
 ## Packages and releases
 
 Versions: `Directory.Build.props` (`VersionPrefix`) is the one source. The manifests of the language packages repeat
-it; `node eng/set-version.mjs --check` fails when they disagree, and CI runs it.
+it, and so do the Claude plugin's `plugin.json`, its marketplace entry and the `@coreidml/cli@<version>` its
+`.mcp.json` pins; `node eng/set-version.mjs --check` fails when they disagree, and CI runs it.
 
 A release is a tag. Bump `VersionPrefix` (and the manifests: `node eng/set-version.mjs 1.2.0`) in a commit, then push
 `v1.2.0`. `.github/workflows/release.yml` then:
@@ -133,11 +135,11 @@ A release is a tag. Bump `VersionPrefix` (and the manifests: `node eng/set-versi
    and arm64 in AlmaLinux 8 so they need only glibc 2.28, macOS arm64 and x64), the Android libraries and the
    WebAssembly build, and tests each where it was built (C smoke test, the wheel installed in a fresh environment,
    the command line, the JavaScript package in Node and headless Chrome);
-2. packs everything once: NuGet packages, the npm packages (one per platform plus `@coreidml/node` and
-   `@coreidml/wasm`), the wheels, and archives of the native libraries, command lines, Android libraries and
+2. packs everything once: NuGet packages, the npm packages (`@coreidml/node` and `@coreidml/cli`, each with one
+   package per platform, and `@coreidml/wasm`), the wheels, and archives of the native libraries, command lines, Android libraries and
    WebAssembly engine, the Claude Desktop extensions (`eng/pack-mcpb.mjs`: the command line as an MCP Bundle for
    each desktop platform, from `bindings/mcpb/manifest.json`) with a `SHA256SUMS`, and checks that the staged npm
-   package installs and runs;
+   packages install and run;
 3. publishes to NuGet, npm and PyPI, then creates the GitHub release with every file attached.
 
 Every push to `main` runs steps 1 and 2 as a dry run (version `<prefix>-ci.<run>`), so the release path is always
@@ -149,9 +151,16 @@ with a repository variable, after its one-time trusted-publishing setup:
 
 - **NuGet**: on nuget.org, add a trusted publishing policy for this repository and `release.yml`, then set the
   repository variable `NUGET_USER` to the nuget.org account name (this switches NuGet on).
-- **npm**: own the `@coreidml` scope. A package must exist before it can trust a workflow, so the first release needs
-  an automation token in the `NPM_TOKEN` secret; then add this repository and `release.yml` as trusted publisher of
-  each package and delete the secret. Switch it on with the repository variable `PUBLISH_NPM` = `true`.
+- **npm**: the `coreidml` organization owns the `@coreidml` scope. npm lets a package trust a workflow only once the
+  package exists, so a release that publishes a package name for the first time uses the `NPM_TOKEN` secret of the
+  `release` environment (a granular access token with read and write access to the `@coreidml` packages, allowed to
+  publish without two-factor prompts). After that release, add this repository, workflow `release.yml` and
+  environment `release` as the trusted publisher of each new package on npmjs.com (package settings, Trusted
+  publishing). Once every package has one, delete the secret: later releases publish through OpenID Connect, with
+  provenance. The variable `PUBLISH_NPM` = `true` switches npm on. The package names: `@coreidml/node`,
+  `@coreidml/wasm`, `@coreidml/cli`, and the platform packages `@coreidml/node-<platform>` and
+  `@coreidml/cli-<platform>` for `win32-x64`, `win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64` and
+  `linux-arm64` (15 in all). A package added later needs the token once more.
 - **PyPI**: add a (pending) trusted publisher for the project `coreidml`: this repository, workflow `release.yml`,
   environment `release`. Switch it on with the repository variable `PUBLISH_PYPI` = `true`.
 - **GitHub**: create the environment `release` (Settings, Environments), optionally with required reviewers.
@@ -161,13 +170,40 @@ The same packages can be built locally:
 ```sh
 dotnet pack src/CoreIdml -c Release -p:CoreIdmlRelease=true     # likewise CoreIdml.Pdf and CoreIdml.Cli
 
-node eng/stage-npm.mjs                                          # artifacts/npm/: @coreidml/node, its platform
-                                                                # packages, and @coreidml/wasm, ready for npm publish
+node eng/stage-npm.mjs                                          # artifacts/npm/: @coreidml/node, @coreidml/wasm,
+                                                                # @coreidml/cli and their platform packages, ready
+                                                                # for npm publish (--only cli: just the command line,
+                                                                # from artifacts/cli/<rid>)
 
 python bindings/python/tools/build_wheel.py                     # artifacts/python/: the wheel of this platform
 ```
 
 `eng/stage-npm.mjs` and `build_wheel.py` take what is already built in `artifacts/`; their headers list the steps.
+To try `@coreidml/cli` before a release, pack `artifacts/npm/cli` and the platform folder of your machine
+(`npm pack`) and `npm install` both tarballs in an empty folder; `npx coreidml tools` then runs through the launcher.
 Build the native library and the WebAssembly build for a release with `-p:CoreIdmlRelease=true` as well, so that
 the version they report is the release version. The `package.json` files in the repository are marked private on
 purpose: publish the staged copies.
+
+### The Claude plugin
+
+`plugins/coreidml` is a Claude plugin: the MCP server, started as `npx -y @coreidml/cli@<version> mcp`, and a skill
+(`skills/idml-documents`) with the working conventions that complement the server's own instructions and prompts
+(`src/CoreIdml.Cli/McpPrompts.cs`). `.claude-plugin/marketplace.json` at the repository root makes the repository a
+marketplace, so users install it with `/plugin marketplace add eduardpaul/CoreIdml` and
+`/plugin install coreidml@coreidml`. Check both with `claude plugin validate plugins/coreidml` and
+`claude plugin validate .`.
+
+The plugin's version and the npm version in `.mcp.json` move with every release (`eng/set-version.mjs`), and that
+exact version of `@coreidml/cli` must be on npm before anyone runs it: the marketplace is read from `main`, so
+`main` points at an unpublished version between the version bump and the end of the release. Keep that window short
+(bump, tag and push together) and do not bump the version on `main` long before a release.
+
+The plugin is listed in Anthropic's plugin directory from the developer portal (claude.ai/directory/manage, Submit
+new, Plugin bundle): repository `eduardpaul/CoreIdml`, plugin path `plugins/coreidml`. The directory follows a
+branch or tag and re-scans each new commit. Follow its pre-submission checklist: everything the plugin runs must be
+inside its folder, no top-level `bin/`, a README of at least 40 words that says what it runs, reads and sends, a
+license, and packages pinned to exact versions (an `npx` package is always held for a reviewer, by design). The
+listing icon is read from the plugin the first time it is submitted and cannot be changed later, so add it before.
+The Claude Desktop extension (`bindings/mcpb`, `eng/pack-mcpb.mjs`) stays the way to use the server in Desktop chat,
+where local MCP servers from plugins do not load.

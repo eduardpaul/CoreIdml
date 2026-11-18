@@ -4,11 +4,15 @@
 templates, layout changes, PDF export and page previews. No InDesign needed.**
 
 ```sh
+npm install -g @coreidml/cli                 # the native binary for your platform, through npm (or: npx @coreidml/cli)
 dotnet tool install -g CoreIdml.Cli          # needs the .NET 11 runtime
 ```
 
 Or download a single native binary (no .NET needed) for Windows, Linux or macOS from the
 [releases](https://github.com/eduardpaul/CoreIdml/releases): `coreidml` plus the PDFium library it uses for previews.
+The npm package [`@coreidml/cli`](https://github.com/eduardpaul/CoreIdml/blob/main/bindings/cli/README.md) installs
+the same binary: npm picks the platform package for your system (Windows, macOS, Linux with glibc; x64 and arm64) and
+a small launcher runs it.
 
 ```sh
 coreidml summary brochure.idml --pages 0 --sections pages,stories --max-text 80
@@ -51,6 +55,12 @@ to 2024-11-05, negotiated):
 { "mcpServers": { "idml": { "command": "coreidml", "args": ["mcp", "--root", "/path/to/documents"] } } }
 ```
 
+Without installing anything first, through npm (pin the version, so every start runs the same build):
+
+```json
+{ "mcpServers": { "coreidml": { "command": "npx", "args": ["-y", "@coreidml/cli@<version>", "mcp"] } } }
+```
+
 - Tools have titles, `readOnlyHint`, `destructiveHint` and `idempotentHint` annotations (clients can auto-approve the
   read-only ones), `outputSchema` and `structuredContent` for their JSON results.
 - Server instructions describe the usual workflow: summarize, find or get a story, edit, check the fit, validate,
@@ -58,6 +68,20 @@ to 2024-11-05, negotiated):
 - Editing tools take `outPath`, `inPlace: true` or `dryRun: true`, like the command line.
 - **Paths must be absolute.** A relative path is refused with the path it would have resolved to, unless the server
   runs with `--root <dir>` or the client announces MCP roots (the first one is then the base).
+
+### Claude Code and Cowork
+
+The CoreIdml plugin adds the MCP server (started with `npx`, at the plugin's pinned version of `@coreidml/cli`) and a
+skill with the working conventions: absolute paths, a new file for every change, dry runs, fit checks and previews.
+
+```text
+/plugin marketplace add eduardpaul/CoreIdml
+/plugin install coreidml@coreidml
+```
+
+It needs Node.js 18 or later. Local MCP servers load in Claude Code and in Cowork sessions on your computer, not in
+chat on claude.ai; for Claude Desktop chat, use the extension below. What the plugin runs, reads and sends is listed
+in its [README](https://github.com/eduardpaul/CoreIdml/blob/main/plugins/coreidml/README.md).
 
 ### Claude Desktop
 
