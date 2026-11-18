@@ -273,8 +273,13 @@ jobs:
             rid="${folder#artifacts/download/native-}"
             mkdir -p "artifacts/native/$rid" && cp -r "$folder"/. "artifacts/native/$rid/"
           done
+          # The command lines too: eng/stage-npm.mjs packs each one into its @coreidml/cli platform package.
+          for folder in artifacts/download/cli-*; do
+            rid="${folder#artifacts/download/cli-}"
+            mkdir -p "artifacts/cli/$rid" && cp -r "$folder"/. "artifacts/cli/$rid/"
+          done
           mkdir -p artifacts/wasm && cp -r artifacts/download/wasm/. artifacts/wasm/
-          ls -R artifacts/native | head -50
+          ls -R artifacts/native artifacts/cli | head -80
 
       - name: NuGet packages
         run: |
@@ -294,6 +299,11 @@ jobs:
             (cd "$folder" && npm publish --dry-run --access public --tag ci > /dev/null && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/npm-tarballs" > /dev/null)
           done
           ls -l artifacts/npm-tarballs
+          # npm installs a file with the mode it has in the tarball: the macOS and Linux command lines must be
+          # executable there, or the launcher of @coreidml/cli could not start them.
+          for tarball in artifacts/npm-tarballs/coreidml-cli-{linux,darwin}-*.tgz; do
+            tar -tvzf "$tarball" | grep -qE '^-rwx.* package/coreidml$' || { echo "::error::$tarball: package/coreidml is not executable"; tar -tvzf "$tarball"; exit 1; }
+          done
 
       - name: The staged npm package installs and works
         run: |
@@ -307,6 +317,10 @@ jobs:
             if (doc.info().stories.length === 0) throw new Error('no stories');
             console.log('@coreidml/node', idml.version, idml.libraryPath);
           "
+          npm install ../npm-tarballs/coreidml-cli-linux-x64-*.tgz ../npm-tarballs/coreidml-cli-[0-9]*.tgz > /dev/null
+          tools="$(npx coreidml tools | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).length)")"
+          echo "@coreidml/cli lists $tools tools"
+          [[ "$tools" -ge 33 ]]
 
       - name: Release archives
         run: |
@@ -379,7 +393,9 @@ jobs:
       - name: npm, through a registry
         run: |
           npm install -g npm@11 verdaccio@6 > /dev/null
-          # Verdaccio's default body limit (10 MB) is far below npmjs.org's; a platform package is about 11 MB as sent.
+          # Verdaccio's default body limit (10 MB) is far below npmjs.org's. A package is sent base64-encoded: about
+          # 11 MB for a @coreidml/node platform package, about 17 MB for a @coreidml/cli one (12 MB packed, 27 MB
+          # unpacked), so 200 MB leaves ample room.
           config="$RUNNER_TEMP/verdaccio.yaml"
           printf '%s\n' "storage: $RUNNER_TEMP/verdaccio-storage" 'max_body_size: 200mb' \
             'auth:' '  htpasswd:' "    file: $RUNNER_TEMP/verdaccio-htpasswd" \
@@ -405,6 +421,27 @@ jobs:
             if (!idml.libraryPath.includes('node-linux-x64')) throw new Error('library not from its platform package: ' + idml.libraryPath);
             console.log('@coreidml/node', idml.version, 'from', idml.libraryPath, '- PDF', pdf.length, 'bytes');
           "
+
+      - name: npm command line, as the Claude plugin starts it
+        run: |
+          # The registry is still the Verdaccio of the step before. The same command as plugins/coreidml/.mcp.json,
+          # from an empty folder: npx fetches @coreidml/cli and, as its optional dependency, the linux-x64 binary.
+          dir="$RUNNER_TEMP/npx-app" && mkdir -p "$dir" && cd "$dir"
+          tools="$(npx -y "@coreidml/cli@$VERSION" tools | python -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+          echo "@coreidml/cli lists $tools tools"
+          [[ "$tools" -ge 33 ]]
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"rehearsal","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | npx -y "@coreidml/cli@$VERSION" mcp > mcp.jsonl
+          grep -o '"serverInfo":{[^}]*}' mcp.jsonl
+          listed="$(grep -o '"name":"idml_[a-z_]*"' mcp.jsonl | sort -u | wc -l | tr -d ' ')"
+          echo "the MCP server lists $listed tools"
+          [[ "$listed" -ge 33 ]] || { echo "::error::the MCP server listed $listed tools"; cat mcp.jsonl; exit 1; }
+          # The binary came from the registry, through the optional dependency: npx's cache has both packages.
+          ls "$(npm config get cache)"/_npx/*/node_modules/@coreidml
+          ls "$(npm config get cache)"/_npx/*/node_modules/@coreidml/cli-linux-x64/coreidml
 
       - name: PyPI, through a package index
         run: |
@@ -501,7 +538,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Publish (platform packages first, then @coreidml/node, then @coreidml/wasm)
+      - name: Publish (platform packages first, then @coreidml/node, @coreidml/wasm and @coreidml/cli)
         env:
           # Only needed for the very first publish of a package; afterwards trusted publishing takes over.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
