@@ -1,6 +1,6 @@
 [project]
 name = "coreidml"
-version = "1.0.0"
+version = "1.0.1"
 description = "Create, read, edit and print Adobe InDesign IDML files without InDesign: templates, stories, links, XML, PDF export and import."
 readme = "README.md"
 license = "MIT"
