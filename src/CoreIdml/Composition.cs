@@ -92,14 +92,7 @@ public sealed partial class IdmlDocument
 
         foreach (var story in stories)
         {
-            var newId = idMap[story.Id];
-            var path = $"Stories/Story_{newId}.xml";
-            var storyRoot = IdmlXml.PackageRoot("Story", DomVersion);
-            storyRoot.Add(Remap(new XElement(story.Element), idMap, layerMap));
-            Package.SetXml(path, new XDocument(storyRoot));
-            AddManifestReference("Story", path);
-            var storyList = DesignMap.Attribute("StoryList")?.Value;
-            DesignMap.SetAttributeValue("StoryList", string.IsNullOrEmpty(storyList) ? newId : storyList + " " + newId);
+            AddStoryPart(Remap(new XElement(story.Element), idMap, layerMap));
         }
 
         foreach (var entry in structureEntries)

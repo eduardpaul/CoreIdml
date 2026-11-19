@@ -49,7 +49,21 @@ internal static class PngCodec
 
     public static bool IsPng(ReadOnlySpan<byte> data) => data.Length > 8 && data[..8].SequenceEqual(Signature);
 
+    /// <summary>Decodes a PNG; throws <see cref="InvalidDataException"/> for unsupported or broken files.</summary>
     public static RasterImage Decode(ReadOnlySpan<byte> data)
+    {
+        try
+        {
+            return DecodeChecked(data);
+        }
+        catch (Exception exception) when (exception is IndexOutOfRangeException or ArgumentException or OverflowException)
+        {
+            // Damaged data that slipped past the checks: the decoder's one failure is InvalidDataException.
+            throw new InvalidDataException("Corrupt PNG data.", exception);
+        }
+    }
+
+    private static RasterImage DecodeChecked(ReadOnlySpan<byte> data)
     {
         if (!IsPng(data))
         {
@@ -73,6 +87,10 @@ internal static class PngCodec
             var chunk = data.Slice(offset + 8, length);
             if (type.SequenceEqual("IHDR"u8))
             {
+                if (length < 13)
+                {
+                    throw new InvalidDataException("PNG header is truncated.");
+                }
                 width = BinaryPrimitives.ReadInt32BigEndian(chunk);
                 height = BinaryPrimitives.ReadInt32BigEndian(chunk[4..]);
                 bitDepth = chunk[8];
@@ -111,6 +129,21 @@ internal static class PngCodec
             6 => 4,
             _ => throw new InvalidDataException("Unsupported PNG colour type."),
         };
+        var validDepth = colorType switch
+        {
+            0 => bitDepth is 1 or 2 or 4 or 8 or 16,
+            3 => bitDepth is 1 or 2 or 4 or 8,
+            _ => bitDepth is 8 or 16,
+        };
+        if (!validDepth || interlace > 1)
+        {
+            throw new InvalidDataException($"Invalid PNG header (colour type {colorType}, bit depth {bitDepth}, interlace {interlace}).");
+        }
+        // A 16-bit colour key is matched on the full samples, before they are reduced to 8 bits.
+        var key16 = bitDepth == 16 && colorType is 0 or 2 && transparency is { } keyData && keyData.Length >= 2 * samplesPerPixel
+            ? Enumerable.Range(0, samplesPerPixel).Select(c => BinaryPrimitives.ReadUInt16BigEndian(keyData.AsSpan(2 * c))).ToArray()
+            : null;
+        var keyAlpha = key16 is null ? null : new byte[width * height];
         var idat = new byte[idatLength];
         var at = 0;
         foreach (var (chunkOffset, chunkLength) in idatChunks)
@@ -125,7 +158,7 @@ internal static class PngCodec
         var bytesPerPixel = Math.Max(1, bitsPerPixel / 8);
         using (var inflater = new ZLibStream(new MemoryStream(idat, writable: false), CompressionMode.Decompress))
         {
-            var decoder = new ScanlineDecoder(inflater, samples, width, samplesPerPixel, bitDepth, bytesPerPixel, colorType == 3);
+            var decoder = new ScanlineDecoder(inflater, samples, width, samplesPerPixel, bitDepth, bytesPerPixel, colorType == 3, key16, keyAlpha);
             if (interlace == 0)
             {
                 decoder.DecodePass(width, height, 0, 0, 1, 1);
@@ -190,7 +223,7 @@ internal static class PngCodec
                     pixels[(i * channels) + c] = value;
                     transparent &= value == key[c];
                 }
-                pixels[(i * channels) + samplesPerPixel] = transparent ? (byte)0 : (byte)255;
+                pixels[(i * channels) + samplesPerPixel] = keyAlpha is not null ? keyAlpha[i] : transparent ? (byte)0 : (byte)255;
             }
             return new RasterImage(width, height, channels, pixels);
         }
@@ -207,7 +240,11 @@ internal static class PngCodec
     };
 
     /// <summary>Reads filtered scanlines from the inflated stream into 8-bit samples (one image or one Adam7 pass).</summary>
-    private sealed class ScanlineDecoder(Stream scanlines, byte[] samples, int imageWidth, int samplesPerPixel, int bitDepth, int bytesPerPixel, bool indexed)
+    /// <remarks>
+    /// With <paramref name="key16"/> (a 16-bit colour key), <paramref name="keyAlpha"/> gets each pixel's alpha (0 where
+    /// all its full 16-bit samples match the key, 255 elsewhere).
+    /// </remarks>
+    private sealed class ScanlineDecoder(Stream scanlines, byte[] samples, int imageWidth, int samplesPerPixel, int bitDepth, int bytesPerPixel, bool indexed, ushort[]? key16, byte[]? keyAlpha)
     {
         public void DecodePass(int width, int height, int startX, int startY, int stepX, int stepY)
         {
@@ -231,6 +268,10 @@ internal static class PngCodec
                 Unfilter(current[0], line, previous, bytesPerPixel);
                 ReadOnlySpan<byte> values = unpacked is null ? line : Unpack(line, unpacked);
                 var target = startY + (y * stepY);
+                if (key16 is not null)
+                {
+                    MatchKey(line, width, (target * imageWidth) + startX, stepX);
+                }
                 if (stepX == 1)
                 {
                     values.CopyTo(samples.AsSpan(target * imageWidth * samplesPerPixel, row));
@@ -244,6 +285,20 @@ internal static class PngCodec
                     }
                 }
                 line.CopyTo(previous);
+            }
+        }
+
+        /// <summary>Alpha of each pixel of a 16-bit row from the colour key; pixel x lands at <paramref name="first"/> + x * step.</summary>
+        private void MatchKey(ReadOnlySpan<byte> line, int width, int first, int step)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var transparent = true;
+                for (var c = 0; c < samplesPerPixel; c++)
+                {
+                    transparent &= BinaryPrimitives.ReadUInt16BigEndian(line[(2 * ((x * samplesPerPixel) + c))..]) == key16![c];
+                }
+                keyAlpha![first + (x * step)] = transparent ? (byte)0 : (byte)255;
             }
         }
 

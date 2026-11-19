@@ -31,10 +31,18 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     private PdfDocumentBuilder Pdf => pdf ?? throw new InvalidOperationException("Render has not started.");
 
-    public IdmlRenderer(IdmlDocument document, PdfExportOptions options)
+    /// <summary>
+    /// The folder relative links resolve against: the folder of <see cref="PdfExportOptions.DocumentPath"/>, else
+    /// the link folder given to the constructor (the PDF file's folder, when exporting to a file); null resolves them
+    /// against the working directory.
+    /// </summary>
+    private readonly string? relativeLinkFolder;
+
+    public IdmlRenderer(IdmlDocument document, PdfExportOptions options, string? linkFolder = null)
     {
         this.document = document;
         this.options = options;
+        relativeLinkFolder = options.DocumentPath is { } documentPath ? Path.GetDirectoryName(Path.GetFullPath(documentPath)) : linkFolder;
         fonts = new FontLibrary(options.Fonts);
         resolver = new AttributeResolver(document);
         reader = new StoryReader(document, resolver, fonts);
@@ -110,30 +118,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         Pdf.Finish(options.Title);
         Pdf.Dispose();
-        // Where each missing font is used, like InDesign's Missing Fonts dialog.
-        var pagesByStory = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
-        foreach (var spread in document.Spreads)
-        {
-            foreach (var frame in spread.AllPageItems.OfType<TextFrame>())
-            {
-                if (frame.Page?.Name is { } name)
-                {
-                    (pagesByStory.TryGetValue(frame.StoryId, out var set) ? set : pagesByStory[frame.StoryId] = new SortedSet<string>(StringComparer.Ordinal)).Add(name);
-                }
-            }
-        }
-        foreach (var master in document.MasterSpreads)
-        {
-            foreach (var frame in master.AllPageItems.OfType<TextFrame>())
-            {
-                (pagesByStory.TryGetValue(frame.StoryId, out var set) ? set : pagesByStory[frame.StoryId] = new SortedSet<string>(StringComparer.Ordinal)).Add("master " + master.Name);
-            }
-        }
-        foreach (var substitution in fonts.Substitutions)
-        {
-            substitution.Pages.Clear();
-            substitution.Pages.AddRange(substitution.Stories.SelectMany(story => pagesByStory.GetValueOrDefault(story) ?? []).Distinct().Order(StringComparer.Ordinal));
-        }
+        AssignPages(document, fonts.Substitutions);
         foreach (var (font, codePoints) in fonts.MissingGlyphs)
         {
             var characters = string.Join(" ", codePoints.Select(c => string.Create(CultureInfo.InvariantCulture, $"{char.ConvertFromUtf32(c)} (U+{c:X4})")));
@@ -147,6 +132,39 @@ internal sealed partial class IdmlRenderer : IDisposable
             OversetStories = storyLayouts.Where(pair => pair.Value.Overset).Select(pair => pair.Key).Order(StringComparer.Ordinal).ToList(),
             Warnings = warnings.Distinct(StringComparer.Ordinal).ToList(),
         };
+    }
+
+    /// <summary>
+    /// Fills <see cref="FontSubstitution.Pages"/>: where each missing font is used, like InDesign's Missing Fonts
+    /// dialog (page names, and "master &lt;name&gt;" for stories on master spreads).
+    /// </summary>
+    internal static void AssignPages(IdmlDocument document, IEnumerable<FontSubstitution> substitutions)
+    {
+        var pagesByStory = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        void Add(string storyId, string page) =>
+            (pagesByStory.TryGetValue(storyId, out var set) ? set : pagesByStory[storyId] = new SortedSet<string>(StringComparer.Ordinal)).Add(page);
+        foreach (var spread in document.Spreads)
+        {
+            foreach (var frame in spread.AllPageItems.OfType<TextFrame>())
+            {
+                if (frame.Page?.Name is { } name)
+                {
+                    Add(frame.StoryId, name);
+                }
+            }
+        }
+        foreach (var master in document.MasterSpreads)
+        {
+            foreach (var frame in master.AllPageItems.OfType<TextFrame>())
+            {
+                Add(frame.StoryId, "master " + master.Name);
+            }
+        }
+        foreach (var substitution in substitutions)
+        {
+            substitution.Pages.Clear();
+            substitution.Pages.AddRange(substitution.Stories.SelectMany(story => pagesByStory.GetValueOrDefault(story) ?? []).Distinct().Order(StringComparer.Ordinal));
+        }
     }
 
     // ---- text ----------------------------------------------------------------------------------------
@@ -190,7 +208,7 @@ internal sealed partial class IdmlRenderer : IDisposable
             return [];
         }
         var chain = master.AllPageItems.OfType<TextFrame>().Where(f => f.StoryId == frame.StoryId).ToList();
-        var ordered = OrderThread(chain);
+        var ordered = Story.ThreadOrder(chain);
         var layout = composer.Compose(story.Element, ordered.Select(f => FrameArea(f, pageName)).ToList());
         // Reported like a page story; overset on any page it is drawn on counts.
         if (layout.Overset || !storyLayouts.ContainsKey(story.Id))
@@ -202,20 +220,6 @@ internal sealed partial class IdmlRenderer : IDisposable
             frameOps[frameId + "@" + pageName] = ops;
         }
         return frameOps.TryGetValue(key, out var result) ? result : [];
-    }
-
-    private static List<TextFrame> OrderThread(List<TextFrame> frames)
-    {
-        var ordered = new List<TextFrame>();
-        var current = frames.FirstOrDefault(frame => frame.PreviousFrameId is null || frames.All(f => f.Id != frame.PreviousFrameId)) ?? frames.FirstOrDefault();
-        while (current is not null && !ordered.Contains(current))
-        {
-            ordered.Add(current);
-            var next = current.NextFrameId;
-            current = next is null ? null : frames.FirstOrDefault(frame => frame.Id == next);
-        }
-        ordered.AddRange(frames.Where(frame => !ordered.Contains(frame)));
-        return ordered;
     }
 
     internal FrameArea FrameArea(TextFrame frame, string pageName)
@@ -790,7 +794,12 @@ internal sealed partial class IdmlRenderer : IDisposable
             return mapped;
         }
         var path = uri;
-        if (path.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase) && !path.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
+        {
+            // "file://host/share/a.jpg" (a UNC path) or "file://localhost/C:/a.jpg", as the packager reads them.
+            path = CoreIdml.Packaging.DocumentPackager.LocalPath(path)!;
+        }
+        else if (path.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
         {
             path = path[5..];
             while (path.StartsWith("//", StringComparison.Ordinal))
@@ -804,7 +813,16 @@ internal sealed partial class IdmlRenderer : IDisposable
                 path = path[1..];
             }
         }
-        if (File.Exists(path))
+        // A relative path is relative to the document (not to the process's working directory) when its folder is known.
+        if (relativeLinkFolder is not null && !Path.IsPathRooted(path) && !path.Contains(':', StringComparison.Ordinal))
+        {
+            var relative = Path.Combine(relativeLinkFolder, path);
+            if (File.Exists(relative))
+            {
+                return relative;
+            }
+        }
+        else if (File.Exists(path))
         {
             return path;
         }

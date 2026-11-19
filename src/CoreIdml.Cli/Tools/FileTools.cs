@@ -26,14 +26,7 @@ internal static class FileTools
                 var options = PdfTools.ExportOptions(args, path);
                 using var measurer = new TextMeasurer(document, options.Fonts);
                 measurer.CheckFit(document);
-                var pagesByStory = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
-                foreach (var frame in document.AllPageItems.OfType<TextFrame>())
-                {
-                    if (frame.Page?.Name is { } name)
-                    {
-                        (pagesByStory.TryGetValue(frame.StoryId, out var set) ? set : pagesByStory[frame.StoryId] = new SortedSet<string>(StringComparer.Ordinal)).Add(name);
-                    }
-                }
+                // With their pages filled in as the PDF export reports them (master stories as "master <name>").
                 var substitutions = measurer.FontSubstitutions;
                 var recorded = document.Fonts.ToDictionary(font => font.Name, StringComparer.Ordinal);
                 var families = document.UsedFontFamilies.Concat(substitutions.Select(font => font.RequestedFamily)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
@@ -60,7 +53,7 @@ internal static class FileTools
                         ["reason"] = font.Reason,
                         ["embeddingRestricted"] = font.EmbeddingRestricted,
                         ["stories"] = JsonText.Array(font.Stories),
-                        ["pages"] = JsonText.Array(font.Stories.SelectMany(story => pagesByStory.GetValueOrDefault(story) ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
+                        ["pages"] = JsonText.Array(font.Pages),
                     })]),
                 };
                 return new(JsonText.Write(result));
@@ -87,15 +80,14 @@ internal static class FileTools
                 }
                 var everything = edit.Args.Bool("all");
                 var current = DocumentPackager.ResolveLinks(edit.Document, edit.DocumentPath, []).ToDictionary(link => link.Link.Id, link => link.Path, StringComparer.Ordinal);
-                var found = DocumentPackager.ResolveLinks(edit.Document, null, folders);
+                // By name in the folders only, whether or not the link's own file exists (all: true relinks those too).
+                var found = DocumentPackager.FindInFolders(edit.Document, folders);
                 var relinked = new JsonArray();
                 var missing = new JsonArray();
                 foreach (var (link, path) in found)
                 {
                     var exists = current.GetValueOrDefault(link.Id) is not null;
-                    var fromFolder = path is not null && folders.Any(folder =>
-                        string.Equals(Path.GetDirectoryName(path), Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)), StringComparison.Ordinal));
-                    if ((exists && !everything) || !fromFolder)
+                    if ((exists && !everything) || path is null)
                     {
                         if (!exists)
                         {
@@ -104,8 +96,9 @@ internal static class FileTools
                         continue;
                     }
                     var uri = link.Uri;
-                    link.Relink(path!, edit.Args.Bool("refit") ? ImageFit.Fill : null);
-                    relinked.Add((JsonNode)new JsonObject { ["linkId"] = link.Id, ["from"] = uri, ["to"] = path });
+                    var target = Path.GetFullPath(path);
+                    link.Relink(target, edit.Args.Bool("refit") ? ImageFit.Fill : null);
+                    relinked.Add((JsonNode)new JsonObject { ["linkId"] = link.Id, ["from"] = uri, ["to"] = target });
                 }
                 return JsonText.Write(new JsonObject { ["relinked"] = relinked, ["missing"] = missing });
             },

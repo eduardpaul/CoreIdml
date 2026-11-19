@@ -6,6 +6,68 @@ namespace CoreIdml;
 
 public sealed partial class IdmlDocument
 {
+    /// <summary>Every text frame on the document and master spreads (frames anchored in stories are not page items).</summary>
+    internal IEnumerable<TextFrame> AllTextFrames() =>
+        Spreads.Concat<Spread>(MasterSpreads).SelectMany(spread => spread.TextFrames());
+
+    /// <summary>
+    /// Removes page items (with everything inside them) in one pass: threads are joined around the text frames removed,
+    /// a story goes when no remaining frame shows it, and the XML bindings of everything removed are dropped. The
+    /// document and every story are walked once, however many items go.
+    /// </summary>
+    internal void RemoveItems(IReadOnlyCollection<PageItem> items)
+    {
+        var attached = items.Where(item => item.Element.Parent is not null).ToList();
+        if (attached.Count == 0)
+        {
+            return;
+        }
+        var ids = attached.SelectMany(item => item.Element.DescendantsAndSelf()).Select(element => element.Attribute("Self")?.Value).OfType<string>().ToList();
+        var removedFrames = attached.SelectMany(item => item.SelfAndDescendants()).OfType<TextFrame>().ToList();
+        if (removedFrames.Count > 0)
+        {
+            var frames = new Dictionary<string, TextFrame>(StringComparer.Ordinal);
+            foreach (var frame in AllTextFrames())
+            {
+                frames.TryAdd(frame.Id, frame);
+            }
+            var removed = removedFrames.Select(frame => frame.Id).ToHashSet(StringComparer.Ordinal);
+
+            // The nearest frame that stays, walking the thread through removed frames.
+            TextFrame? Staying(string? id, bool forward)
+            {
+                for (var steps = 0; id is not null && steps <= frames.Count && frames.TryGetValue(id, out var frame); steps++)
+                {
+                    if (!removed.Contains(id))
+                    {
+                        return frame;
+                    }
+                    id = forward ? frame.NextFrameId : frame.PreviousFrameId;
+                }
+                return null;
+            }
+            foreach (var frame in removedFrames)
+            {
+                var previous = Staying(frame.PreviousFrameId, forward: false);
+                var next = Staying(frame.NextFrameId, forward: true);
+                previous?.SetAttribute("NextTextFrame", next?.Id ?? IdmlNames.NoReference);
+                next?.SetAttribute("PreviousTextFrame", previous?.Id ?? IdmlNames.NoReference);
+            }
+
+            var shown = frames.Values.Where(frame => !removed.Contains(frame.Id)).Select(frame => frame.StoryId).ToHashSet(StringComparer.Ordinal);
+            foreach (var storyId in removedFrames.Select(frame => frame.StoryId).Distinct(StringComparer.Ordinal).ToList())
+            {
+                if (!shown.Contains(storyId) && FindStory(storyId) is { } story)
+                {
+                    DeleteStory(story);
+                    ids.Add(storyId);
+                }
+            }
+        }
+        attached.ForEach(item => item.Element.Remove());
+        Tags.Unbind([.. ids]);
+    }
+
     /// <summary>
     /// Copies a top-level page item (with everything inside it) onto <paramref name="targetPage"/> (default: the item's
     /// own page), at the same position on that page moved by <paramref name="offsetX"/>/<paramref name="offsetY"/> points.
@@ -64,14 +126,7 @@ public sealed partial class IdmlDocument
             {
                 tag.ReplaceWith(tag.Nodes().Where(node => node is not XElement { Name.LocalName: "XMLAttribute" or "Properties" }).ToList());
             }
-            var id = story.Attribute("Self")!.Value;
-            var path = $"Stories/Story_{id}.xml";
-            var root = IdmlXml.PackageRoot("Story", DomVersion);
-            root.Add(story);
-            Package.SetXml(path, new XDocument(root));
-            AddManifestReference("Story", path);
-            var storyList = DesignMap.Attribute("StoryList")?.Value;
-            DesignMap.SetAttributeValue("StoryList", string.IsNullOrEmpty(storyList) ? id : storyList + " " + id);
+            AddStoryPart(story);
         }
 
         var dx = offsetX;

@@ -163,20 +163,22 @@ internal sealed class PdfDocumentBuilder : IDisposable
         ImageResource? resource = null;
         try
         {
-            // The object number is taken once the file has been read, before decoding, prefetched or not.
+            // The object number is taken once the image is known to be readable (prefetched or not), so an image that
+            // fails leaves no object behind.
             if (prefetched.Remove(path, out var task) && Result(task) is { } prepared)
             {
-                var number = writer.Reserve();
                 prepared.Error?.Throw();
+                var number = writer.Reserve();
                 resource = prepared.Jpeg is { } jpeg ? WriteJpeg(number, jpeg, name) : WritePng(number, prepared.Png!, name);
                 // Placement geometry uses the source's pixel size, downsampled or not.
                 resource = resource with { Width = prepared.SourceWidth, Height = prepared.SourceHeight };
             }
             else
             {
-                resource = ReadFile(path, data => WriteImage(writer.Reserve(), data, name));
+                resource = ReadFile(path, data => WriteImage(data, name));
             }
         }
+        // The decoders report every damaged or unsupported file as InvalidDataException.
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             resource = null;
@@ -213,7 +215,7 @@ internal sealed class PdfDocumentBuilder : IDisposable
             // Decoded at the smallest DCT scale still at least that large, then area-averaged to it.
             raster = JpegDecoder.Decode(buffer, length, JpegDecoder.ScaleFor(info.Width, info.Height, width, height));
         }
-        catch (Exception exception) when (exception is InvalidDataException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        catch (InvalidDataException)
         {
             return null; // An unusual or damaged JPEG: keep the original.
         }
@@ -269,25 +271,34 @@ internal sealed class PdfDocumentBuilder : IDisposable
         }
     }
 
-    private ImageResource WriteImage(int number, ReadOnlySpan<byte> data, string name)
+    /// <summary>Writes a JPEG as it is, or a PNG encoded; the object number is reserved once the file is known to be usable.</summary>
+    private ImageResource WriteImage(ReadOnlySpan<byte> data, string name)
     {
         if (data.Length > 3 && data[0] == 0xFF && data[1] == 0xD8)
         {
             var info = JpegInfo.Read(data) ?? throw new InvalidDataException("Unreadable JPEG.");
+            // DCTDecode takes 8-bit gray, RGB (YCbCr) or CMYK data only.
             var colorSpace = info.Components switch
             {
                 1 => "/DeviceGray",
+                3 => "/DeviceRGB",
                 4 => "/DeviceCMYK",
-                _ => "/DeviceRGB",
+                _ => throw new InvalidDataException($"JPEGs with {info.Components} components are not supported."),
             };
+            if (info.BitsPerComponent != 8)
+            {
+                throw new InvalidDataException($"{info.BitsPerComponent}-bit JPEGs are not supported.");
+            }
             // Adobe CMYK JPEGs store inverted values.
             var decode = info.Components == 4 && info.AdobeMarker ? " /Decode [1 0 1 0 1 0 1 0]" : string.Empty;
+            var number = writer.Reserve();
             writer.WriteStream(number, $"/Type /XObject /Subtype /Image /Width {info.Width} /Height {info.Height} /ColorSpace {colorSpace} /BitsPerComponent {info.BitsPerComponent}{decode}", data, compress: false, filter: "/DCTDecode");
             return new ImageResource(name, number, info.Width, info.Height);
         }
         if (PngCodec.IsPng(data))
         {
-            return WritePng(number, EncodePng(data), name);
+            var png = EncodePng(data);
+            return WritePng(writer.Reserve(), png, name);
         }
         throw new InvalidDataException("Only JPEG and PNG images are supported.");
     }

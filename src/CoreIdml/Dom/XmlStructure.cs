@@ -414,6 +414,21 @@ public sealed partial class TagCatalog
         }
     }
 
+    /// <summary>
+    /// Unbinds the structure's own tags (XML/BackingStory.xml) bound to <paramref name="id"/>: a story's tag, without
+    /// walking every story as <see cref="Unbind"/> does.
+    /// </summary>
+    internal void UnbindStructure(string id)
+    {
+        foreach (var element in document.Package.TryGetXml(BackingStoryPath)?.Root?.Descendants("XMLElement").ToList() ?? [])
+        {
+            if (element.Attribute("XMLContent") is { } binding && binding.Value == id)
+            {
+                binding.Remove();
+            }
+        }
+    }
+
     /// <summary>Moves <c>XMLContent</c> bindings from one id to another (a removed image to its frame).</summary>
     internal void Rebind(string oldId, string newId)
     {

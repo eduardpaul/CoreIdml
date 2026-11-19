@@ -24,11 +24,13 @@ public sealed record StoryFit(string StoryId, bool Overset, int OversetCharacter
 /// </summary>
 public sealed class TextMeasurer : IDisposable
 {
+    private readonly IdmlDocument measured;
     private readonly IdmlRenderer renderer;
 
     public TextMeasurer(IdmlDocument document, PdfFontOptions? fonts = null)
     {
         ArgumentNullException.ThrowIfNull(document);
+        measured = document;
         renderer = new IdmlRenderer(document, new PdfExportOptions { Fonts = fonts ?? new PdfFontOptions() });
     }
 
@@ -81,7 +83,16 @@ public sealed class TextMeasurer : IDisposable
     }
 
     /// <summary>Fonts that were not found while measuring, and what replaced them (line breaks depend on them).</summary>
-    public IReadOnlyList<Fonts.FontSubstitution> FontSubstitutions => renderer.Fonts.Substitutions;
+    /// <remarks>Each substitution's <see cref="Fonts.FontSubstitution.Pages"/> lists where it is used, as in the PDF export's report.</remarks>
+    public IReadOnlyList<Fonts.FontSubstitution> FontSubstitutions
+    {
+        get
+        {
+            var substitutions = renderer.Fonts.Substitutions;
+            IdmlRenderer.AssignPages(measured, substitutions);
+            return substitutions;
+        }
+    }
 
     /// <summary><see cref="CheckFit(Story)"/> for every story shown on a document page.</summary>
     public IReadOnlyList<StoryFit> CheckFit(IdmlDocument document)

@@ -191,7 +191,6 @@ public static class IdmlValidator
         }
 
         var layers = document.Layers.All.Select(layer => layer.Id).ToHashSet(StringComparer.Ordinal);
-        var frames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (path, root) in layoutParts.Where(part => !part.Path.StartsWith("Stories/", StringComparison.Ordinal)))
         {
             foreach (var element in root.Descendants())
@@ -201,12 +200,11 @@ public static class IdmlValidator
                     result.Issues.Add(new(IssueSeverity.Error, "missing-layer",
                         $"'{element.Attribute("Self")?.Value}' is on layer '{layer}', which does not exist.", path));
                 }
-                if (element.Name.LocalName == "TextFrame" && element.Attribute("Self")?.Value is { } self)
-                {
-                    frames.Add(self);
-                }
             }
         }
+        // Threads may join frames anchored in stories as well as frames on spreads.
+        var frames = layoutParts.SelectMany(part => part.Root.Descendants("TextFrame"))
+            .Select(element => element.Attribute("Self")?.Value).OfType<string>().ToHashSet(StringComparer.Ordinal);
         foreach (var (path, root) in layoutParts)
         {
             foreach (var frame in root.Descendants("TextFrame"))

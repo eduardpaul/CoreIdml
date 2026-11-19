@@ -290,14 +290,10 @@ public abstract class PageItem : IdmlNode
 
     /// <summary>
     /// Removes the item from its spread. XML tags bound to it (or to its placed graphic) stay in the structure but
-    /// are unbound, so no <c>XMLContent</c> reference dangles.
+    /// are unbound, so no <c>XMLContent</c> reference dangles. Text frames removed (the item, or frames inside it) are
+    /// taken out of their threads, and their story goes too when no other frame shows it.
     /// </summary>
-    public virtual void Remove()
-    {
-        var ids = Element.DescendantsAndSelf().Select(element => element.Attribute("Self")?.Value).OfType<string>().ToArray();
-        Element.Remove();
-        Document.Tags.Unbind(ids);
-    }
+    public virtual void Remove() => Document.RemoveItems([this]);
 
     internal IEnumerable<PageItem> SelfAndDescendants()
     {
@@ -392,21 +388,68 @@ public sealed class TextFrame : PageItem
         set => Preference.SetAttributeValue("VerticalJustification", value == VerticalJustification.Justify ? "JustifyAlign" : value + "Align");
     }
 
-    /// <summary>Lets text overflowing this frame continue in <paramref name="next"/> (its own story is discarded).</summary>
+    /// <summary>
+    /// Lets text overflowing this frame continue in <paramref name="next"/>, as InDesign threads frames:
+    /// <paramref name="next"/> and the frames threaded after it leave their thread (whose earlier frames keep their
+    /// story) and show this frame's story; their own story is discarded when no frame shows it any more. When this
+    /// frame already continued in another frame, that frame follows the last of them (they are inserted).
+    /// </summary>
     public void ThreadTo(TextFrame next)
     {
         ArgumentNullException.ThrowIfNull(next);
-        if (next.StoryId != StoryId)
+        if (next.Id == Id)
         {
-            var orphan = Document.FindStory(next.StoryId);
-            if (orphan is not null && !Document.AllPageItems.OfType<TextFrame>().Any(frame => frame.Id != next.Id && frame.StoryId == orphan.Id))
-            {
-                Document.DeleteStory(orphan);
-            }
-            next.SetAttribute("ParentStory", StoryId);
+            throw new IdmlException("A text frame cannot be threaded to itself.");
         }
+        if (NextFrameId == next.Id)
+        {
+            return;
+        }
+        var frames = new Dictionary<string, TextFrame>(StringComparer.Ordinal);
+        foreach (var frame in Document.AllTextFrames())
+        {
+            frames.TryAdd(frame.Id, frame);
+        }
+        TextFrame? Find(string? id) => id is not null && frames.TryGetValue(id, out var frame) ? frame : null;
+
+        // next and the frames after it move here, in their order.
+        var moving = new List<TextFrame>();
+        for (var frame = (TextFrame?)next; frame is not null && moving.Count <= frames.Count; frame = Find(frame.NextFrameId))
+        {
+            if (frame.Id == Id)
+            {
+                throw new IdmlException($"Text frame {next.Id} comes before {Id} in its thread; threading them would make a loop.");
+            }
+            moving.Add(frame);
+        }
+        var oldNext = Find(NextFrameId);
+        var oldStory = next.StoryId;
+
+        // Cut next from the frames before it, link it after this frame, and the old continuation after the moved frames.
+        Find(next.PreviousFrameId)?.SetAttribute("NextTextFrame", IdmlNames.NoReference);
         SetAttribute("NextTextFrame", next.Id);
         next.SetAttribute("PreviousTextFrame", Id);
+        var last = moving[^1];
+        if (oldNext is not null)
+        {
+            last.SetAttribute("NextTextFrame", oldNext.Id);
+            oldNext.SetAttribute("PreviousTextFrame", last.Id);
+        }
+        else
+        {
+            last.SetAttribute("NextTextFrame", IdmlNames.NoReference);
+        }
+
+        if (oldStory != StoryId)
+        {
+            moving.ForEach(frame => frame.SetAttribute("ParentStory", StoryId));
+            if (!frames.Values.Any(frame => frame.StoryId == oldStory) && Document.FindStory(oldStory) is { } orphan)
+            {
+                Document.DeleteStory(orphan);
+                // A tagged frame's story is bound from the structure; walking every story here made threading quadratic.
+                Document.Tags.UnbindStructure(oldStory);
+            }
+        }
     }
 
     /// <summary>Appends a table whose columns share the frame's inner width.</summary>
@@ -420,25 +463,6 @@ public sealed class TextFrame : PageItem
             options = options with { ColumnWidths = Enumerable.Repeat(width / columns, columns).ToArray() };
         }
         return Story.AddTable(rows, columns, options);
-    }
-
-    /// <summary>Removes the frame; threaded neighbours are joined, and the story goes too when no other frame shows it.</summary>
-    public override void Remove()
-    {
-        var storyId = StoryId;
-        var frames = Document.AllPageItems.OfType<TextFrame>().ToList();
-        var previous = frames.FirstOrDefault(frame => frame.Id == PreviousFrameId);
-        var next = frames.FirstOrDefault(frame => frame.Id == NextFrameId);
-        previous?.SetAttribute("NextTextFrame", next?.Id ?? IdmlNames.NoReference);
-        next?.SetAttribute("PreviousTextFrame", previous?.Id ?? IdmlNames.NoReference);
-
-        var shared = frames.Any(frame => frame.Id != Id && frame.StoryId == storyId);
-        base.Remove();
-        if (!shared && Document.FindStory(storyId) is { } story)
-        {
-            Document.DeleteStory(story);
-            Document.Tags.Unbind(storyId);
-        }
     }
 
     /// <summary>Read side: never creates the element (reading must not mark the spread as modified).</summary>
@@ -500,10 +524,7 @@ public sealed class GraphicFrame : PageItem
         var previousLinkId = Graphic?.Element("Link")?.Attribute("Self")?.Value;
         Graphic?.Remove();
 
-        var anchors = PathGeometry.Anchors(Element).ToList();
-        var frame = anchors.Count == 0
-            ? new Rect(0, 0, 0, 0)
-            : Rect.FromEdges(anchors.Min(p => p.X), anchors.Min(p => p.Y), anchors.Max(p => p.X), anchors.Max(p => p.Y));
+        var frame = InnerBounds;
         var fitted = ComputePlacement(frame, image.UprightWidthPoints, image.UprightHeightPoints, fit);
         var placement = image.OrientationTransform.Then(fitted);
 
@@ -566,10 +587,7 @@ public sealed class GraphicFrame : PageItem
         var previousId = Graphic?.Attribute("Self")?.Value;
         var previousLinkId = Graphic?.Element("Link")?.Attribute("Self")?.Value;
         Graphic?.Remove();
-        var anchors = PathGeometry.Anchors(Element).ToList();
-        var frame = anchors.Count == 0
-            ? new Rect(0, 0, 0, 0)
-            : Rect.FromEdges(anchors.Min(p => p.X), anchors.Min(p => p.Y), anchors.Max(p => p.X), anchors.Max(p => p.Y));
+        var frame = InnerBounds;
         var placement = ComputePlacement(frame, size.Width, size.Height, fit);
         const string format = "$ID/Adobe Portable Document Format (PDF)";
         var pdf = new XElement("PDF",

@@ -37,8 +37,25 @@ public sealed partial class IdmlDocument
         ArgumentNullException.ThrowIfNull(data);
         var result = new FillResult();
 
-        foreach (var (key, value) in data.Text)
+        // Text written for one key is not filled again by a later key: a placeholder inside a value is written as a
+        // private-use token and restored once every key is done (only when some value holds a placeholder).
+        string Placeholder(string key) => string.Format(System.Globalization.CultureInfo.InvariantCulture, data.PlaceholderFormat, key);
+        var escapes = data.Text.Keys.Select(Placeholder).Where(placeholder => placeholder.Length > 0).Distinct(StringComparer.Ordinal)
+            .Where(placeholder => data.Text.Values.Any(value => value.Contains(placeholder, StringComparison.Ordinal)))
+            .Select((placeholder, index) => (Placeholder: placeholder, Token: "" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) + ""))
+            .ToList();
+        string Escape(string value)
         {
+            foreach (var (placeholder, token) in escapes)
+            {
+                value = value.Replace(placeholder, token, StringComparison.Ordinal);
+            }
+            return value;
+        }
+
+        foreach (var (key, raw) in data.Text)
+        {
+            var value = Escape(raw);
             var count = 0;
             var filledStories = new HashSet<string>(StringComparer.Ordinal);
 
@@ -66,8 +83,12 @@ public sealed partial class IdmlDocument
                     count++;
                 }
             }
-            count += ReplaceText(string.Format(System.Globalization.CultureInfo.InvariantCulture, data.PlaceholderFormat, key), value);
+            count += ReplaceText(Placeholder(key), value);
             Record(result, key, count);
+        }
+        foreach (var (placeholder, token) in escapes)
+        {
+            ReplaceText(token, placeholder);
         }
 
         foreach (var (key, path) in data.Images)

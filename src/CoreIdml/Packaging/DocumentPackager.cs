@@ -58,14 +58,7 @@ public static class DocumentPackager
             folders.Add(System.IO.Path.Combine(documentFolder, "Links"));
         }
         folders.AddRange(directories);
-        var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var folder in folders.Where(Directory.Exists))
-        {
-            foreach (var file in Directory.EnumerateFiles(folder))
-            {
-                byName.TryAdd(System.IO.Path.GetFileName(file), file);
-            }
-        }
+        var byName = FilesByName(folders);
         return document.Links.Select(link =>
         {
             var local = LocalPath(link.Uri);
@@ -77,10 +70,38 @@ public static class DocumentPackager
             {
                 return new LinkFile(link, System.IO.Path.GetFullPath(local));
             }
-            var name = FileName(link.Uri);
-            return new LinkFile(link, name is not null && byName.TryGetValue(name, out var found) ? found : null);
+            return new LinkFile(link, FindByName(link, byName));
         }).ToList();
     }
+
+    /// <summary>
+    /// Finds each link's file by name only: a file of the same name (case-insensitive) in <paramref name="directories"/>,
+    /// the first folder first, whether or not the link's own path exists (InDesign's Relink to Folder).
+    /// </summary>
+    public static IReadOnlyList<LinkFile> FindInFolders(IdmlDocument document, IEnumerable<string> directories)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(directories);
+        var byName = FilesByName(directories);
+        return document.Links.Select(link => new LinkFile(link, FindByName(link, byName))).ToList();
+    }
+
+    /// <summary>The files of the existing <paramref name="folders"/> by name; the first folder wins a name.</summary>
+    private static Dictionary<string, string> FilesByName(IEnumerable<string> folders)
+    {
+        var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in folders.Where(Directory.Exists))
+        {
+            foreach (var file in Directory.EnumerateFiles(folder))
+            {
+                byName.TryAdd(System.IO.Path.GetFileName(file), file);
+            }
+        }
+        return byName;
+    }
+
+    private static string? FindByName(ImageLink link, Dictionary<string, string> byName) =>
+        FileName(link.Uri) is { } name && byName.TryGetValue(name, out var found) ? found : null;
 
     /// <summary>Writes the package zip: the document, its linked files under Links/, and the font files given.</summary>
     public static PackageReport Write(IdmlDocument document, Stream zip, PackageOptions options)
@@ -126,7 +147,10 @@ public static class DocumentPackager
         return report;
     }
 
-    /// <summary>The local path a link URI names ("file:/C:/x.jpg", "file:///srv/x.jpg", a plain path), or null for other schemes.</summary>
+    /// <summary>
+    /// The local path a link URI names ("file:/C:/x.jpg", "file:///srv/x.jpg", "file://server/share/x.jpg" as a UNC
+    /// path, a plain path), or null for other schemes.
+    /// </summary>
     public static string? LocalPath(string uri)
     {
         if (string.IsNullOrEmpty(uri))
@@ -135,7 +159,24 @@ public static class DocumentPackager
         }
         if (uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
         {
-            var rest = Uri.UnescapeDataString(uri[5..]).TrimStart('/');
+            var rest = Uri.UnescapeDataString(uri[5..]);
+            if (rest.StartsWith("//", StringComparison.Ordinal) && !rest.StartsWith("///", StringComparison.Ordinal))
+            {
+                // "file://host/path": a UNC path, except for localhost (and a drive letter written after "//").
+                var slash = rest.IndexOf('/', 2);
+                var host = slash < 0 ? rest[2..] : rest[2..slash];
+                var isDrive = host.Length == 2 && host[1] == ':';
+                if (host.Length > 0 && !isDrive)
+                {
+                    var path = slash < 0 ? string.Empty : rest[slash..];
+                    if (!host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return "//" + host + path;
+                    }
+                    rest = path;
+                }
+            }
+            rest = rest.TrimStart('/');
             // "file:/C:/x" or "file:///C:/x" on Windows; "file:/srv/x" elsewhere.
             return rest.Length > 1 && rest[1] == ':' ? rest : "/" + rest;
         }

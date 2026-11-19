@@ -41,7 +41,7 @@ internal static class FontSubsetter
             }
             var start = GlyphOffset(glyph);
             var end = GlyphOffset(glyph + 1);
-            if (end - start < 10)
+            if (end - start < 10 || glyf.Offset + end > data.Length)
             {
                 continue;
             }
@@ -50,12 +50,18 @@ internal static class FontSubsetter
             {
                 continue;
             }
-            // Composite: flags, glyphIndex, args, optional transform.
+            // Composite: flags, glyphIndex, args, optional transform. A damaged record (past the glyph's end, or naming
+            // a glyph the font does not have) ends the walk; the glyph is copied as it is.
             at += 10;
-            while (true)
+            var recordEnd = glyf.Offset + end;
+            while (at + 4 <= recordEnd)
             {
                 var flags = BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(at));
                 var component = BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(at + 2));
+                if (component >= glyphCount)
+                {
+                    break;
+                }
                 if (!keep.Contains(component))
                 {
                     pending.Push(component);

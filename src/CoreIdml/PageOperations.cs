@@ -47,11 +47,8 @@ public sealed partial class IdmlDocument
         {
             throw new IdmlException("A document needs at least one page; this is its only page.");
         }
-        var page = pages[index];
-        foreach (var item in page.PageItems)
-        {
-            item.Remove();
-        }
+        // In one pass: removing item by item walked the whole document (frames, stories, tags) once per item.
+        RemoveItems(pages[index].PageItems);
         var order = Enumerable.Range(0, pages.Count).Where(i => i != index).ToList();
         Repaginate(pages, order);
     }
@@ -166,12 +163,16 @@ public sealed partial class IdmlDocument
                 newOrder[i].SetAttributeValue("Name", (i + 1).ToString(CultureInfo.InvariantCulture));
             }
         }
-        UpdateSections(sections, newOrder);
+        UpdateSections(sections, slots.Select(slot => slot.Page).ToList(), newOrder);
         DocumentPreference?.SetAttributeValue("PagesPerDocument", newOrder.Count.ToString(CultureInfo.InvariantCulture));
     }
 
-    /// <summary>Sections start at the same page as before (the next one if it was deleted); the first starts at page 1.</summary>
-    private static void UpdateSections(List<(XElement Section, string? Start)> sections, List<XElement> pages)
+    /// <summary>
+    /// Sections start at the same page as before; a section whose start page was deleted starts at the page that
+    /// followed it (and goes when no page follows, or when another section already starts there). The first section
+    /// starts at page 1.
+    /// </summary>
+    private static void UpdateSections(List<(XElement Section, string? Start)> sections, List<XElement> oldPages, List<XElement> pages)
     {
         if (sections.Count == 0)
         {
@@ -179,22 +180,41 @@ public sealed partial class IdmlDocument
         }
         var position = pages.Select((page, index) => (Id: page.Attribute("Self")?.Value ?? string.Empty, index))
             .ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
-        var starts = sections
-            .Select(entry => (entry.Section, Index: entry.Start is not null && position.TryGetValue(entry.Start, out var index) ? index : -1))
-            .ToList();
-        foreach (var (section, _) in starts.Where(entry => entry.Index < 0).Skip(starts[0].Index < 0 ? 1 : 0))
+        var oldIds = oldPages.Select(page => page.Attribute("Self")?.Value ?? string.Empty).ToList();
+        (int Index, bool Moved) Start(string? start)
+        {
+            if (start is null)
+            {
+                return (-1, false);
+            }
+            if (position.TryGetValue(start, out var index))
+            {
+                return (index, false);
+            }
+            // Deleted: the first later page (in the old order) that is still there.
+            var old = oldIds.IndexOf(start);
+            var following = old < 0 ? null : oldIds.Skip(old + 1).FirstOrDefault(position.ContainsKey);
+            return following is null ? (-1, false) : (position[following], true);
+        }
+        var starts = sections.Select(entry => (entry.Section, Start: Start(entry.Start))).ToList();
+        foreach (var (section, _) in starts.Where(entry => entry.Start.Index < 0).Skip(starts[0].Start.Index < 0 ? 1 : 0))
         {
             section.Remove();
         }
-        var kept = starts.Where(entry => entry.Section.Parent is not null).OrderBy(entry => entry.Index).ToList();
-        kept[0] = (kept[0].Section, 0);
+        var kept = starts.Where(entry => entry.Section.Parent is not null)
+            .Select(entry => (entry.Section, entry.Start.Index, entry.Start.Moved))
+            .OrderBy(entry => entry.Index)
+            .ToList();
+        kept[0] = kept[0] with { Index = 0 };
+        // Where two sections start at one page, one that started there before wins over one moved there.
         kept = kept.GroupBy(entry => entry.Index).Select(group =>
         {
-            foreach (var duplicate in group.Skip(1))
+            var ordered = group.OrderBy(entry => entry.Moved).ToList();
+            foreach (var duplicate in ordered.Skip(1))
             {
                 duplicate.Section.Remove();
             }
-            return group.First();
+            return ordered[0];
         }).OrderBy(entry => entry.Index).ToList();
         for (var i = 0; i < kept.Count; i++)
         {

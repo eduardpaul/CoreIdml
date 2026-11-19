@@ -160,7 +160,8 @@ internal static class Cli
                     : throw ToolException.Invalid($"'{args[0]}' writes an image: pass -o <file.png> (or -o - for stdout)."));
                 System.IO.File.WriteAllBytes(imagePath, png);
             }
-            if (binaryOutput is not null)
+            // A dry run (--dry-run with -o -) saves nothing: its report is the output, on stdout as usual.
+            if (binaryOutput is not null && System.IO.File.Exists(binaryOutput))
             {
                 // The document (or image) went to stdout; the report goes to stderr.
                 using (var stream = System.IO.File.OpenRead(binaryOutput))

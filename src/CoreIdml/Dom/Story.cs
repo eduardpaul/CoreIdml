@@ -38,11 +38,16 @@ public sealed class Story : IdmlNode
         }
     }
 
-    /// <summary>A story's frames (in document order) in thread order: from the first frame along NextTextFrame, then any others.</summary>
+    /// <summary>
+    /// A story's frames (in document order) in thread order: from the first frame along NextTextFrame, then any others.
+    /// The first frame is the first one with no previous frame among <paramref name="frames"/> (none at all, or one
+    /// that is not in the list: a broken thread, or master frames listed apart from page frames).
+    /// </summary>
     internal static List<TextFrame> ThreadOrder(List<TextFrame> frames)
     {
         var ordered = new List<TextFrame>();
-        var current = frames.FirstOrDefault(frame => frame.PreviousFrameId is null) ?? frames.FirstOrDefault();
+        var ids = frames.Select(frame => frame.Id).ToHashSet(StringComparer.Ordinal);
+        var current = frames.FirstOrDefault(frame => frame.PreviousFrameId is not { } previous || !ids.Contains(previous)) ?? frames.FirstOrDefault();
         while (current is not null && !ordered.Contains(current))
         {
             ordered.Add(current);

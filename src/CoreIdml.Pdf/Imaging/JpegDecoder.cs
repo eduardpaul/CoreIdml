@@ -68,7 +68,17 @@ internal sealed class JpegDecoder
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, buffer.Length);
-        return new JpegDecoder(buffer, length, scale).Run();
+        var decoder = new JpegDecoder(buffer, length, scale);
+        try
+        {
+            return decoder.Run();
+        }
+        catch (Exception exception) when (exception is IndexOutOfRangeException or ArgumentException or OverflowException)
+        {
+            // Damaged data that slipped past the checks (a marker or table pointing outside the file): the decoder's
+            // one failure is InvalidDataException, whatever the input.
+            throw new InvalidDataException("Corrupt JPEG data.", exception);
+        }
     }
 
     /// <summary>The decoded size of a side of <paramref name="size"/> pixels at <paramref name="scale"/> eighths.</summary>

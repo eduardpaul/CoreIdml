@@ -62,11 +62,15 @@ public sealed class PdfImportResult
 public static class IdmlPdf
 {
     /// <summary>Renders the document to PDF.</summary>
-    public static PdfExportResult Export(IdmlDocument document, Stream output, PdfExportOptions? options = null)
+    public static PdfExportResult Export(IdmlDocument document, Stream output, PdfExportOptions? options = null) =>
+        Export(document, output, options, linkFolder: null);
+
+    /// <summary>Renders the document; relative links resolve against <paramref name="linkFolder"/> unless <see cref="PdfExportOptions.DocumentPath"/> is set.</summary>
+    private static PdfExportResult Export(IdmlDocument document, Stream output, PdfExportOptions? options, string? linkFolder)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(output);
-        using var renderer = new IdmlRenderer(document, options ?? new PdfExportOptions());
+        using var renderer = new IdmlRenderer(document, options ?? new PdfExportOptions(), linkFolder);
         return renderer.Render(output);
     }
 
@@ -83,7 +87,7 @@ public static class IdmlPdf
             PdfExportResult result;
             using (var stream = File.Create(temporary))
             {
-                result = Export(document, stream, options);
+                result = Export(document, stream, options, Path.GetDirectoryName(full));
             }
             File.Move(temporary, full, overwrite: true);
             return result;

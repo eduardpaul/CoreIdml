@@ -513,7 +513,11 @@ internal sealed class TextComposer
             var soft = visible[^1];
             var hyphen = new List<Shaped>();
             ShapeText("-", soft.Style, hyphen);
-            visible[^1] = hyphen[0];
+            // A font without a hyphen glyph (reported as missing, as for any character): the break shows no hyphen.
+            if (hyphen.Count > 0)
+            {
+                visible[^1] = hyphen[0];
+            }
         }
         visible.RemoveAll(glyph => glyph.Kind == GlyphKind.SoftHyphen);
 

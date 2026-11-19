@@ -83,7 +83,8 @@ public sealed class Page : IdmlNode
                 margins = new XElement("MarginPreference");
                 Element.Add(margins);
             }
-            var columns = int.TryParse(margins.Attribute("ColumnCount")?.Value, CultureInfo.InvariantCulture, out var count) ? count : 1;
+            // A damaged ColumnCount (0 or negative) is read as one column, as InDesign does.
+            var columns = int.TryParse(margins.Attribute("ColumnCount")?.Value, CultureInfo.InvariantCulture, out var count) && count >= 1 ? count : 1;
             var gutter = IdmlXml.ParseDouble(margins.Attribute("ColumnGutter")?.Value) ?? 12;
             IdmlDocument.SetMargins(margins, value, columns, gutter, Size.Width);
         }
@@ -100,13 +101,31 @@ public sealed class Page : IdmlNode
         }
     }
 
-    /// <summary>Page items whose centre lies on this page.</summary>
+    /// <summary>
+    /// Page items whose centre lies on this page. Each item belongs to one page only: an item centred exactly on the
+    /// edge two pages share (the spine of a facing spread) belongs to the first of them.
+    /// </summary>
     public IReadOnlyList<PageItem> PageItems
     {
         get
         {
             var bounds = SpreadBounds;
-            return Spread.PageItems.Where(item => bounds.Contains(item.SpreadBounds.Center)).ToList();
+            // Pages of a spread do not overlap: only a centre on this page's edge can be on an earlier page as well.
+            List<Rect>? earlier = null;
+            return Spread.PageItems.Where(item =>
+            {
+                var center = item.SpreadBounds.Center;
+                if (!bounds.Contains(center))
+                {
+                    return false;
+                }
+                if (center.X > bounds.Left && center.X < bounds.Right && center.Y > bounds.Top && center.Y < bounds.Bottom)
+                {
+                    return true;
+                }
+                earlier ??= Spread.Pages.TakeWhile(page => page.Element != Element).Select(page => page.SpreadBounds).ToList();
+                return !earlier.Exists(other => other.Contains(center));
+            }).ToList();
         }
     }
 

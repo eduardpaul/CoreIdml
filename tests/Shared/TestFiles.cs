@@ -143,7 +143,8 @@ internal static class TestFiles
         return [.. bytes];
     }
 
-    private static void WriteChunk(Stream output, string type, byte[] data)
+    /// <summary>Writes a PNG chunk (length, type, data, CRC).</summary>
+    public static void WriteChunk(Stream output, string type, byte[] data)
     {
         Span<byte> length = stackalloc byte[4];
         BinaryPrimitives.WriteInt32BigEndian(length, data.Length);

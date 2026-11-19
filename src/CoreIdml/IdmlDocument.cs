@@ -112,6 +112,10 @@ public sealed partial class IdmlDocument : IDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "PageSize must be positive.");
         }
+        if (options.Columns < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Columns must be at least 1.");
+        }
 
         var package = IdmlPackage.Create();
         foreach (var (path, resource) in BlankParts)
@@ -324,7 +328,6 @@ public sealed partial class IdmlDocument : IDisposable
     internal Story CreateStory()
     {
         var id = NewId();
-        var path = $"Stories/Story_{id}.xml";
         var story = new XElement("Story",
             new XAttribute("Self", id),
             new XAttribute("AppliedTOCStyle", IdmlNames.NoReference),
@@ -340,13 +343,24 @@ public sealed partial class IdmlDocument : IDisposable
             new XElement("InCopyExportOption",
                 new XAttribute("IncludeGraphicProxies", "true"),
                 new XAttribute("IncludeAllResources", "false")));
+        return new Story(this, AddStoryPart(story), story);
+    }
+
+    /// <summary>
+    /// Adds <paramref name="story"/> (a Story element whose Self is a new id) as a story part of its own: the part,
+    /// its manifest entry and its place in the StoryList. Returns the part path.
+    /// </summary>
+    internal string AddStoryPart(XElement story)
+    {
+        var id = story.Attribute("Self")!.Value;
+        var path = $"Stories/Story_{id}.xml";
         var root = IdmlXml.PackageRoot("Story", DomVersion);
         root.Add(story);
         Package.SetXml(path, new XDocument(root));
         AddManifestReference("Story", path);
         var storyList = DesignMap.Attribute("StoryList")?.Value;
         DesignMap.SetAttributeValue("StoryList", string.IsNullOrEmpty(storyList) ? id : storyList + " " + id);
-        return new Story(this, path, story);
+        return path;
     }
 
     internal void DeleteStory(Story story)
