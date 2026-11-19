@@ -1,6 +1,6 @@
 {
   "name": "@coreidml/node",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "description": "Create, read, fill and edit Adobe InDesign IDML files from Node.js, and render them to PDF, without InDesign. Untouched parts are written back byte for byte.",
   "license": "MIT",
   "repository": {

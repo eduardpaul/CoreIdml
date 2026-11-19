@@ -1,7 +1,7 @@
 {
   "name": "coreidml",
   "displayName": "CoreIdml",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "description": "Read, fill, edit and lay out Adobe InDesign IDML files, find overset text, validate, preview pages and export PDF, with a local MCP server of 33 tools. No InDesign needed.",
   "author": {
     "name": "Eduard Paul",
