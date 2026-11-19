@@ -124,12 +124,13 @@ that should not alter output must leave every hash the same. Real documents make
 
 ## Packages and releases
 
-Versions: `Directory.Build.props` (`VersionPrefix`) is the one source. The manifests of the language packages repeat
-it, and so do the Claude plugin's `plugin.json`, its marketplace entry and the `@coreidml/cli@<version>` its
-`.mcp.json` pins; `node eng/set-version.mjs --check` fails when they disagree, and CI runs it.
+Versions: `Directory.Build.props` (`VersionPrefix`) holds the last release. The manifests of the language packages
+repeat it, and so do the Claude plugin's `plugin.json`, its marketplace entry and the `@coreidml/cli@<version>` its
+`.mcp.json` pins; `node eng/set-version.mjs --check` fails when they disagree, and CI runs it. Nobody edits them by
+hand.
 
-A release is a tag. Bump `VersionPrefix` (and the manifests: `node eng/set-version.mjs 1.2.0`) in a commit, then push
-`v1.2.0`. `.github/workflows/release.yml` then:
+A release is a tag, and nothing else: `git tag v1.2.0 && git push origin v1.2.0` (or `v1.2.0-rc.1` for a
+pre-release). The tag must not be older than the version on `main`. `.github/workflows/release.yml` then:
 
 1. builds the native library, the command line and a Python wheel on each platform (Windows x64 and arm64, Linux x64
    and arm64 in AlmaLinux 8 so they need only glibc 2.28, macOS arm64 and x64), the Android libraries and the
@@ -140,9 +141,17 @@ A release is a tag. Bump `VersionPrefix` (and the manifests: `node eng/set-versi
    WebAssembly engine, the Claude Desktop extensions (`eng/pack-mcpb.mjs`: the command line as an MCP Bundle for
    each desktop platform, from `bindings/mcpb/manifest.json`) with a `SHA256SUMS`, and checks that the staged npm
    packages install and run;
-3. publishes to NuGet, npm and PyPI, then creates the GitHub release with every file attached.
+3. publishes to NuGet, npm and PyPI, then creates the GitHub release with every file attached;
+4. commits the version to `main` ("Release 1.2.0", by `github-actions[bot]`, with `eng/set-version.mjs --release`):
+   `Directory.Build.props` and every manifest, so the plugin on `main` pins the `@coreidml/cli` that npm now has.
+   Only after npm published it, and not for pre-releases. A push with the workflow's own token starts no workflow,
+   so that commit shows no checks; it changes only version numbers.
 
-Every push to `main` runs steps 1 and 2 as a dry run (version `<prefix>-ci.<run>`), so the release path is always
+Every build takes its version from the tag (`-p:Version`, and `eng/set-version.mjs <version>` before packaging), so
+what is committed is never used to build a release. If a release fails, `main` is left as it was: fix the cause and
+re-run the failed jobs, or push a new tag.
+
+Every push to `main` runs steps 1 and 2 as a dry run (version `<next patch>-ci.<run>`), so the release path is always
 tested, and its publish steps are rehearsed against throwaway registries (Verdaccio, pypiserver, a local NuGet feed
 and a draft GitHub release that is deleted again).
 
@@ -151,16 +160,16 @@ with a repository variable, after its one-time trusted-publishing setup:
 
 - **NuGet**: on nuget.org, add a trusted publishing policy for this repository and `release.yml`, then set the
   repository variable `NUGET_USER` to the nuget.org account name (this switches NuGet on).
-- **npm**: the `coreidml` organization owns the `@coreidml` scope. npm lets a package trust a workflow only once the
-  package exists, so a release that publishes a package name for the first time uses the `NPM_TOKEN` secret of the
-  `release` environment (a granular access token with read and write access to the `@coreidml` packages, allowed to
-  publish without two-factor prompts). After that release, add this repository, workflow `release.yml` and
-  environment `release` as the trusted publisher of each new package on npmjs.com (package settings, Trusted
-  publishing). Once every package has one, delete the secret: later releases publish through OpenID Connect, with
-  provenance. The variable `PUBLISH_NPM` = `true` switches npm on. The package names: `@coreidml/node`,
-  `@coreidml/wasm`, `@coreidml/cli`, and the platform packages `@coreidml/node-<platform>` and
-  `@coreidml/cli-<platform>` for `win32-x64`, `win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64` and
-  `linux-arm64` (15 in all). A package added later needs the token once more.
+- **npm**: the `coreidml` organization owns the `@coreidml` scope. Releases publish through OpenID Connect (trusted
+  publishing), with provenance; no token. Trusted publishing is set up **per package** on npmjs.com (package
+  settings, Trusted publishing: GitHub Actions, user `eduardpaul`, repository `CoreIdml`, workflow `release.yml`,
+  environment `release`, publishing allowed). A package without it fails with nothing more than `ENEEDAUTH`. The
+  variable `PUBLISH_NPM` = `true` switches npm on. The package names: `@coreidml/node`, `@coreidml/wasm`,
+  `@coreidml/cli`, and the platform packages `@coreidml/node-<platform>` and `@coreidml/cli-<platform>` for
+  `win32-x64`, `win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64` and `linux-arm64` (15 in all). npm lets a
+  package trust a workflow only once it exists, so a package added later is published once by hand first (`npm
+  publish --access public` of its tarball from the release run's `release` artifact, logged in as an owner of the
+  scope), then given the trusted publisher.
 - **PyPI**: add a (pending) trusted publisher for the project `coreidml`: this repository, workflow `release.yml`,
   environment `release`. Switch it on with the repository variable `PUBLISH_PYPI` = `true`.
 - **GitHub**: create the environment `release` (Settings, Environments), optionally with required reviewers.
@@ -194,10 +203,9 @@ marketplace, so users install it with `/plugin marketplace add eduardpaul/CoreId
 `/plugin install coreidml@coreidml`. Check both with `claude plugin validate plugins/coreidml` and
 `claude plugin validate .`.
 
-The plugin's version and the npm version in `.mcp.json` move with every release (`eng/set-version.mjs`), and that
-exact version of `@coreidml/cli` must be on npm before anyone runs it: the marketplace is read from `main`, so
-`main` points at an unpublished version between the version bump and the end of the release. Keep that window short
-(bump, tag and push together) and do not bump the version on `main` long before a release.
+The plugin's version and the npm version in `.mcp.json` move with every release, and that exact version of
+`@coreidml/cli` must be on npm before anyone runs it, because the marketplace is read from `main`. The release
+workflow takes care of it: it commits the new version to `main` only after npm has published it (step 4 above).
 
 The plugin is listed in Anthropic's plugin directory from the developer portal (claude.ai/directory/manage, Submit
 new, Plugin bundle): repository `eduardpaul/CoreIdml`, plugin path `plugins/coreidml`. The directory follows a

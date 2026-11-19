@@ -2,9 +2,9 @@ name: Release
 
 # Builds every package of every platform, tests what was built, and publishes.
 #
-#   push of a v* tag        build, test, then publish: NuGet, npm, PyPI and a GitHub release (needs the tag's version
-#                           in Directory.Build.props and every manifest: node eng/set-version.mjs --check)
-#   push to main            the same build and tests as a dry run (version <prefix>-ci.<run>); nothing is published
+#   push of a v* tag        build, test, then publish: NuGet, npm, PyPI and a GitHub release, with the tag's version
+#                           (nothing to bump first); then commit that version to main (eng/set-version.mjs --release)
+#   push to main            the same build and tests as a dry run (version <next patch>-ci.<run>); nothing is published
 #   run by hand             a dry run of the chosen ref
 #
 # Publishing uses trusted publishing (OpenID Connect), so no long-lived secret is needed once the registries trust
@@ -42,17 +42,22 @@ jobs:
         name: Version of this build
         run: |
           node eng/set-version.mjs --check
-          prefix="$(node eng/set-version.mjs --print)"
+          # Directory.Build.props holds the last release; the tag names the new one.
+          last="$(node eng/set-version.mjs --print)"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
             base="${version%%-*}"
-            if [[ "$base" != "$prefix" ]]; then
-              echo "::error::The tag is $GITHUB_REF_NAME but Directory.Build.props says $prefix. Bump the version in a commit first."
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+              echo "::error::The tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-alpha|beta|rc.<n>]."
+              exit 1
+            fi
+            if [[ "$(printf '%s\n' "$last" "$base" | sort -V | head -n1)" != "$last" ]]; then
+              echo "::error::The tag $GITHUB_REF_NAME is older than the last release on main ($last)."
               exit 1
             fi
             publish=true
           else
-            version="$prefix-ci.$GITHUB_RUN_NUMBER"
+            version="$(node eng/set-version.mjs --next)-ci.$GITHUB_RUN_NUMBER"
             publish=false
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -537,11 +542,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+      # Trusted publishing: npm exchanges this job's OpenID Connect token for a short-lived one, per package, so every
+      # package needs the trusted publisher on npmjs.com (eduardpaul/CoreIdml, release.yml, environment release). When
+      # one does not have it, npm says only ENEEDAUTH.
       - name: Publish (platform packages first, then @coreidml/node, @coreidml/wasm and @coreidml/cli)
-        env:
-          # Only needed for the very first publish of a package; afterwards trusted publishing takes over.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@11
           tag=latest
@@ -588,3 +592,49 @@ jobs:
           prerelease=""
           [[ "${{ needs.version.outputs.version }}" == *-* ]] && prerelease="--prerelease"
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --title "CoreIdml ${{ needs.version.outputs.version }}" --generate-notes $prerelease
+
+  # Once a release is out, main names it: Directory.Build.props and every manifest, so the Claude plugin on main pins
+  # the @coreidml/cli that npm now has. Only after npm published it (the plugin would otherwise pin a version that does
+  # not exist), and not for pre-releases. A push with the workflow's own token starts no workflow, so this commit runs
+  # no CI; it changes nothing but version numbers.
+  main-version:
+    name: version on main
+    needs: [version, npm, github]
+    if: >-
+      !cancelled() && needs.github.result == 'success' && needs.npm.result == 'success'
+      && !contains(needs.version.outputs.version, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - name: Commit the version to main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Retried in case main moves between the fetch and the push.
+          for attempt in 1 2 3; do
+            git fetch --quiet origin main
+            git reset --quiet --hard origin/main
+            current="$(node eng/set-version.mjs --print)"
+            if [[ "$(printf '%s\n' "$current" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]]; then
+              echo "main is at $current already, after $VERSION; nothing to do."
+              exit 0
+            fi
+            node eng/set-version.mjs --release "$VERSION"
+            node eng/set-version.mjs --check
+            if git diff --quiet; then
+              echo "main is at $VERSION already."
+              exit 0
+            fi
+            git commit --quiet -am "Release $VERSION" -m "Directory.Build.props and every manifest at $VERSION, written by the release workflow after v$VERSION was published."
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "main moved; trying again."
+          done
+          exit 1
