@@ -1,1 +1,1 @@
-coreidml==0.0.8
+coreidml==1.0.0

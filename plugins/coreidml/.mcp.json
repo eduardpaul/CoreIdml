@@ -2,7 +2,7 @@
   "mcpServers": {
     "coreidml": {
       "command": "npx",
-      "args": ["-y", "@coreidml/cli@0.0.8", "mcp"]
+      "args": ["-y", "@coreidml/cli@1.0.0", "mcp"]
     }
   }
 }

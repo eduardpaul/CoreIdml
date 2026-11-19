@@ -1,6 +1,6 @@
 {
   "name": "@coreidml/cli",
-  "version": "0.0.8",
+  "version": "1.0.0",
   "description": "The coreidml command line and MCP server for Adobe InDesign IDML files, as a native binary for your platform: summaries for AI agents, edits, templates, layout, PDF export and page previews. No InDesign or .NET needed.",
   "license": "MIT",
   "repository": {

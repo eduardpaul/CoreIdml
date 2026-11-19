@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Package">
-    <VersionPrefix>0.0.8</VersionPrefix>
+    <VersionPrefix>1.0.0</VersionPrefix>
     <!-- A release build (-p:CoreIdmlRelease=true) reports the plain version; any other build "<version>-dev+<commit>". -->
     <VersionSuffix Condition="'$(VersionSuffix)' == '' and '$(CoreIdmlRelease)' != 'true'">dev</VersionSuffix>
     <IncludeSourceRevisionInInformationalVersion Condition="'$(CoreIdmlRelease)' == 'true'">false</IncludeSourceRevisionInInformationalVersion>
