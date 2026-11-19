@@ -30,6 +30,14 @@ STORY = "Stories/Story_u188.xml"
 class LibraryTests(unittest.TestCase):
     def test_the_library_loads_and_reports_its_version(self):
         self.assertRegex(coreidml.version(), r"^\d+\.\d+\.\d+")
+
+    def test_the_package_reports_its_version(self):
+        from importlib import metadata
+
+        if INSTALLED:
+            self.assertEqual(coreidml.__version__, metadata.version("coreidml"))
+        else:
+            self.assertIsInstance(coreidml.__version__, str)
         self.assertEqual(coreidml.ABI_VERSION, 1)
         self.assertTrue(os.path.isfile(coreidml.library_path()), coreidml.library_path())
 

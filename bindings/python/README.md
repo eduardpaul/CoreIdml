@@ -259,6 +259,7 @@ except IdmlError as error:
 ### The library
 
 ```python
+coreidml.__version__      # version of this package, as installed
 coreidml.version()        # version of the engine
 coreidml.library_path()   # where the native library was loaded from
 ```
