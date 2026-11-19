@@ -12,6 +12,9 @@
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
+    <!-- The .NET tool also runs on .NET 10; the native binary (dotnet publish -r) is built for .NET 11 only. -->
+    <TargetFramework Condition="'$(RuntimeIdentifier)' == ''" />
+    <TargetFrameworks Condition="'$(RuntimeIdentifier)' == ''">net11.0;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>CoreIdml.Cli</RootNamespace>
     <PublishAot>true</PublishAot>
@@ -25,7 +28,7 @@
     <CliBinaryName>coreidml</CliBinaryName>
     <CliDistDir>$(ArtifactsPath)\cli\$(RuntimeIdentifier)\</CliDistDir>
 
-    <!-- Also a .NET tool, framework-dependent (needs the .NET 11 runtime); PublishAot applies to dotnet publish -r. -->
+    <!-- Also a .NET tool, framework-dependent (needs the .NET 10 or 11 runtime); PublishAot applies to dotnet publish -r. -->
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>$(CliBinaryName)</ToolCommandName>

@@ -69,11 +69,19 @@ public sealed partial class IdmlPackage
                     continue; // a directory entry
                 }
                 using var entryStream = entry.Open();
+                var data = ReadAll(entryStream, entry.Length);
+#if !NET11_0_OR_GREATER
+                // .NET 11 checks the CRC of every entry it reads; older runtimes do not.
+                if (Crc32(data) != entry.Crc32)
+                {
+                    throw new InvalidDataException($"The CRC of '{entry.FullName}' does not match its data.");
+                }
+#endif
                 var part = new Part(
-                    new RawPart(ReadAll(entryStream, entry.Length)),
+                    new RawPart(data),
                     modified: false,
                     entry.LastWriteTime,
-                    stored: entry.CompressionMethod == ZipCompressionMethod.Stored);
+                    stored: IsStored(entry));
                 if (!package.parts.TryAdd(entry.FullName, part))
                 {
                     throw new IdmlException(IdmlErrorKind.InvalidFormat, $"Not an IDML package: the entry '{entry.FullName}' appears twice.");
@@ -83,7 +91,7 @@ public sealed partial class IdmlPackage
         }
         catch (InvalidDataException exception)
         {
-            // Not a zip, an unsupported compression method, or (checked by .NET 11 on read) a failed CRC.
+            // Not a zip, an unsupported compression method, or a failed CRC (checked by .NET 11 on read, by Open itself before).
             throw new IdmlException(IdmlErrorKind.InvalidFormat, $"Not an IDML package: {exception.Message}", exception);
         }
         if (!package.Contains(IdmlNames.DesignMapPath))
@@ -296,6 +304,33 @@ public sealed partial class IdmlPackage
         }
         return buffer.ToArray();
     }
+
+#if NET11_0_OR_GREATER
+    private static bool IsStored(ZipArchiveEntry entry) => entry.CompressionMethod == ZipCompressionMethod.Stored;
+#else
+    private static readonly uint[] CrcTable = [.. Enumerable.Range(0, 256).Select(n =>
+    {
+        var c = (uint)n;
+        for (var k = 0; k < 8; k++)
+        {
+            c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+        }
+        return c;
+    })];
+
+    private static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        var crc = 0xFFFFFFFFu;
+        foreach (var value in data)
+        {
+            crc = CrcTable[(crc ^ value) & 0xFF] ^ (crc >> 8);
+        }
+        return crc ^ 0xFFFFFFFFu;
+    }
+
+    // No CompressionMethod before .NET 11. Deflate output never matches the input length exactly in practice.
+    private static bool IsStored(ZipArchiveEntry entry) => entry.CompressedLength == entry.Length;
+#endif
 
     private static XDocument Parse(string path, ReadOnlyMemory<byte> bytes)
     {

@@ -167,7 +167,7 @@ Checksums are verified on read and document type declarations are refused, so fi
 
 ## Good to know
 
-- Requires .NET 11. Runs on CoreCLR, Native AOT (including Android and iOS apps) and in the browser.
+- Requires .NET 10 or 11. Runs on CoreCLR, Native AOT (including Android and iOS apps) and in the browser.
 - A document is not thread-safe; use one per thread, or lock.
 - Images are linked, not embedded, as IDML always does: ship generated files with their images, or use
   `DocumentPackager` (InDesign's File > Package).

@@ -5,6 +5,8 @@
     It runs unchanged on CoreCLR, Native AOT (CoreIdml.Native) and Mono in the browser (CoreIdml.Wasm).
   -->
   <PropertyGroup>
+    <TargetFramework />
+    <TargetFrameworks>net11.0;net10.0</TargetFrameworks>
     <RootNamespace>CoreIdml</RootNamespace>
     <CoreIdmlRunsOnMono>true</CoreIdmlRunsOnMono>
     <!-- Turns on the trim, single-file and AOT analyzers; their warnings are build errors. -->

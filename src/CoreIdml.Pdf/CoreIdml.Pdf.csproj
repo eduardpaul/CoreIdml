@@ -8,6 +8,8 @@
     native library (Node, Python, Dart/Flutter, C) and in WebAssembly.
   -->
   <PropertyGroup>
+    <TargetFramework />
+    <TargetFrameworks>net11.0;net10.0</TargetFrameworks>
     <RootNamespace>CoreIdml.Pdf</RootNamespace>
     <CoreIdmlRunsOnMono>true</CoreIdmlRunsOnMono>
     <IsAotCompatible>true</IsAotCompatible>

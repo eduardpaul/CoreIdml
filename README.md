@@ -40,7 +40,7 @@ IdmlPdf.Export(template, "x200.pdf", new PdfExportOptions { DocumentPath = "x200
 
 | You write | Package | Install |
 | --- | --- | --- |
-| .NET 11 | [`CoreIdml`](src/CoreIdml/README.md), [`CoreIdml.Pdf`](src/CoreIdml.Pdf/README.md) | `dotnet add package CoreIdml.Pdf` |
+| .NET 10 or 11 | [`CoreIdml`](src/CoreIdml/README.md), [`CoreIdml.Pdf`](src/CoreIdml.Pdf/README.md) | `dotnet add package CoreIdml.Pdf` |
 | Node.js | [`@coreidml/node`](bindings/node/README.md) | `npm install @coreidml/node` |
 | Browser, or any JavaScript runtime | [`@coreidml/wasm`](bindings/wasm/README.md) | `npm install @coreidml/wasm` |
 | Python | [`coreidml`](bindings/python/README.md) | `pip install coreidml` |
@@ -132,7 +132,7 @@ with one set of codes:
 
 | | Verified on |
 | --- | --- |
-| .NET library | .NET 11 on Windows, Linux and macOS; trimming, Native AOT and Blazor WebAssembly safe |
+| .NET library | .NET 10 and 11 on Windows, Linux and macOS; trimming, Native AOT and Blazor WebAssembly safe |
 | Native library (Node.js, Python, Dart, C) and command line | Windows x64 and arm64, Linux x64 and arm64 (glibc 2.28 or later), macOS arm64 and x64, Android arm64-v8a and x86_64 |
 | WebAssembly build | Chromium-based browsers and Node.js |
 | Flutter | Android and Linux desktop ([sample app](samples/flutter_app/README.md)) |

@@ -85,7 +85,7 @@ foreach (var fit in measurer.CheckFit(doc).Where(fit => fit.Overset))
 
 ## Good to know
 
-- Requires .NET 11. Fonts are parsed once per process and shared between exports and measurers.
+- Requires .NET 10 or 11. Fonts are parsed once per process and shared between exports and measurers.
 - Encrypted PDFs cannot be read inside the Native AOT library on Android (no system crypto there): they are refused
   with a clear error instead of stopping the app.
 - The same engine for Node.js, the browser, Python, Dart/Flutter and C:

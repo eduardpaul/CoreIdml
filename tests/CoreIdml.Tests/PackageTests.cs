@@ -58,8 +58,13 @@ public class PackageTests
         Assert.Equal(IdmlNames.MimeType, Encoding.ASCII.GetString(bytes, 38, IdmlNames.MimeType.Length));
 
         using var archive = new ZipArchive(new MemoryStream(bytes));
+#if NET11_0_OR_GREATER
         Assert.Equal(ZipCompressionMethod.Stored, archive.Entries[0].CompressionMethod);
         Assert.All(archive.Entries.Skip(1), entry => Assert.Equal(ZipCompressionMethod.Deflate, entry.CompressionMethod));
+#else
+        Assert.Equal(archive.Entries[0].Length, archive.Entries[0].CompressedLength);
+        Assert.All(archive.Entries.Skip(1), entry => Assert.NotEqual(entry.Length, entry.CompressedLength));
+#endif
     }
 
     [Fact]
@@ -194,7 +199,7 @@ public class PackageTests
     [Fact]
     public void A_damaged_entry_is_an_invalid_format()
     {
-        // .NET 11 checks the CRC of every entry it reads. The mimetype entry is stored, so flipping one of its
+        // .NET 11 checks the CRC of every entry it reads (IdmlPackage does on .NET 10). The mimetype entry is stored, so flipping one of its
         // bytes leaves a zip that is structurally fine and wrong only in its content.
         var bytes = TestFiles.ArticleBytes;
         bytes[38] ^= 0xFF;

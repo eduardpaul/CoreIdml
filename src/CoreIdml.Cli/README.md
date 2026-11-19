@@ -5,7 +5,7 @@ templates, layout changes, PDF export and page previews. No InDesign needed.**
 
 ```sh
 npm install -g @coreidml/cli                 # the native binary for your platform, through npm (or: npx @coreidml/cli)
-dotnet tool install -g CoreIdml.Cli          # needs the .NET 11 runtime
+dotnet tool install -g CoreIdml.Cli          # needs the .NET 10 or 11 runtime
 ```
 
 Or download a single native binary (no .NET needed) for Windows, Linux or macOS from the
