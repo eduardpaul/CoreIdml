@@ -50,7 +50,7 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Checking $version with the demos of $(git rev-parse --short HEAD)"
-      # New versions take a while to be served everywhere: npm's CDN, nuget.org's indexing (often 10 minutes or more).
+      # New versions take a while to be served everywhere: npm's CDN, nuget.org's indexing (10 to 45 minutes, sometimes).
       - name: Wait until npm, PyPI and nuget.org serve it
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -62,24 +62,27 @@ jobs:
           for platform in win32-x64 win32-arm64 darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
             npm_packages+=("node-$platform" "cli-$platform")
           done
-          served() {
+          # Prints what is not served yet; nothing when everything is.
+          missing() {
             for name in "${npm_packages[@]}"; do
-              npm view "@coreidml/$name@$VERSION" version > /dev/null 2>&1 || return 1
+              npm view "@coreidml/$name@$VERSION" version > /dev/null 2>&1 || echo "npm @coreidml/$name"
             done
-            curl -fsS "https://pypi.org/pypi/coreidml/$VERSION/json" > /dev/null 2>&1 &&
+            curl -fsS "https://pypi.org/pypi/coreidml/$VERSION/json" > /dev/null 2>&1 || echo "PyPI coreidml"
             for id in coreidml coreidml.pdf coreidml.cli; do
-              curl -fsS "https://api.nuget.org/v3-flatcontainer/$id/index.json" | grep -q "\"$VERSION\"" || return 1
+              curl -fsS "https://api.nuget.org/v3-flatcontainer/$id/index.json" 2>/dev/null | grep -q "\"$VERSION\"" || echo "nuget.org $id"
             done
           }
-          for attempt in $(seq 1 60); do
-            if served; then
+          for attempt in $(seq 1 120); do
+            waiting="$(missing)"
+            if [[ -z "$waiting" ]]; then
               echo "$VERSION is served everywhere."
               sleep 60 # and a minute more for the registries' caches to catch up
               exit 0
             fi
+            echo "$(date -u +%H:%M) waiting for: $(echo $waiting)"
             sleep 30
           done
-          echo "::error::$VERSION was not served by every registry within 30 minutes."
+          echo "::error::$VERSION was not served by every registry within an hour: $(echo $waiting)."
           exit 1
 
   demos:
