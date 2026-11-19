@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "coreidml",
   "display_name": "CoreIdml: InDesign IDML",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Read, edit, fill and lay out Adobe InDesign IDML files, export them to PDF and preview pages. No InDesign needed.",
   "long_description": "CoreIdml gives Claude the tools to work on InDesign documents saved as IDML: summaries of pages, frames and stories; text edits and find and replace; filling templates from data; moving, resizing and duplicating items; adding, deleting and reordering pages; importing XML; merging documents; relinking images; checking whether text fits its frames; PDF export and page previews as images.\n\nEvery edit writes a new file (or replaces the original only when asked), and can be tried first as a dry run that reports the changes.\n\nGive files by their full path (for example C:\\Users\\you\\Documents\\brochure.idml).",
   "author": {

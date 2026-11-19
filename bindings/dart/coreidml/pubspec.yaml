@@ -1,6 +1,6 @@
 name: coreidml
 description: Create, fill and edit Adobe InDesign IDML files from Dart and Flutter, and convert them to and from PDF, without InDesign.
-version: 1.1.0
+version: 1.1.1
 repository: https://github.com/eduardpaul/CoreIdml/tree/main/bindings/dart/coreidml
 issue_tracker: https://github.com/eduardpaul/CoreIdml/issues
 publish_to: none
