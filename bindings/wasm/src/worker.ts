@@ -269,7 +269,16 @@ export class IdmlWorker {
         return;
       }
       this.#pending.delete(message.id);
-      if (message.kind === 'result') {
+      if (message.kind === 'result' && pending.cause !== undefined) {
+        // Cancelled on this thread after the worker had already finished (a short call can post every progress
+        // message and its result before this thread reads the first one): the cancellation still wins, so an
+        // exception thrown by onProgress is never lost. A document the import opened is closed again.
+        const handle = (message.value as { handle?: unknown } | null)?.handle;
+        if (typeof handle === 'number') {
+          IdmlWorker.send(this, { op: 'close', handle }).catch(() => {});
+        }
+        pending.reject(new IdmlError('The operation was cancelled.', Status.cancelled, pending.cause.value === undefined ? undefined : { cause: pending.cause.value }));
+      } else if (message.kind === 'result') {
         pending.resolve(message.value);
       } else {
         const cause = message.code === Status.cancelled && pending.cause?.value !== undefined ? pending.cause.value : message.cause;

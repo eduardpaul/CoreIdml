@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -144,6 +145,14 @@ export function runInWorker(native: Native, operation: WorkerOperation, control:
           }
           break;
         case 'result':
+          if (!settled && Atomics.load(flag, 0) !== 0) {
+            // Cancelled on this thread after the worker had already finished (a short call can post every progress
+            // message and its result before this thread reads the first one): the cancellation still wins, so an
+            // exception thrown by onProgress is never lost. Nothing of the result is left behind.
+            discard(message);
+            finish(true, () => reject(new IdmlError('The operation was cancelled.', Status.cancelled, cause !== undefined ? { cause } : undefined)));
+            break;
+          }
           if (settled && message.handle !== undefined) {
             native.documentClose(message.handle); // nobody is waiting for this document any more
           }
@@ -164,6 +173,16 @@ export function runInWorker(native: Native, operation: WorkerOperation, control:
     const onError = (error: Error): void => finish(false, () => reject(error));
     const onExit = (code: number): void =>
       finish(false, () => reject(new IdmlError(`The CoreIdml worker thread stopped (exit code ${code}) before the call finished.`)));
+
+    /** Releases what a finished call produced: the imported document, or the file the export wrote. */
+    function discard(message: Extract<WorkerMessage, { type: 'result' }>): void {
+      if (message.handle !== undefined) {
+        native.documentClose(message.handle);
+      }
+      if (operation.kind === 'exportPdfFile') {
+        rmSync(operation.path, { force: true });
+      }
+    }
 
     /** Settles once; a worker that answered goes back to the pool, one that failed or stopped does not. */
     function finish(answered: boolean, action: () => void): void {

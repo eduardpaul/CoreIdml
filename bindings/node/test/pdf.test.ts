@@ -275,6 +275,22 @@ describe('asynchronous (worker thread)', () => {
     );
   });
 
+  test('an exception in progress is not lost when the worker finished first, and nothing is left behind', async () => {
+    // One page: the worker posts its only progress message and the result before this thread reads either.
+    using doc = idml.create(manyPagesSpec(1, 1));
+    const failure = new Error('progress failed');
+    const onProgress = (): never => {
+      throw failure;
+    };
+    const isCause = (error: unknown): boolean => cancelled(error) && (error as IdmlError).cause === failure;
+    await assert.rejects(doc.exportPdfBytesAsync({ ...pdfFonts, onProgress }), isCause);
+    const path = join(temp, 'finished-then-cancelled.pdf');
+    await assert.rejects(doc.exportPdfAsync(path, { ...pdfFonts, onProgress }), isCause);
+    assert.equal(existsSync(path), false);
+    const pdf = doc.exportPdfBytes(pdfFonts).pdf;
+    await assert.rejects(idml.importPdfAsync(pdf, { onProgress }), isCause);
+  });
+
   test('an AbortSignal cancels: before the start, from progress, from a timer, and with AbortSignal.timeout', async () => {
     using doc = idml.create(manyPagesSpec(30));
     const before = new AbortController();

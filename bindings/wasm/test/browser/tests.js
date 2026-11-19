@@ -311,6 +311,14 @@ await test('worker: cancelling a PDF export', async () => {
     await rejectsWith(Status.cancelled, doc.exportPdfBytes({ useSystemFonts: false, onProgress: () => false }));
     assert(!worker.terminated, 'the worker keeps running');
     assert((await doc.exportPdfBytes({ useSystemFonts: false, pages: [1] })).report.pageCount === 1, 'and the document is usable');
+    // A one-page export finishes before this thread reads its progress message: what onProgress throws still
+    // cancels the call and is its cause.
+    const failure = new Error('progress failed');
+    const thrown = await rejectsWith(
+      Status.cancelled,
+      doc.exportPdfBytes({ useSystemFonts: false, pages: [1], onProgress: () => { throw failure; } }),
+    );
+    assert(thrown.cause === failure, `the exception is the cause, got ${thrown.cause}`);
     await doc.close();
   } else {
     // Without isolation a running call cannot be interrupted: aborting terminates the worker.
