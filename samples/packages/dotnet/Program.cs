@@ -21,7 +21,7 @@ void Check(bool condition, string what)
     }
 }
 
-Console.WriteLine($"CoreIdml {typeof(IdmlDocument).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion}");
+Console.WriteLine($"CoreIdml {typeof(IdmlDocument).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion} on .NET {Environment.Version}");
 using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(samples, "datasheet-data.json")));
 var data = new TemplateData();
 foreach (var field in json.RootElement.GetProperty("text").EnumerateObject())

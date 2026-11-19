@@ -8,7 +8,7 @@ a line per check and exits with 1 when one fails. The output goes to `out/` in i
 | Folder | Package | Run |
 | --- | --- | --- |
 | `python` | [`coreidml`](https://pypi.org/project/coreidml/) from PyPI | `pip install -r requirements.txt` then `python demo.py` |
-| `dotnet` | [`CoreIdml.Pdf`](https://www.nuget.org/packages/CoreIdml.Pdf) from nuget.org | `dotnet run` |
+| `dotnet` | [`CoreIdml.Pdf`](https://www.nuget.org/packages/CoreIdml.Pdf) from nuget.org | `dotnet run -f net11.0` or `dotnet run -f net10.0` |
 | `node` | [`@coreidml/node`](https://www.npmjs.com/package/@coreidml/node) from npm | `npm install` then `node demo.mjs` |
 | `web` | [`@coreidml/wasm`](https://www.npmjs.com/package/@coreidml/wasm) from npm, in a Web Worker | `npm install` then `node serve.mjs` and open the address it prints |
 
