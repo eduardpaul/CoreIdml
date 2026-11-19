@@ -30,6 +30,9 @@ foreach (var font in report.FontSubstitutions)
 }
 ```
 
+`IdmlPdf.ListFonts(options.Fonts)` lists the families an export can use, each with its style names as InDesign names
+them (`Arial`: `Regular`, `Italic`, `Bold`, `Bold Italic`), for choosing fonts that will not be substituted.
+
 ## IDML to PDF
 
 What is rendered: master items, groups, rotation, Bézier paths and rounded corners; CMYK, RGB and Lab swatches with

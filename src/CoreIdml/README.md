@@ -74,6 +74,10 @@ using var fromSpec = IdmlJson.CreateDocument("""
     """);
 ```
 
+`IdmlJson.CheckSpec(json)` lists what building a spec would ignore: unknown fields (with the field probably meant,
+`fontSize` for `size`) and fields that do not apply where they are. Every field of a spec, its unit, allowed values
+and defaults are in the [document spec reference](https://github.com/eduardpaul/CoreIdml/blob/main/plugins/coreidml/skills/idml-documents/references/document-spec.md).
+
 ## Reading and editing
 
 Every wrapper exposes its live `XElement` (`.Element`), so the full IDML vocabulary stays reachable.

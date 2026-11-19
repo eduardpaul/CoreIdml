@@ -14,7 +14,7 @@ internal static class FileTools
         {
             Name = "idml_fonts",
             Title = "Fonts report",
-            Description = "The font families the document uses (with InDesign's recorded styles and status) and, from composing its text with the given font folders as the PDF export does, which fonts are missing or substituted, by what, and the stories and pages they affect.",
+            Description = "The font families the document uses (InDesign's recorded styles and status) and, composing its text with the given fonts as the PDF export does, which are missing or substituted, by what, and the stories and pages affected.",
             InputSchema = Schema.Read(PdfTools.FontProperties),
             OutputSchema = """{"type":"object","properties":{"fonts":{"type":"array","items":{"type":"object","properties":{"family":{"type":"string"},"status":{"type":"string"},"styles":{"type":"array","items":{"type":"string"}}}}},"substitutions":{"type":"array","items":{"type":"object"}}},"required":["fonts","substitutions"]}""",
             Access = ToolAccess.Read,
@@ -62,11 +62,11 @@ internal static class FileTools
         new()
         {
             Name = "idml_relink_folder",
-            Title = "Relink missing links from a folder",
-            Description = "Relink every link whose file is missing to a file of the same name (case-insensitive) in the given folders, like InDesign's Relink to Folder. Links that already resolve are left alone unless all: true. Returns what was relinked and what is still missing.",
+            Title = "Relink from folders",
+            Description = "Relink every link whose file is missing to a same-named file (case-insensitive) in the folders, like InDesign's Relink to Folder. Returns what was relinked and what is still missing.",
             InputSchema = Schema.Edit(
-                """ "folders":{"type":"array","items":{"type":"string"},"description":"Absolute paths of the folders to search"},""" +
-                """ "all":{"type":"boolean","description":"Relink every link found in the folders, not only missing ones"},"refit":{"type":"boolean","description":"Re-measure images and fit them to their frames"}""",
+                """ "folders":{"type":"array","items":{"type":"string"}},""" +
+                """ "all":{"type":"boolean","description":"Also relink links that resolve"},"refit":{"type":"boolean","description":"Re-measure images and fit them to their frames"}""",
                 "folders"),
             OutputSchema = """{"type":"object","properties":{"relinked":{"type":"array","items":{"type":"object"}},"missing":{"type":"array","items":{"type":"object"}}},"required":["relinked","missing"]}""",
             Access = ToolAccess.Edit,
@@ -107,11 +107,11 @@ internal static class FileTools
         {
             Name = "idml_package",
             Title = "Package document",
-            Description = "Like InDesign's File > Package: a zip with the .idml and every linked file it can find under Links/ (where InDesign and the PDF export look), optionally with font files under Document fonts/ (fonts from fontDirectories whose file name matches a used family; check the fonts' licences before sending them). Reports missing links.",
+            Description = "Like InDesign's File > Package: a zip with the .idml, every linked file found (under Links/) and optionally font files (under Document fonts/; check font licences before sending). Reports missing links.",
             InputSchema = Schema.Read(
-                """ "outPath":{"type":"string","description":"Absolute path of the .zip to write"},""" +
+                """ "outPath":{"type":"string","description":"The .zip"},""" +
                 """ "linkDirectories":{"type":"array","items":{"type":"string"},"description":"More folders to find links in, by file name"},""" +
-                """ "fontDirectories":{"type":"array","items":{"type":"string"},"description":"Folders with font files to include (by family name in the file name)"}""",
+                """ "fontDirectories":{"type":"array","items":{"type":"string"},"description":"Font folders; files whose name matches a used family are included"}""",
                 "outPath"),
             OutputSchema = """{"type":"object","properties":{"outPath":{"type":"string"},"entries":{"type":"array","items":{"type":"string"}},"links":{"type":"object"},"missingLinks":{"type":"object"},"fonts":{"type":"array","items":{"type":"string"}}},"required":["outPath","entries"]}""",
             Access = ToolAccess.Write,

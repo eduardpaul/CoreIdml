@@ -216,12 +216,12 @@ internal static class JsonText
 /// <summary>Builds the JSON schemas of the tools from property fragments, adding the arguments every tool shares.</summary>
 internal static class Schema
 {
-    public const string PathProperty = """ "path":{"type":"string","description":"Absolute path of the .idml file (relative paths need 'coreidml mcp --root <dir>')"}""";
+    public const string PathProperty = """ "path":{"type":"string","description":"Absolute .idml path"}""";
 
-    private const string EditProperties =
-        """ "outPath":{"type":"string","description":"Write the edited document here (absolute path). Required unless inPlace or dryRun."},""" +
-        """ "inPlace":{"type":"boolean","description":"Overwrite path itself (atomically). Required when outPath is not given."},""" +
-        """ "dryRun":{"type":"boolean","description":"Save nothing; return the result, the text/link diff and the parts that would change."}""";
+    internal const string EditProperties =
+        """ "outPath":{"type":"string","description":"New file for the result; else inPlace or dryRun"},""" +
+        """ "inPlace":{"type":"boolean","description":"Overwrite path"},""" +
+        """ "dryRun":{"type":"boolean","description":"Preview: save nothing"}""";
 
     /// <summary>Schema of a tool reading one document (path plus <paramref name="properties"/>).</summary>
     public static string Read(string properties = "", params string[] required) => Object(Join(PathProperty, properties), ["path", .. required]);

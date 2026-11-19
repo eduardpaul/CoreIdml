@@ -8,15 +8,15 @@ namespace CoreIdml.Cli.Tools;
 internal static partial class PdfTools
 {
     internal const string FontProperties =
-        """ "fonts":{"type":"array","items":{"type":"string"},"description":"Absolute paths of font folders, searched before the system fonts"},""" +
-        """ "useSystemFonts":{"type":"boolean","description":"Also use the installed fonts (default true)"},""" +
-        """ "substitutions":{"type":"object","additionalProperties":{"type":"string"},"description":"Family replacements, e.g. {\"Minion Pro\":\"Liberation Serif\"}"}""";
+        """ "fonts":{"type":"array","items":{"type":"string"},"description":"Font folders, searched first"},""" +
+        """ "useSystemFonts":{"type":"boolean","description":"Default true"},""" +
+        """ "substitutions":{"type":"object","additionalProperties":{"type":"string"},"description":"Family replacements"}""";
 
     private const string LinkProperties =
-        """ "linkDirectories":{"type":"array","items":{"type":"string"},"description":"Folders searched by file name for images whose link path is missing (the document's folder and its Links folder are always searched)"}""";
+        """ "linkDirectories":{"type":"array","items":{"type":"string"},"description":"More folders to find missing images in, by file name"}""";
 
     private const string ReportSchema =
-        """{"type":"object","properties":{"outPath":{"type":"string"},"pageCount":{"type":"integer"},""" +
+        """{"type":"object","properties":{"outPath":{"type":"string"},"pageCount":{"type":"integer"},"oversetFrames":{"type":"array","items":{"type":"object"}},""" +
         """ "missingFonts":{"type":"array","items":{"type":"object","properties":{"requestedFamily":{"type":"string"},"requestedStyle":{"type":"string"},"usedFont":{"type":"string"},"reason":{"type":"string"},"stories":{"type":"array","items":{"type":"string"}},"pages":{"type":"array","items":{"type":"string"}}}}},""" +
         """ "missingImages":{"type":"array","items":{"type":"string"}},"oversetStories":{"type":"array","items":{"type":"string"}},"warnings":{"type":"array","items":{"type":"string"}}},"required":["outPath","pageCount"]}""";
 
@@ -24,19 +24,20 @@ internal static partial class PdfTools
     [
         RenderPageTool,
         CheckFitTool,
+        ListFontsTool,
         new()
         {
             Name = "idml_to_pdf",
             Title = "Export PDF",
-            Description = "Render the document to PDF with this library's own composer and fonts (an approximation of InDesign). Returns the PDF path and what differs from InDesign's output: missing fonts and what replaced them (with stories and pages), missing images, overset stories.",
+            Description = "Export a PDF with this library's own composer and fonts (approximates InDesign). Returns the PDF path, missing fonts and their replacements (stories, pages), missing images, overset stories and the frames they overflow (oversetFrames). Not drawn (kept in the .idml): gradients, effects other than opacity, text wrap, placed EPS/AI.",
             InputSchema = Schema.Read(
-                """ "outPath":{"type":"string","description":"Absolute path of the PDF; default the .idml path with .pdf"},""" +
-                """ "pages":{"type":"array","items":{"type":"integer","minimum":0},"description":"0-based pages to export; default all"},""" +
+                """ "outPath":{"type":"string","description":"Default: the .idml path with .pdf"},""" +
+                """ "pages":{"type":"array","items":{"type":"integer","minimum":0},"description":"0-based; default all"},""" +
                 FontProperties + "," + LinkProperties + "," +
-                """ "markMissingImages":{"type":"boolean","description":"Draw a crossed box where an image is missing"},""" +
-                """ "maxImageDpi":{"type":"number","exclusiveMinimum":0,"description":"Downsample placed images above this resolution at their placed size (smaller PDFs); default off"},""" +
-                """ "jpegQuality":{"type":"integer","minimum":1,"maximum":100,"description":"Quality of JPEGs re-encoded by maxImageDpi, default 85"},""" +
-                """ "options":{"type":"object","description":"Further export options as in the C API's idml_export_pdf (its pages are 1-based)"}"""),
+                """ "markMissingImages":{"type":"boolean","description":"Crossed box where an image is missing"},""" +
+                """ "maxImageDpi":{"type":"number","exclusiveMinimum":0,"description":"Downsample images above this placed resolution; default off"},""" +
+                """ "jpegQuality":{"type":"integer","minimum":1,"maximum":100,"description":"For maxImageDpi; default 85"},""" +
+                """ "options":{"type":"object","description":"More options as in the C API's idml_export_pdf (1-based pages)"}"""),
             OutputSchema = ReportSchema,
             Access = ToolAccess.Write,
             Idempotent = true,
@@ -47,21 +48,26 @@ internal static partial class PdfTools
                 var options = ExportOptions(args, path);
                 using var document = IdmlDocument.Open(path);
                 var result = IdmlPdf.Export(document, outPath, options);
-                return new(WithOutPath(PdfJson.ToJson(result), outPath));
+                var report = JsonNode.Parse(WithOutPath(PdfJson.ToJson(result), outPath))!.AsObject();
+                if (result.OversetStories.Count > 0)
+                {
+                    report["oversetFrames"] = OversetFrames(document, result.OversetStories);
+                }
+                return new(JsonText.Write(report));
             },
         },
         new()
         {
             Name = "idml_from_pdf",
             Title = "Import PDF",
-            Description = "Rebuild an editable .idml from a PDF: text frames with inferred paragraph/character styles, image frames (images are written to a folder next to the IDML, which links them), rectangles and lines. Returns counts, the fonts the new document needs (available or not) and warnings.",
+            Description = "Rebuild an editable .idml from a PDF (an approximation): text frames with inferred styles, image frames (images extracted to a linked folder), rectangles, lines. Returns counts, the fonts needed (available or not) and warnings.",
             InputSchema = Schema.Object(
-                """ "path":{"type":"string","description":"Absolute path of the PDF"},"outPath":{"type":"string","description":"Absolute path of the new .idml; default the PDF path with .idml"},""" +
-                """ "pages":{"type":"array","items":{"type":"integer","minimum":0},"description":"0-based pages to import; default all"},""" +
-                """ "imageDirectory":{"type":"string","description":"Where extracted images go; default <out>-links next to the IDML"},""" +
+                """ "path":{"type":"string","description":"Absolute PDF path"},"outPath":{"type":"string","description":"Default: the PDF path with .idml"},""" +
+                """ "pages":{"type":"array","items":{"type":"integer","minimum":0},"description":"0-based; default all"},""" +
+                """ "imageDirectory":{"type":"string","description":"Default <out>-links"},""" +
                 """ "preserveLineBreaks":{"type":"boolean"},"importShapes":{"type":"boolean","description":"Default true"},""" +
-                """ "fonts":{"type":"array","items":{"type":"string"},"description":"Font folders to check the needed fonts against"},"useSystemFonts":{"type":"boolean"},""" +
-                """ "options":{"type":"object","description":"Further import options as in the C API's idml_import_pdf (its pages are 1-based)"}""",
+                """ "fonts":{"type":"array","items":{"type":"string"},"description":"Font folders to check needed fonts against"},"useSystemFonts":{"type":"boolean"},""" +
+                """ "options":{"type":"object","description":"More options as in the C API's idml_import_pdf (1-based pages)"}""",
                 ["path"]),
             OutputSchema = """{"type":"object","properties":{"outPath":{"type":"string"},"textFrames":{"type":"integer"},"imageFrames":{"type":"integer"},"shapes":{"type":"integer"},"images":{"type":"array","items":{"type":"string"}},"fonts":{"type":"array","items":{"type":"object"}},"warnings":{"type":"array","items":{"type":"string"}}},"required":["outPath"]}""",
             Access = ToolAccess.Write,
@@ -94,11 +100,11 @@ internal static partial class PdfTools
     {
         Name = "idml_render_page",
         Title = "Preview a page",
-        Description = "Render one page as a PNG image (returned as MCP image content) so you can look at the layout: the page is exported with this library's PDF engine and rasterized with PDFium. Also returns the export report for that page (missing fonts and images, overset stories). Default 100 dpi; keep it at or below 150 for big pages.",
+        Description = "Render one page as a PNG image (via this library's PDF engine) to look at the layout, with that page's report: missing fonts and images, overset stories and their frames. Keep dpi at or below 150 for big pages. Not drawn (kept in the .idml): gradients, effects other than opacity, text wrap, placed EPS/AI.",
         InputSchema = Schema.Read(
-            """ "pageIndex":{"type":"integer","minimum":0,"description":"0-based page; default 0"},"dpi":{"type":"number","minimum":10,"maximum":300,"description":"Default 100"},""" +
+            """ "pageIndex":{"type":"integer","minimum":0,"description":"Default 0"},"dpi":{"type":"number","minimum":10,"maximum":300,"description":"Default 100"},""" +
             FontProperties + "," + LinkProperties),
-        OutputSchema = """{"type":"object","properties":{"rendered":{"type":"boolean"},"pageIndex":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},"dpi":{"type":"number"},"note":{"type":"string"},"pdfPath":{"type":"string"},"missingFonts":{"type":"array"},"missingImages":{"type":"array"},"oversetStories":{"type":"array"}},"required":["rendered","pageIndex"]}""",
+        OutputSchema = """{"type":"object","properties":{"rendered":{"type":"boolean"},"pageIndex":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},"dpi":{"type":"number"},"note":{"type":"string"},"pdfPath":{"type":"string"},"missingFonts":{"type":"array"},"missingImages":{"type":"array"},"oversetStories":{"type":"array"},"oversetFrames":{"type":"array"}},"required":["rendered","pageIndex"]}""",
         Access = ToolAccess.Read,
         Idempotent = true,
         Run = args =>
@@ -140,6 +146,10 @@ internal static partial class PdfTools
             {
                 result[key] = report[key]?.DeepClone();
             }
+            if (report["oversetStories"] is JsonArray { Count: > 0 } overset)
+            {
+                result["oversetFrames"] = OversetFrames(document, overset.Select(id => id!.GetValue<string>()));
+            }
             return new(JsonText.Write(result), png);
         },
     };
@@ -149,9 +159,9 @@ internal static partial class PdfTools
     {
         Name = "idml_check_fit",
         Title = "Check text fit",
-        Description = "Exact overset check with the PDF export's own fonts and composer (not the summary's estimate): for each story that does not fit its frames, how many lines and points overflow, the overset characters, and the lines placed in each frame. Use the same fonts as for idml_to_pdf; fonts that are missing (and what replaced them) are listed, since they change line breaks.",
+        Description = "Exact overset check with the PDF export's fonts and composer (not the summary's estimate): per story that does not fit, lines and points overflowing, overset characters, lines per frame. Pass the same fonts as for idml_to_pdf: fonts decide line breaks; missing ones and their replacements are listed.",
         InputSchema = Schema.Read(
-            """ "storyId":{"type":"string","description":"Check only this story"},"itemId":{"type":"string","description":"Check only the story of this text frame"},""" +
+            """ "storyId":{"type":"string","description":"Only this story"},"itemId":{"type":"string","description":"Only this text frame's story"},""" +
             """ "all":{"type":"boolean","description":"Also list stories that fit"},""" + FontProperties),
         OutputSchema = """{"type":"object","properties":{"checked":{"type":"integer"},"overset":{"type":"integer"},"stories":{"type":"array","items":{"type":"object","properties":{"storyId":{"type":"string"},"overset":{"type":"boolean"},"overflowLines":{"type":"integer"},"overflowPoints":{"type":"number"},"oversetCharacters":{"type":"integer"},"lines":{"type":"integer"},"frames":{"type":"array","items":{"type":"object"}}}}},"missingFonts":{"type":"array","items":{"type":"object"}}},"required":["checked","overset","stories"]}""",
         Access = ToolAccess.Read,
@@ -160,53 +170,123 @@ internal static partial class PdfTools
         {
             using var document = IdmlDocument.Open(args.ExistingFile("path"));
             var options = ExportOptions(args, args.ExistingFile("path"));
-            using var measurer = new TextMeasurer(document, options.Fonts);
-            IReadOnlyList<StoryFit> fits;
-            if (args.OptionalString("storyId") is { } storyId)
+            var storyId = args.OptionalString("storyId");
+            if (storyId is null && args.Has("itemId"))
             {
-                fits = [measurer.CheckFit(DocumentTools.RequireStory(document, storyId))];
+                storyId = (LayoutTools.RequireItem(document, args) as Dom.TextFrame ?? throw ToolException.Invalid($"Item {args.String("itemId")} is not a text frame.")).StoryId;
             }
-            else if (args.Has("itemId"))
+            else if (storyId is not null)
             {
-                var frame = LayoutTools.RequireItem(document, args) as Dom.TextFrame ?? throw ToolException.Invalid($"Item {args.String("itemId")} is not a text frame.");
-                fits = [measurer.CheckFit(frame.Story)];
+                DocumentTools.RequireStory(document, storyId);
             }
-            else
-            {
-                fits = measurer.CheckFit(document);
-            }
-            var listed = args.Bool("all") ? fits : fits.Where(fit => fit.Overset).ToList();
-            var result = new JsonObject
-            {
-                ["checked"] = fits.Count,
-                ["overset"] = fits.Count(fit => fit.Overset),
-                ["stories"] = new JsonArray([.. listed.Select(fit => (JsonNode)new JsonObject
-                {
-                    ["storyId"] = fit.StoryId,
-                    ["overset"] = fit.Overset,
-                    ["overflowLines"] = fit.OverflowLines,
-                    ["overflowPoints"] = fit.OverflowPoints,
-                    ["oversetCharacters"] = fit.OversetCharacters,
-                    ["lines"] = fit.Lines,
-                    ["frames"] = new JsonArray([.. fit.Frames.Select(frame => (JsonNode)new JsonObject
-                    {
-                        ["frameId"] = frame.FrameId,
-                        ["page"] = frame.PageName,
-                        ["lines"] = frame.Lines,
-                        ["textAreaHeight"] = frame.TextAreaHeight,
-                    })]),
-                })]),
-                ["missingFonts"] = new JsonArray([.. measurer.FontSubstitutions.Select(font => (JsonNode)new JsonObject
-                {
-                    ["requestedFamily"] = font.RequestedFamily,
-                    ["requestedStyle"] = font.RequestedStyle,
-                    ["usedFont"] = font.UsedFont,
-                    ["reason"] = font.Reason,
-                })]),
-            };
-            return new(JsonText.Write(result));
+            return new(JsonText.Write(FitReport(document, options.Fonts, args.Bool("all"), storyId)));
         },
     };
+
+    /// <summary>idml_list_fonts: the families and styles exports can use, to choose fonts before writing a spec or style.</summary>
+    private static ToolDefinition ListFontsTool => new()
+    {
+        Name = "idml_list_fonts",
+        Title = "List available fonts",
+        Description = "Font families (installed, plus the folders given) with exact style names that idml_to_pdf, idml_render_page and idml_check_fit can use: the values for font and fontStyle. Other families or styles are substituted. (idml_fonts reports a document's own fonts.)",
+        InputSchema = Schema.Object(
+            """ "query":{"type":"string","description":"Family name contains (case-insensitive)"},""" +
+            """ "max":{"type":"integer","minimum":1,"description":"Default 100"},""" + FontProperties,
+            []),
+        OutputSchema = """{"type":"object","properties":{"families":{"type":"array","items":{"type":"object","properties":{"family":{"type":"string"},"styles":{"type":"array","items":{"type":"string"}}}}},"total":{"type":"integer"},"truncated":{"type":"boolean"}},"required":["families","total","truncated"]}""",
+        Access = ToolAccess.Read,
+        Idempotent = true,
+        Run = args =>
+        {
+            var query = args.OptionalString("query");
+            var max = args.OptionalInt("max") ?? 100;
+            if (max < 1)
+            {
+                throw ToolException.Invalid("max must be 1 or more.");
+            }
+            var matching = IdmlPdf.ListFonts(ExportOptions(args, string.Empty).Fonts)
+                .Where(font => query is null || font.Family.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            return new(JsonText.Write(new JsonObject
+            {
+                ["families"] = new JsonArray([.. matching.Take(max).Select(font => (JsonNode)new JsonObject
+                {
+                    ["family"] = font.Family,
+                    ["styles"] = JsonText.Array(font.Styles),
+                })]),
+                ["total"] = matching.Count,
+                ["truncated"] = matching.Count > max,
+            }));
+        },
+    };
+
+    /// <summary>
+    /// The exact fit of every story (or one): for each that overflows, by how much, and the frames it runs through, with
+    /// their names. Stories that fit are listed only when <paramref name="all"/> is set.
+    /// </summary>
+    internal static JsonObject FitReport(IdmlDocument document, PdfFontOptions fonts, bool all, string? storyId = null)
+    {
+        using var measurer = new TextMeasurer(document, fonts);
+        IReadOnlyList<StoryFit> fits = storyId is null ? measurer.CheckFit(document) : [measurer.CheckFit(document.FindStory(storyId)!)];
+        var listed = all ? fits : fits.Where(fit => fit.Overset).ToList();
+        var names = document.AllPageItems.OfType<Dom.TextFrame>().ToDictionary(frame => frame.Id, frame => frame.Name, StringComparer.Ordinal);
+        return new JsonObject
+        {
+            ["checked"] = fits.Count,
+            ["overset"] = fits.Count(fit => fit.Overset),
+            ["stories"] = new JsonArray([.. listed.Select(fit => (JsonNode)new JsonObject
+            {
+                ["storyId"] = fit.StoryId,
+                ["overset"] = fit.Overset,
+                ["overflowLines"] = fit.OverflowLines,
+                ["overflowPoints"] = fit.OverflowPoints,
+                ["oversetCharacters"] = fit.OversetCharacters,
+                ["lines"] = fit.Lines,
+                ["frames"] = new JsonArray([.. fit.Frames.Select(frame => (JsonNode)WithoutNulls(new JsonObject
+                {
+                    ["frameId"] = frame.FrameId,
+                    ["name"] = names.GetValueOrDefault(frame.FrameId) is { Length: > 0 } name ? name : null,
+                    ["page"] = frame.PageName,
+                    ["lines"] = frame.Lines,
+                    ["textAreaHeight"] = frame.TextAreaHeight,
+                }))]),
+            })]),
+            ["missingFonts"] = new JsonArray([.. measurer.FontSubstitutions.Select(font => (JsonNode)new JsonObject
+            {
+                ["requestedFamily"] = font.RequestedFamily,
+                ["requestedStyle"] = font.RequestedStyle,
+                ["usedFont"] = font.UsedFont,
+                ["reason"] = font.Reason,
+            })]),
+        };
+    }
+
+    /// <summary>For each overflowing story, the frame its text runs out of (the last of its thread), by name and page.</summary>
+    internal static JsonArray OversetFrames(IdmlDocument document, IEnumerable<string> storyIds) =>
+        new([.. storyIds.Select(storyId =>
+        {
+            var frames = document.FindStory(storyId)?.Frames;
+            var last = frames is { Count: > 0 } ? frames[^1] : null;
+            return (JsonNode)WithoutNulls(new JsonObject
+            {
+                ["storyId"] = storyId,
+                ["frame"] = last?.Name is { Length: > 0 } name ? name : null,
+                ["frameId"] = last?.Id,
+                ["page"] = last?.Page?.Name,
+            });
+        })]);
+
+    private static JsonObject WithoutNulls(JsonObject value)
+    {
+        foreach (var (key, member) in value.ToList())
+        {
+            if (member is null)
+            {
+                value.Remove(key);
+            }
+        }
+        return value;
+    }
 
     /// <summary>Export options from a tool's arguments: the C API's options object first, then the tool's own arguments.</summary>
     internal static PdfExportOptions ExportOptions(ToolArguments args, string documentPath)

@@ -4,7 +4,8 @@ using System.Runtime.CompilerServices;
 namespace CoreIdml.Pdf.Fonts;
 
 /// <summary>What scanning a font file found about one face: its names and weight (see <see cref="FontLibrary"/>).</summary>
-internal sealed record FaceInfo(int Face, string[] FamilyKeys, string[] StyleKeys, string FullName, string PostScriptName, int Weight, bool Bold, bool Italic);
+/// <summary>One face of a font file: its keys for lookups, and its family and style as InDesign shows them.</summary>
+internal sealed record FaceInfo(int Face, string[] FamilyKeys, string[] StyleKeys, string FullName, string PostScriptName, int Weight, bool Bold, bool Italic, string Family, string Style);
 
 /// <summary>
 /// Font files scanned and parsed once per process instead of once per export or measurer (every report creates

@@ -99,8 +99,15 @@ export interface ItemSpec {
   y2?: number;
   fill?: string;
   fillTint?: number;
+  /** Rectangles and ellipses have no outline unless `stroke` is given; lines default to Black, 1 pt. */
   stroke?: string;
   strokeWeight?: number;
+  strokeTint?: number;
+  strokeType?: 'solid' | 'dashed' | 'dotted';
+  /** Ends of lines. */
+  endCap?: 'butt' | 'round' | 'projecting';
+  /** Opacity of the whole item, 0 to 100. */
+  opacity?: number;
   cornerRadius?: number;
   rotation?: number;
   /** Text of a text frame; may hold `{{placeholders}}`. */

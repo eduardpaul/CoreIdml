@@ -183,17 +183,23 @@ public static partial class IdmlJson
     {
         double U(double value) => Units.FromUnit(value, unit);
         var bounds = new Rect(U(item.X), U(item.Y), U(item.Width), U(item.Height));
+        var type = item.Type.ToLowerInvariant();
         var shape = new ShapeStyle
         {
             Fill = item.Fill is { } fill ? RequireSwatch(document, fill) : null,
             FillTint = item.FillTint,
-            Stroke = item.Stroke is { } stroke ? RequireSwatch(document, stroke) : null,
+            // A spec's shapes have no outline unless it asks for one (InDesign's default graphics frame style would
+            // draw a 1 pt black stroke around every rectangle and ellipse).
+            Stroke = item.Stroke is { } stroke ? RequireSwatch(document, stroke) : type is "rectangle" or "ellipse" ? Swatch.None : null,
             StrokeWeight = item.StrokeWeight,
+            StrokeTint = item.StrokeTint,
+            StrokeKind = item.StrokeType is { } strokeType ? ParseChoice<StrokeKind>(strokeType, "strokeType") : null,
+            EndCap = item.EndCap is { } endCap ? ParseChoice<LineCap>(endCap, "endCap") : null,
+            Opacity = item.Opacity,
             CornerRadius = item.CornerRadius is { } radius ? U(radius) : null,
             Rotation = item.Rotation,
         };
 
-        var type = item.Type.ToLowerInvariant();
         PageItem created;
         switch (type)
         {
@@ -214,7 +220,7 @@ public static partial class IdmlJson
                 }
                 if (item.VerticalAlign is { } align)
                 {
-                    frame.VerticalJustification = Enum.Parse<VerticalJustification>(align, ignoreCase: true);
+                    frame.VerticalJustification = ParseChoice<VerticalJustification>(align, "verticalAlign");
                 }
                 if (item.ContinueFrom is { } previousName)
                 {
@@ -270,7 +276,7 @@ public static partial class IdmlJson
                     table.SetRow(row, [.. rows[row]]);
                 }
                 created = frame;
-                shape = new ShapeStyle { Fill = shape.Fill, FillTint = shape.FillTint, Rotation = shape.Rotation };
+                shape = new ShapeStyle { Fill = shape.Fill, FillTint = shape.FillTint, Opacity = shape.Opacity, Rotation = shape.Rotation };
                 break;
             }
             default:
@@ -281,9 +287,18 @@ public static partial class IdmlJson
         {
             created.ApplyStyle(shape);
         }
-        else if (shape.Stroke is not null || shape.StrokeWeight is not null || shape.Rotation is not null)
+        else
         {
-            created.ApplyStyle(new ShapeStyle { Stroke = shape.Stroke, StrokeWeight = shape.StrokeWeight, Rotation = shape.Rotation });
+            created.ApplyStyle(new ShapeStyle
+            {
+                Stroke = shape.Stroke,
+                StrokeWeight = shape.StrokeWeight,
+                StrokeTint = shape.StrokeTint,
+                StrokeKind = shape.StrokeKind,
+                EndCap = shape.EndCap,
+                Opacity = shape.Opacity,
+                Rotation = shape.Rotation,
+            });
         }
         if (item.Label is { } label)
         {
@@ -355,7 +370,14 @@ public static partial class IdmlJson
     }
 
     private static ImageFit ParseFit(string? fit) =>
-        string.IsNullOrEmpty(fit) ? ImageFit.Fill : Enum.Parse<ImageFit>(fit, ignoreCase: true);
+        string.IsNullOrEmpty(fit) ? ImageFit.Fill : ParseChoice<ImageFit>(fit, "fit");
+
+    /// <summary>An enum value by name, ignoring case; anything else is an error that lists the names it accepts.</summary>
+    private static TEnum ParseChoice<TEnum>(string value, string field)
+        where TEnum : struct, Enum =>
+        Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : throw new IdmlException($"Unknown {field} '{value}'. Use {string.Join(", ", Enum.GetNames<TEnum>().Select(name => char.ToLowerInvariant(name[0]) + name[1..]))}.");
 
     private static ParagraphFormat ToParagraphFormat(IdmlDocument document, TextFormatSpec spec) => new()
     {
@@ -415,9 +437,9 @@ public static partial class IdmlJson
         var other => throw new IdmlException($"Unknown align '{other}'. Use left, center, right, justify or justifyAll."),
     };
 
-    private static Capitalization? ParseCaps(string? caps) => caps is null ? null : Enum.Parse<Capitalization>(caps, ignoreCase: true);
+    private static Capitalization? ParseCaps(string? caps) => caps is null ? null : ParseChoice<Capitalization>(caps, "caps");
 
-    private static TextPosition? ParsePosition(string? position) => position is null ? null : Enum.Parse<TextPosition>(position, ignoreCase: true);
+    private static TextPosition? ParsePosition(string? position) => position is null ? null : ParseChoice<TextPosition>(position, "position");
 
     private static Swatch RequireSwatch(IdmlDocument document, string name) =>
         document.Swatches.Find(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown swatch '{name}'. Declare it in colors first.");

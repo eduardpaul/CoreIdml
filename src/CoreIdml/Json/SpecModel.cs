@@ -165,6 +165,18 @@ public sealed class ItemSpec
 
     public double? StrokeWeight { get; set; }
 
+    /// <summary>Stroke tint in percent (100 = solid).</summary>
+    public double? StrokeTint { get; set; }
+
+    /// <summary>solid, dashed or dotted.</summary>
+    public string? StrokeType { get; set; }
+
+    /// <summary>Ends of lines: butt (default), round or projecting.</summary>
+    public string? EndCap { get; set; }
+
+    /// <summary>Opacity of the whole item in percent (100 = opaque).</summary>
+    public double? Opacity { get; set; }
+
     public double? CornerRadius { get; set; }
 
     public double? Rotation { get; set; }

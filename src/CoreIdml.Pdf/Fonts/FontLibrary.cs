@@ -26,6 +26,9 @@ public sealed record FontSubstitution(string RequestedFamily, string RequestedSt
 /// Finds font faces by InDesign family and style names in the configured folders, with substitution and fallback.
 /// Scanning reads only the font headers; faces are parsed on first use. Deterministic for a given set of folders.
 /// </summary>
+/// <summary>A font family that exports can use, and its styles as InDesign names them ("Regular", "Bold Italic").</summary>
+public sealed record AvailableFont(string Family, IReadOnlyList<string> Styles);
+
 internal sealed class FontLibrary
 {
     private static readonly string[] SansFamilies = ["Liberation Sans", "Arimo", "Arial", "Helvetica", "Helvetica Neue", "Roboto", "Noto Sans", "DejaVu Sans", "Open Sans"];
@@ -68,6 +71,46 @@ internal sealed class FontLibrary
 
     /// <summary>Number of faces found in the folders.</summary>
     public int FaceCount => entries.Count;
+
+    /// <summary>Every family found, with its styles, in the order fonts are searched (the first face of a name wins).</summary>
+    public IReadOnlyList<AvailableFont> Families()
+    {
+        var families = new Dictionary<string, (string Family, List<string> Styles, int Order)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.Where(entry => !entry.Family.StartsWith('.')))
+        {
+            if (!families.TryGetValue(entry.Family, out var family))
+            {
+                family = (entry.Family, [], families.Count);
+                families[entry.Family] = family;
+            }
+            if (!family.Styles.Contains(entry.Style, StringComparer.OrdinalIgnoreCase))
+            {
+                family.Styles.Add(entry.Style);
+            }
+        }
+        return [.. families.Values
+            .OrderBy(family => family.Family, StringComparer.OrdinalIgnoreCase)
+            .Select(family => new AvailableFont(family.Family, [.. family.Styles.OrderBy(StyleOrder).ThenBy(style => style, StringComparer.OrdinalIgnoreCase)]))];
+
+        // Regular first, then by weight words, italics after their upright style.
+        static int StyleOrder(string style)
+        {
+            var key = Normalize(style);
+            var weight = key switch
+            {
+                _ when key.Contains("thin", StringComparison.Ordinal) || key.Contains("hairline", StringComparison.Ordinal) => 1,
+                _ when key.Contains("extralight", StringComparison.Ordinal) || key.Contains("ultralight", StringComparison.Ordinal) => 2,
+                _ when key.Contains("light", StringComparison.Ordinal) => 3,
+                _ when key.Contains("medium", StringComparison.Ordinal) => 5,
+                _ when key.Contains("semibold", StringComparison.Ordinal) || key.Contains("demibold", StringComparison.Ordinal) => 6,
+                _ when key.Contains("extrabold", StringComparison.Ordinal) || key.Contains("ultrabold", StringComparison.Ordinal) => 8,
+                _ when key.Contains("bold", StringComparison.Ordinal) => 7,
+                _ when key.Contains("black", StringComparison.Ordinal) || key.Contains("heavy", StringComparison.Ordinal) => 9,
+                _ => 4,
+            };
+            return weight * 2 + (IsItalicStyle(style) ? 1 : 0);
+        }
+    }
 
     /// <summary>The face for an InDesign family and style ("Minion Pro", "Bold Italic"); never null.</summary>
     public FontFace Resolve(string? family, string? style, string? postScriptName = null, string? usedIn = null)
@@ -460,7 +503,9 @@ internal sealed class FontLibrary
                 Get(6),
                 weight,
                 bold,
-                italic));
+                italic,
+                family,
+                style.Length > 0 ? style : "Regular"));
         }
         return [.. result];
     }
@@ -548,10 +593,10 @@ internal sealed class FontLibrary
     }
 
     /// <summary>A face found in one of the sources.</summary>
-    private sealed record FaceEntry(IFontSource Source, string Path, int Face, string[] FamilyKeys, string[] StyleKeys, string FullName, string PostScriptName, int Weight, bool Bold, bool Italic)
+    private sealed record FaceEntry(IFontSource Source, string Path, int Face, string[] FamilyKeys, string[] StyleKeys, string FullName, string PostScriptName, int Weight, bool Bold, bool Italic, string Family, string Style)
     {
         public FaceEntry(IFontSource source, string path, FaceInfo info)
-            : this(source, path, info.Face, info.FamilyKeys, info.StyleKeys, info.FullName, info.PostScriptName, info.Weight, info.Bold, info.Italic)
+            : this(source, path, info.Face, info.FamilyKeys, info.StyleKeys, info.FullName, info.PostScriptName, info.Weight, info.Bold, info.Italic, info.Family, info.Style)
         {
         }
     }

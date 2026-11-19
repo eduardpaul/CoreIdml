@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CoreIdml.Cli;
+using CoreIdml.Json;
 
 namespace CoreIdml.Tests;
 
@@ -525,5 +526,159 @@ public class CliAndMcpTests
         document.Pages[0].AddText(new Rect(36, 36, 400, 60), text);
         document.Save(path);
         return path;
+    }
+
+    [Fact]
+    public void Create_reports_its_items_the_fields_it_ignored_and_the_text_that_does_not_fit()
+    {
+        var path = TestFiles.TempPath(".idml");
+        var client = new McpTestClient();
+
+        var result = client.CallJson("idml_create", new JsonObject
+        {
+            ["spec"] = JsonNode.Parse("""
+            {
+              "paragraphStyles": [ { "name": "Quote", "font": "Liberation Serif", "size": 18, "leading": 22, "fontSize": 18 } ],
+              "pages": [ { "items": [
+                { "type": "rectangle", "name": "band", "x": 0, "y": 0, "width": 595, "height": 80, "fill": "Black" },
+                { "type": "text", "name": "pull-quote", "x": 36, "y": 100, "width": 200, "height": 24, "style": "Quote",
+                  "text": "A quote far too long for a frame that has room for one line of it." }
+              ] } ]
+            }
+            """),
+            ["outPath"] = path,
+            ["checkFit"] = true,
+            ["fonts"] = new JsonArray(TestFiles.Fonts),
+            ["useSystemFonts"] = false,
+        });
+
+        Assert.True(result.GetProperty("isValid").GetBoolean());
+        var items = result.GetProperty("pages")[0].GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(["band", "pull-quote"], items.Select(item => item.GetProperty("name").GetString()));
+        Assert.Equal("Rectangle", items[0].GetProperty("type").GetString());
+        var story = items[1].GetProperty("story").GetString();
+        Assert.Equal(["paragraphStyles[0]: unknown field 'fontSize', ignored (did you mean 'size'?)."], result.GetProperty("warnings").EnumerateArray().Select(warning => warning.GetString()));
+        var overset = Assert.Single(result.GetProperty("fit").GetProperty("stories").EnumerateArray());
+        Assert.Equal(story, overset.GetProperty("storyId").GetString());
+        Assert.Equal("pull-quote", overset.GetProperty("frames")[0].GetProperty("name").GetString());
+
+        var render = client.CallJson("idml_check_fit", new JsonObject { ["path"] = path, ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false });
+        Assert.Equal("pull-quote", render.GetProperty("stories")[0].GetProperty("frames")[0].GetProperty("name").GetString());
+        var pdf = client.CallJson("idml_to_pdf", new JsonObject { ["path"] = path, ["outPath"] = TestFiles.TempPath(".pdf"), ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false });
+        var frame = Assert.Single(pdf.GetProperty("oversetFrames").EnumerateArray());
+        Assert.Equal("pull-quote", frame.GetProperty("frame").GetString());
+        Assert.Equal(story, frame.GetProperty("storyId").GetString());
+    }
+
+    [Fact]
+    public void Apply_lists_the_items_it_added()
+    {
+        var path = DocumentWithText("Hello");
+        var client = new McpTestClient();
+
+        var result = client.CallJson("idml_apply", new JsonObject
+        {
+            ["path"] = path,
+            ["spec"] = JsonNode.Parse("""{ "pages": [ { "index": 0, "items": [ { "type": "ellipse", "name": "dot", "x": 10, "y": 10, "width": 5, "height": 5, "colour": "Black" } ] }, { "items": [] } ] }"""),
+            ["outPath"] = TestFiles.TempPath(".idml"),
+        });
+
+        var added = Assert.Single(result.GetProperty("added").EnumerateArray());
+        Assert.Equal("dot", added.GetProperty("name").GetString());
+        Assert.Equal(0, added.GetProperty("page").GetInt32());
+        Assert.Equal(2, result.GetProperty("pageCount").GetInt32());
+        Assert.Contains("unknown field 'colour'", result.GetProperty("warnings")[0].GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Edit_item_changes_the_look_of_shapes_and_the_layout_of_text_frames()
+    {
+        var path = TestFiles.TempPath(".idml");
+        var edited = TestFiles.TempPath(".idml");
+        var client = new McpTestClient();
+        client.CallText("idml_create", new JsonObject
+        {
+            ["spec"] = JsonNode.Parse("""{ "pages": [ { "items": [ { "type": "rectangle", "name": "box", "x": 0, "y": 0, "width": 50, "height": 50 }, { "type": "text", "name": "copy", "x": 0, "y": 60, "width": 200, "height": 100, "text": "x" } ] } ] }"""),
+            ["outPath"] = path,
+        });
+
+        client.CallText("idml_batch", new JsonObject
+        {
+            ["path"] = path,
+            ["outPath"] = edited,
+            ["operations"] = JsonNode.Parse("""
+            [
+              { "tool": "idml_edit_item", "arguments": { "name": "box", "fill": "Black", "fillTint": 30, "stroke": "Black", "strokeWeight": 2, "strokeType": "dotted", "cornerRadius": 6, "opacity": 80 } },
+              { "tool": "idml_edit_item", "arguments": { "name": "copy", "columns": 2, "columnGutter": 9, "inset": { "all": 4, "top": 8 }, "verticalAlign": "bottom" } }
+            ]
+            """),
+        });
+
+        using var document = IdmlDocument.Open(edited);
+        var box = document.AllPageItems.Single(item => item.Name == "box").Element;
+        Assert.Equal("Color/Black", box.Attribute("FillColor")?.Value);
+        Assert.Equal("30", box.Attribute("FillTint")?.Value);
+        Assert.Equal("2", box.Attribute("StrokeWeight")?.Value);
+        Assert.Equal("StrokeStyle/$ID/Canned Dotted", box.Attribute("StrokeType")?.Value);
+        Assert.Equal("RoundedCorner", box.Attribute("TopLeftCornerOption")?.Value);
+        Assert.Equal("80", box.Element("TransparencySetting")?.Element("BlendingSetting")?.Attribute("Opacity")?.Value);
+        var copy = (Dom.TextFrame)document.AllPageItems.Single(item => item.Name == "copy");
+        Assert.Equal(2, copy.Columns);
+        Assert.Equal(9, copy.ColumnGutter);
+        Assert.Equal(new Spacing(8, 4, 4, 4), copy.Inset);
+        Assert.Equal(Dom.VerticalJustification.Bottom, copy.VerticalJustification);
+
+        Assert.Contains("apply to text frames", client.CallError("idml_edit_item", new JsonObject { ["path"] = edited, ["name"] = "box", ["columns"] = 2, ["dryRun"] = true }), StringComparison.Ordinal);
+        var unknown = client.CallError("idml_edit_item", new JsonObject { ["path"] = edited, ["name"] = "box", ["fill"] = "Teal", ["dryRun"] = true });
+        Assert.Contains("No swatch 'Teal'", unknown, StringComparison.Ordinal);
+        Assert.DoesNotContain("$ID/", unknown, StringComparison.Ordinal);
+        Assert.Contains("Use solid, dashed, dotted", client.CallError("idml_edit_item", new JsonObject { ["path"] = edited, ["name"] = "box", ["strokeType"] = "wavy", ["dryRun"] = true }), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void List_fonts_gives_families_and_their_styles()
+    {
+        var client = new McpTestClient();
+
+        var all = client.CallJson("idml_list_fonts", new JsonObject { ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false });
+        var serif = client.CallJson("idml_list_fonts", new JsonObject { ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false, ["query"] = "SERIF" });
+        var one = client.CallJson("idml_list_fonts", new JsonObject { ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false, ["max"] = 1 });
+
+        Assert.Equal(2, all.GetProperty("total").GetInt32());
+        var family = Assert.Single(serif.GetProperty("families").EnumerateArray());
+        Assert.Equal("Liberation Serif", family.GetProperty("family").GetString());
+        Assert.Equal(["Regular", "Italic", "Bold"], family.GetProperty("styles").EnumerateArray().Select(style => style.GetString()));
+        Assert.True(one.GetProperty("truncated").GetBoolean());
+        Assert.Single(one.GetProperty("families").EnumerateArray());
+    }
+
+    [Fact]
+    public void The_spec_schema_names_every_field_of_the_spec_model()
+    {
+        var tools = new McpTestClient().Request("tools/list").GetProperty("tools").EnumerateArray();
+        var schema = tools.Single(tool => tool.GetProperty("name").GetString() == "idml_create").GetProperty("inputSchema");
+        var definitions = schema.GetProperty("$defs");
+        var spec = definitions.GetProperty("spec").GetProperty("properties");
+
+        AssertFields(typeof(DocumentSpec), spec);
+        AssertFields(typeof(PageSetupSpec), spec.GetProperty("page").GetProperty("properties"));
+        AssertFields(typeof(ColorSpec), spec.GetProperty("colors").GetProperty("items").GetProperty("properties"));
+        AssertFields(typeof(PageSpec), spec.GetProperty("pages").GetProperty("items").GetProperty("properties"));
+        AssertFields(typeof(SpacingSpec), definitions.GetProperty("spacing").GetProperty("properties"));
+        AssertFields(typeof(TextFormatSpec), definitions.GetProperty("format").GetProperty("properties"));
+        AssertFields(typeof(StyleSpec), definitions.GetProperty("style").GetProperty("properties"));
+        AssertFields(typeof(ItemSpec), definitions.GetProperty("item").GetProperty("properties"));
+        var paragraph = definitions.GetProperty("item").GetProperty("properties").GetProperty("paragraphs").GetProperty("items");
+        AssertFields(typeof(ParagraphSpec), paragraph.GetProperty("properties"));
+        AssertFields(typeof(RunSpec), paragraph.GetProperty("properties").GetProperty("runs").GetProperty("items").GetProperty("properties"));
+        Assert.Equal("#/$defs/spec", schema.GetProperty("properties").GetProperty("spec").GetProperty("$ref").GetString());
+
+        static void AssertFields(Type model, JsonElement properties)
+        {
+            var declared = model.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+                .Select(property => char.ToLowerInvariant(property.Name[0]) + property.Name[1..])
+                .Order(StringComparer.Ordinal);
+            Assert.Equal(declared, properties.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+        }
     }
 }

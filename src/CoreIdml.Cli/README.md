@@ -37,13 +37,13 @@ that would change, and saves nothing.
 
 | Area | Commands |
 | --- | --- |
-| Read | `summary`, `story`, `find`, `validate`, `structure`, `export-xml`, `diff`, `fonts` |
+| Read | `summary`, `story`, `find`, `validate`, `structure`, `export-xml`, `diff`, `fonts`, `list-fonts` (the families and styles exports can use) |
 | Text and data | `set-text`, `replace`, `fill`, `relink`, `relink-folder`, `import-xml`, `apply`, `merge` |
-| Layout | `edit-item` (move, resize, layer, name), `delete-item`, `duplicate-item`, `add-page`, `delete-page`, `move-page`, `apply-style` |
+| Layout | `edit-item` (move, resize, fill, stroke, opacity, columns, inset, layer, name), `delete-item`, `duplicate-item`, `add-page`, `delete-page`, `move-page`, `apply-style` |
 | Several at once | `batch`: edits in order on one document; all or nothing; `--dry-run` returns the diff |
 | PDF and files | `to-pdf`, `from-pdf`, `render` (PNG preview), `check-fit`, `package` (the .idml with its links, like InDesign's Package), `create` |
 
-`coreidml tools` lists the 33 tools behind the commands, and `coreidml call <tool> '<json>'` runs any of them with
+`coreidml tools` lists the 34 tools behind the commands, and `coreidml call <tool> '<json>'` runs any of them with
 JSON arguments (the tools that define styles and colours or edit tables are reached this way).
 
 ## MCP server

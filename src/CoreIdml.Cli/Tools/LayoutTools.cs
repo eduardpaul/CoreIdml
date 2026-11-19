@@ -7,20 +7,20 @@ namespace CoreIdml.Cli.Tools;
 /// <summary>Layout edits: items (move, resize, layer, delete, duplicate), pages (add, delete, move), styles, colours, tables.</summary>
 internal static class LayoutTools
 {
-    private const string ItemProperty = """ "itemId":{"type":"string","description":"Page item id (Self) from idml_summarize or idml_find; or pass name"},"name":{"type":"string","description":"Item name or script label, instead of itemId"}""";
+    private const string ItemProperty = """ "itemId":{"type":"string","description":"From idml_summarize or idml_find"},"name":{"type":"string","description":"Name or script label, instead of itemId"}""";
 
     public static IReadOnlyList<ToolDefinition> Definitions { get; } =
     [
         new()
         {
             Name = "idml_edit_item",
-            Title = "Move, resize or relayer an item",
-            Description = "Change a page item's geometry (page coordinates in points: x, y, width, height; any you leave out keep their value), move it to another page (pageIndex, same position), move it to another layer, rename it or lock/hide it. Rectangles, ovals and text frames can be resized; other items (groups, lines, polygons) can only be moved. Returns the new bounds.",
+            Title = "Edit an item",
+            Description = "Change a page item: geometry (x, y, width, height in pt, page coordinates; omitted ones keep their value), look, page (same position), layer, name, visibility, lock. columns, columnGutter, inset, verticalAlign: text frames only. Only rectangles, ovals and text frames resize; other items only move. Returns the new bounds.",
             InputSchema = Schema.Edit(ItemProperty + "," +
                 """ "x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number","exclusiveMinimum":0},"height":{"type":"number","exclusiveMinimum":0},""" +
-                """ "pageIndex":{"type":"integer","minimum":0,"description":"Move to this page (0-based), keeping the position on the page"},""" +
-                """ "layer":{"type":"string","description":"Name of the layer to move the item to"},"createLayer":{"type":"boolean","description":"Create the layer when it does not exist"},""" +
-                """ "newName":{"type":"string","description":"Rename the item"},"visible":{"type":"boolean"},"locked":{"type":"boolean"}"""),
+                """ "pageIndex":{"type":"integer","minimum":0,"description":"Move to this page"},""" +
+                """ "layer":{"type":"string","description":"Move to this layer"},"createLayer":{"type":"boolean","description":"Create the layer if missing"},""" +
+                """ "newName":{"type":"string"},"visible":{"type":"boolean"},"locked":{"type":"boolean"},""" + LookProperties),
             OutputSchema = BoundsSchema,
             Access = ToolAccess.Edit,
             Idempotent = true,
@@ -65,6 +65,7 @@ internal static class LayoutTools
                 {
                     item.Locked = locked;
                 }
+                ApplyLook(document, item, args);
                 return Describe(RequireItem(document, args, item.Id));
             },
         },
@@ -72,7 +73,7 @@ internal static class LayoutTools
         {
             Name = "idml_delete_item",
             Title = "Delete an item",
-            Description = "Remove a page item. A text frame's story goes too unless another frame still shows it (threads are joined); XML tags bound to it are unbound.",
+            Description = "Remove a page item. A text frame's story goes too unless another frame shows it (threads rejoined); bound XML tags are unbound.",
             InputSchema = Schema.Edit(ItemProperty),
             Access = ToolAccess.Edit,
             Apply = edit =>
@@ -86,9 +87,9 @@ internal static class LayoutTools
         {
             Name = "idml_duplicate_item",
             Title = "Duplicate an item",
-            Description = "Copy a top-level page item (with its own copy of the story for text frames, unthreaded and untagged), on the same or another page, optionally offset. Returns the new item's id and bounds.",
+            Description = "Copy a top-level page item (text frames get their own unthreaded, untagged story) to the same or another page, optionally offset. Returns the new id and bounds.",
             InputSchema = Schema.Edit(ItemProperty + "," +
-                """ "pageIndex":{"type":"integer","minimum":0,"description":"Page for the copy (0-based); default the item's page"},"offsetX":{"type":"number"},"offsetY":{"type":"number"}"""),
+                """ "pageIndex":{"type":"integer","minimum":0,"description":"Default the item's page"},"offsetX":{"type":"number"},"offsetY":{"type":"number"}"""),
             OutputSchema = BoundsSchema,
             Access = ToolAccess.Edit,
             Apply = edit =>
@@ -103,8 +104,8 @@ internal static class LayoutTools
         {
             Name = "idml_add_page",
             Title = "Add a page",
-            Description = "Insert a new empty page (with the first master) at a 0-based position; default at the end. Later pages move after it, with their items.",
-            InputSchema = Schema.Edit(""" "at":{"type":"integer","minimum":0,"description":"Position of the new page; default after the last page"}"""),
+            Description = "Insert an empty page (first master) at 0-based position 'at'; default at the end. Later pages shift with their items.",
+            InputSchema = Schema.Edit(""" "at":{"type":"integer","minimum":0}"""),
             OutputSchema = PageSchema,
             Access = ToolAccess.Edit,
             Apply = edit =>
@@ -118,7 +119,7 @@ internal static class LayoutTools
         {
             Name = "idml_delete_page",
             Title = "Delete a page",
-            Description = "Delete a page (0-based) and the items on it; later pages move up with their items, page numbers and sections follow.",
+            Description = "Delete a page (0-based) and its items; later pages, page numbers and sections follow.",
             InputSchema = Schema.Edit(""" "pageIndex":{"type":"integer","minimum":0}""", "pageIndex"),
             OutputSchema = PageSchema,
             Access = ToolAccess.Edit,
@@ -134,7 +135,7 @@ internal static class LayoutTools
         {
             Name = "idml_move_page",
             Title = "Move or reorder pages",
-            Description = "Move page 'from' to position 'to' (0-based), or give the whole new 'order' (every current page index once). Items move with their pages; masters, threads and sections stay consistent.",
+            Description = "Move page 'from' to position 'to' (0-based), or give the full new 'order' (every current index once). Items, masters, threads and sections follow.",
             InputSchema = Schema.Edit(""" "from":{"type":"integer","minimum":0},"to":{"type":"integer","minimum":0},"order":{"type":"array","items":{"type":"integer","minimum":0}}"""),
             OutputSchema = PageSchema,
             Access = ToolAccess.Edit,
@@ -156,10 +157,10 @@ internal static class LayoutTools
         {
             Name = "idml_apply_style",
             Title = "Apply a style to text",
-            Description = "Apply a paragraph style to body paragraph paragraphIndex (see idml_get_story with includeParagraphs), or a character style to content run runIndex, of a story. Local overrides are kept, like InDesign's default.",
+            Description = "Apply a paragraph style to body paragraph paragraphIndex (idml_get_story includeParagraphs), or a character style to content run runIndex. Local overrides are kept.",
             InputSchema = Schema.Edit(
                 """ "storyId":{"type":"string"},"paragraphIndex":{"type":"integer","minimum":0},"runIndex":{"type":"integer","minimum":0},""" +
-                """ "paragraphStyle":{"type":"string","description":"Paragraph style name (with paragraphIndex)"},"characterStyle":{"type":"string","description":"Character style name (with runIndex); [None] removes it"}""",
+                """ "paragraphStyle":{"type":"string","description":"With paragraphIndex"},"characterStyle":{"type":"string","description":"With runIndex; [None] removes"}""",
                 "storyId"),
             Access = ToolAccess.Edit,
             Idempotent = true,
@@ -190,7 +191,7 @@ internal static class LayoutTools
         {
             Name = "idml_define_style",
             Title = "Create or edit a style",
-            Description = "Create a paragraph or character style, or change an existing one's format (same fields as the JSON spec's styles: font, fontStyle, size, leading, color, tint, align, spaceBefore, spaceAfter, firstLineIndent, leftIndent, rightIndent, underline, strikeThrough, tracking, caps, position, basedOn). Only the fields you give change.",
+            Description = "Create a paragraph or character style, or update one by name; only the fields given change. Fields as in the spec's styles (size, leading, spacing, indents in pt).",
             InputSchema = Schema.Edit(
                 """ "kind":{"type":"string","enum":["paragraph","character"]},"name":{"type":"string"},"basedOn":{"type":"string"},""" +
                 """ "font":{"type":"string"},"fontStyle":{"type":"string"},"size":{"type":"number"},"leading":{"type":"number"},"color":{"type":"string","description":"Swatch name"},"tint":{"type":"number"},""" +
@@ -221,7 +222,7 @@ internal static class LayoutTools
         {
             Name = "idml_add_color",
             Title = "Add a colour",
-            Description = "Add a process colour swatch (or update the one with that name): cmyk [c,m,y,k] in percent, rgb [r,g,b] 0-255, or hex \"#RRGGBB\".",
+            Description = "Add or update (by name) a process colour swatch: cmyk [c,m,y,k] percent, rgb [r,g,b] 0-255, or hex \"#RRGGBB\".",
             InputSchema = Schema.Edit(
                 """ "name":{"type":"string"},"cmyk":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},"rgb":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"hex":{"type":"string"}""",
                 "name"),
@@ -242,9 +243,9 @@ internal static class LayoutTools
         {
             Name = "idml_edit_table",
             Title = "Edit a table",
-            Description = "Edit a table in an existing story: operations run in order, each one of {op:\"setCell\",row,column,text}, {op:\"setRow\",row,values:[...]}, {op:\"addRow\",values:[...]}, {op:\"setColumnWidth\",column,width}, {op:\"setRowHeight\",row,height}. Rows and columns are 0-based; widths in points. Returns the table's size.",
+            Description = "Edit a story's table. Operations run in order: {op:\"setCell\",row,column,text}, {op:\"setRow\",row,values}, {op:\"addRow\",values}, {op:\"setColumnWidth\",column,width}, {op:\"setRowHeight\",row,height}. 0-based; sizes in pt. Returns the table's size.",
             InputSchema = Schema.Edit(
-                """ "storyId":{"type":"string"},"tableIndex":{"type":"integer","minimum":0,"description":"Which table of the story; default 0"},""" +
+                """ "storyId":{"type":"string"},"tableIndex":{"type":"integer","minimum":0,"description":"Default 0"},""" +
                 """ "operations":{"type":"array","items":{"type":"object","properties":{"op":{"type":"string","enum":["setCell","setRow","addRow","setColumnWidth","setRowHeight"]},"row":{"type":"integer"},"column":{"type":"integer"},"text":{"type":"string"},"values":{"type":"array","items":{"type":"string"}},"width":{"type":"number"},"height":{"type":"number"}},"required":["op"]}}""",
                 "storyId", "operations"),
             Access = ToolAccess.Edit,
@@ -271,6 +272,79 @@ internal static class LayoutTools
             },
         },
     ];
+
+    internal const string LookProperties =
+        """ "fill":{"type":"string","description":"Swatch; None removes"},"fillTint":{"type":"number","minimum":0,"maximum":100},""" +
+        """ "stroke":{"type":"string","description":"Swatch; None removes"},"strokeWeight":{"type":"number","minimum":0},""" +
+        """ "strokeTint":{"type":"number","minimum":0,"maximum":100},"strokeType":{"type":"string","enum":["solid","dashed","dotted"]},""" +
+        """ "endCap":{"type":"string","enum":["butt","round","projecting"]},"cornerRadius":{"type":"number","minimum":0},""" +
+        """ "opacity":{"type":"number","minimum":0,"maximum":100},"rotateBy":{"type":"number","description":"Degrees counter-clockwise, around the centre"},""" +
+        """ "columns":{"type":"integer","minimum":1},"columnGutter":{"type":"number","minimum":0},""" +
+        """ "inset":{"type":"object","description":"Sides not given fall back to all, then keep their value","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},""" +
+        """ "verticalAlign":{"type":"string","enum":["top","center","bottom","justify"]}""";
+
+    /// <summary>The look arguments of idml_edit_item (see <see cref="LookProperties"/>) applied to an item.</summary>
+    internal static void ApplyLook(IdmlDocument document, PageItem item, ToolArguments args)
+    {
+        Swatch? SwatchArgument(string name) => args.OptionalString(name) is { } swatchName ? RequireSwatch(document, swatchName) : null;
+        var style = new ShapeStyle
+        {
+            Fill = SwatchArgument("fill"),
+            FillTint = args.OptionalDouble("fillTint"),
+            Stroke = SwatchArgument("stroke"),
+            StrokeWeight = args.OptionalDouble("strokeWeight"),
+            StrokeTint = args.OptionalDouble("strokeTint"),
+            StrokeKind = args.OptionalString("strokeType") is { } strokeType ? Choice<StrokeKind>(strokeType, "strokeType") : null,
+            EndCap = args.OptionalString("endCap") is { } endCap ? Choice<LineCap>(endCap, "endCap") : null,
+            CornerRadius = args.OptionalDouble("cornerRadius"),
+            Opacity = args.OptionalDouble("opacity"),
+            Rotation = args.OptionalDouble("rotateBy"),
+        };
+        item.ApplyStyle(style);
+
+        var textArguments = (string[])["columns", "columnGutter", "inset", "verticalAlign"];
+        if (!textArguments.Any(args.Has))
+        {
+            return;
+        }
+        if (item is not TextFrame frame)
+        {
+            throw ToolException.Invalid($"columns, columnGutter, inset and verticalAlign apply to text frames; {item.Id} is a {item.Kind}.");
+        }
+        if (args.OptionalInt("columns") is { } columns)
+        {
+            frame.Columns = columns >= 1 ? columns : throw ToolException.Invalid("columns must be 1 or more.");
+        }
+        if (args.OptionalDouble("columnGutter") is { } gutter)
+        {
+            frame.ColumnGutter = gutter;
+        }
+        if (args.OptionalObject("inset") is { } inset)
+        {
+            var current = frame.Inset;
+            var all = inset.OptionalDouble("all");
+            frame.Inset = new Spacing(
+                inset.OptionalDouble("top") ?? all ?? current.Top,
+                inset.OptionalDouble("right") ?? all ?? current.Right,
+                inset.OptionalDouble("bottom") ?? all ?? current.Bottom,
+                inset.OptionalDouble("left") ?? all ?? current.Left);
+        }
+        if (args.OptionalString("verticalAlign") is { } verticalAlign)
+        {
+            frame.VerticalJustification = Choice<VerticalJustification>(verticalAlign, "verticalAlign");
+        }
+    }
+
+    internal static Swatch RequireSwatch(IdmlDocument document, string name) =>
+        document.Swatches.Find(name)
+            ?? throw ToolException.NotFound($"No swatch '{name}' (swatches: {string.Join(", ", document.Swatches.All.Select(swatch => swatch.Name).Where(swatchName => !swatchName.StartsWith("$ID/", StringComparison.Ordinal)))}). Add one with idml_add_color.");
+
+    /// <summary>An enum value by name, ignoring case; anything else is an input error listing the names.</summary>
+    internal static TEnum Choice<TEnum>(string value, string argument)
+        where TEnum : struct, Enum =>
+        Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : throw ToolException.Invalid($"Unknown {argument} '{value}'. Use {string.Join(", ", Enum.GetNames<TEnum>().Select(name => char.ToLowerInvariant(name[0]) + name[1..]))}.");
 
     private const string BoundsSchema = """{"type":"object","properties":{"id":{"type":"string"},"kind":{"type":"string"},"name":{"type":"string"},"pageIndex":{"type":"integer"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"},"layer":{"type":"string"}},"required":["id","kind","x","y","width","height"]}""";
 

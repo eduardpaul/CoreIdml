@@ -12,59 +12,59 @@ internal static class McpPrompts
 {
     /// <summary>Sent in the initialize result: how the tools fit together.</summary>
     public const string Instructions = """
-        Tools for Adobe InDesign .idml files (no InDesign needed). Paths must be absolute unless the server was started with --root.
-        Usual workflow:
-        1. idml_summarize to see pages, frames, stories, links and styles. On big documents pass pages and sections to keep it small, or use idml_find to locate frames and stories by name, script label, XML tag or text.
-        2. idml_get_story for a story's indexed runs (and paragraphs) before editing text.
-        3. Edit: idml_set_text, idml_replace_text, idml_fill, idml_relink_image, idml_import_xml, layout tools (idml_edit_item, idml_add_page, idml_apply_style, idml_edit_table, ...), or several at once with idml_batch (atomic).
-           Edits never overwrite silently: pass outPath for a new file or inPlace: true; dryRun: true shows the change without saving.
-        4. idml_check_fit to see which frames overflow (lines and points, from the PDF composer) and fix them.
-        5. idml_validate before handing the file over.
-        6. idml_render_page to look at a page, idml_to_pdf for a PDF with the missing-font/link/overset report.
-        Coordinates are points, page-relative, origin top-left, y down. Page indices are 0-based.
+        Tools for Adobe InDesign .idml files (no InDesign needed). Paths absolute unless the server runs with --root.
+        Workflow:
+        1. idml_summarize (big documents: pass pages and sections) or idml_find (name, script label, XML tag, text) to locate frames, stories, links, styles.
+        2. idml_get_story for run (and paragraph) indices before editing text.
+        3. Edit: idml_set_text, idml_replace_text, idml_fill, idml_relink_image, idml_import_xml, layout tools (idml_edit_item, idml_add_page, idml_apply_style, idml_edit_table, ...); several at once with idml_batch (atomic). Edits never overwrite silently: pass outPath (new file) or inPlace: true; dryRun: true previews.
+        4. idml_check_fit: which frames overflow; fix and recheck.
+        5. idml_validate before handing over.
+        6. idml_render_page to look at a page; idml_to_pdf for a PDF with missing-font/link/overset report.
+        New document: idml_list_fonts for real font/style names; idml_create with checkFit: true (read its warnings); idml_render_page each page; fix with idml_edit_item calls in one idml_batch, not by recreating.
+        Coordinates: points, page-relative, top-left origin, y down. Page indices 0-based.
         """;
 
     public static IReadOnlyList<McpPrompt> All { get; } =
     [
         new("fill_template", "Fill a template",
-            "Fill an InDesign template with data, check that everything fits, and save the result.",
+            "Fill an InDesign template with data, check the fit, save the result.",
             [
                 new("path", "Absolute path of the template .idml"),
-                new("data", "The data to put in: text per field, image paths"),
-                new("outPath", "Absolute path of the filled .idml", Required: false),
+                new("data", "Text per field, image paths"),
+                new("outPath", "Absolute path for the result", Required: false),
             ],
             arguments => $"""
                 Fill the InDesign template {arguments["path"]} with this data:
 
                 {arguments["data"]}
 
-                1. Call idml_summarize (sections ["pages","stories"], maxTextLength 80) to learn the template's fields: frame names, script labels, XML tags and {Placeholder} placeholders.
-                2. Map the data onto those keys and call idml_fill with text and images, writing to {Out(arguments)}. Report keys that matched nothing.
-                3. Call idml_check_fit on the result. For each overflowing frame, shorten the text (idml_set_text) or enlarge the frame (idml_edit_item) and check again.
-                4. Call idml_validate, then idml_render_page on page 0 and look at the result.
+                1. idml_summarize (sections ["pages","stories"], maxTextLength 80) for the fields: frame names, script labels, XML tags, {Placeholder} placeholders.
+                2. Map the data onto those keys; idml_fill with text and images, writing to {Out(arguments)}. Report keys that matched nothing.
+                3. idml_check_fit on the result. Per overflowing frame, shorten the text (idml_set_text) or enlarge the frame (idml_edit_item); recheck.
+                4. idml_validate, then idml_render_page on page 0 and look at it.
                 """),
         new("review_document", "Review a document",
-            "Check an .idml file for overset text, missing fonts, missing links and structural problems.",
-            [new("path", "Absolute path of the .idml"), new("fonts", "Absolute path of a font folder to check against", Required: false)],
+            "Check an .idml for overset text, missing fonts and links, structural problems.",
+            [new("path", "Absolute path of the .idml"), new("fonts", "Absolute path of a font folder", Required: false)],
             arguments => $"""
                 Review the InDesign document {arguments["path"]} and report its problems, most serious first:
 
                 1. idml_validate: structural errors and warnings.
-                2. idml_check_fit: every frame and story whose text does not fit, with how many lines and points overflow.
-                3. idml_fonts{(arguments.TryGetValue("fonts", out var fonts) ? $" with fontDirectories [{Tools.JsonText.String(fonts)}]" : string.Empty)}: fonts that are missing or substituted, and the pages they affect.
-                4. idml_summarize (sections ["links"]): links whose files are missing; suggest idml_relink_folder if a folder holds them.
-                5. idml_render_page on the pages with problems, to confirm them visually.
-                Do not change the file; list concrete fixes for each problem.
+                2. idml_check_fit: stories that overflow, by lines and points.
+                3. idml_fonts{(arguments.TryGetValue("fonts", out var fonts) ? $" with fonts [{Tools.JsonText.String(fonts)}]" : string.Empty)}: missing or substituted fonts and the pages affected.
+                4. idml_summarize (sections ["links"]): missing link files; suggest idml_relink_folder if a folder holds them.
+                5. idml_render_page on pages with problems, to confirm visually.
+                Do not change the file; give concrete fixes per problem.
                 """),
         new("adjust_layout", "Adjust a layout",
-            "Change the layout of a document as described, verifying each step.",
+            "Change a layout as described, verifying each step.",
             [new("path", "Absolute path of the .idml"), new("change", "What should change"), new("outPath", "Absolute path for the result", Required: false)],
             arguments => $"""
                 In the InDesign document {arguments["path"]}, make this change: {arguments["change"]}
 
                 1. Locate the items with idml_find or idml_summarize (pages filter).
-                2. Plan the edits; prefer one idml_batch with dryRun: true first, then run it for real writing to {Out(arguments)}.
-                3. Verify with idml_check_fit, idml_validate and idml_render_page on the pages you changed.
+                2. Put the edits in one idml_batch: dryRun: true first, then for real, writing to {Out(arguments)}.
+                3. Verify with idml_check_fit, idml_validate and idml_render_page on the changed pages.
                 """),
     ];
 

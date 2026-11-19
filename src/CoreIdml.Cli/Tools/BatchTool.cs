@@ -12,9 +12,9 @@ internal static class BatchTool
     {
         Name = "idml_batch",
         Title = "Batch edits",
-        Description = "Run several edit tools on one document in a single open and save, in order. Atomic: if any operation fails, nothing is saved and the error names the operation. Each operation is {tool, arguments} with the tool's own arguments minus path/outPath/inPlace/dryRun, which belong to the batch. With dryRun: true, returns every result and the diff without saving.",
+        Description = "Run several edit tools in order on one document, in one open and save. Atomic: if any fails, nothing is saved and the error names it. Each operation is {tool, arguments}: the tool's arguments without path/outPath/inPlace/dryRun, which go on the batch.",
         InputSchema = Schema.Edit(
-            """ "operations":{"type":"array","minItems":1,"items":{"type":"object","properties":{"tool":{"type":"string","description":"An edit tool, e.g. idml_set_text, idml_edit_item, idml_apply_style"},"arguments":{"type":"object"}},"required":["tool"]}}""",
+            """ "operations":{"type":"array","minItems":1,"items":{"type":"object","properties":{"tool":{"type":"string","description":"An edit tool, e.g. idml_edit_item"},"arguments":{"type":"object"}},"required":["tool"]}}""",
             "operations"),
         OutputSchema = """{"type":"object","properties":{"operations":{"type":"integer"},"results":{"type":"array","items":{"type":"object","properties":{"tool":{"type":"string"},"result":{}}}}},"required":["operations","results"]}""",
         Access = ToolAccess.Edit,

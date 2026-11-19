@@ -78,7 +78,8 @@ const sheet = idml.create({
 
 A spec describes page setup, colours, paragraph and character styles, and pages of text frames (plain text,
 paragraphs or styled runs, columns, threading), images, tables and shapes. `DocumentSpec` in the type declarations
-lists every field. A JSON string is accepted too.
+lists every field, and the [document spec reference](https://github.com/eduardpaul/CoreIdml/blob/main/plugins/coreidml/skills/idml-documents/references/document-spec.md) gives
+their units, allowed values and defaults. A JSON string is accepted too.
 
 ### `IdmlDocument`
 

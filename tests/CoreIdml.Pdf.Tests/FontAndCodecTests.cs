@@ -89,4 +89,17 @@ public sealed class FontAndCodecTests
         Assert.Equal(channels, decoded.Channels);
         Assert.Equal(pixels, decoded.Pixels);
     }
+
+    [Fact]
+    public void ListFonts_gives_each_family_with_its_styles_as_InDesign_names_them()
+    {
+        var options = new PdfFontOptions { UseSystemFonts = false };
+        options.FontDirectories.Add(TestSupport.FontDirectory);
+
+        var fonts = IdmlPdf.ListFonts(options);
+
+        Assert.Equal(["Liberation Sans", "Liberation Serif"], fonts.Select(font => font.Family));
+        Assert.Equal(["Regular", "Bold"], fonts[0].Styles);
+        Assert.Equal(["Regular", "Italic", "Bold"], fonts[1].Styles);
+    }
 }

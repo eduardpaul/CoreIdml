@@ -61,6 +61,13 @@ public sealed class PdfImportResult
 /// </summary>
 public static class IdmlPdf
 {
+    /// <summary>
+    /// The font families an export with these options can use (its font folders and sources, then the system fonts
+    /// unless <see cref="PdfFontOptions.UseSystemFonts"/> is off), each with its styles, sorted by family. These are the
+    /// names a document's or a style's font family and style must match to be used without substitution.
+    /// </summary>
+    public static IReadOnlyList<AvailableFont> ListFonts(PdfFontOptions? options = null) => new FontLibrary(options ?? new PdfFontOptions()).Families();
+
     /// <summary>Renders the document to PDF.</summary>
     public static PdfExportResult Export(IdmlDocument document, Stream output, PdfExportOptions? options = null) =>
         Export(document, output, options, linkFolder: null);

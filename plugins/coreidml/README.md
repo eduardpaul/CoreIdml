@@ -6,7 +6,7 @@ page previews and export PDFs. Every change goes to a new file unless you ask fo
 
 The plugin adds two things:
 
-- **The CoreIdml MCP server**, with 33 tools (`idml_summarize`, `idml_fill`, `idml_set_text`, `idml_edit_item`,
+- **The CoreIdml MCP server**, with 34 tools (`idml_summarize`, `idml_fill`, `idml_set_text`, `idml_edit_item`,
   `idml_check_fit`, `idml_validate`, `idml_render_page`, `idml_to_pdf` and more) and three prompts (`fill_template`,
   `review_document`, `adjust_layout`). It is the `coreidml` command line, which runs on your computer.
 - **A skill**, `idml-documents`, that tells Claude how to use those tools safely: absolute paths, never overwriting
@@ -81,7 +81,7 @@ extension instead: the `coreidml-<version>-<platform>.mcpb` file from the
 
 - **The `coreidml` server does not connect** (`/mcp` shows it as failed). Check that `node --version` prints 18 or
   later. Then run the command Claude Code runs, in a terminal: `npx -y @coreidml/cli@<version> tools`, with the
-  version from this plugin's `.mcp.json`. It should list 33 tools; if it does not, the error it prints says why
+  version from this plugin's `.mcp.json`. It should list 34 tools; if it does not, the error it prints says why
   (no network or a blocked npm registry, a proxy that npm is not set up for, or an unsupported system).
 - **"The package @coreidml/cli-…, which holds the program for this machine, is not installed".** The native program
   exists for Windows, macOS and Linux with glibc on x64 and arm64. Alpine and other musl-based Linux systems are not supported. If npm is set to skip optional

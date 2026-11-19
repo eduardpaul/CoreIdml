@@ -26,6 +26,20 @@ public sealed class ShapeStyle
 
     /// <summary>Rotation in degrees around the item centre (counter-clockwise, like InDesign).</summary>
     public double? Rotation { get; init; }
+
+    /// <summary>How open stroke ends are drawn (lines and open paths).</summary>
+    public LineCap? EndCap { get; init; }
+
+    /// <summary>Opacity of the whole item in percent (100 = opaque), InDesign's Effects > Transparency.</summary>
+    public double? Opacity { get; init; }
+}
+
+/// <summary>Ends of open strokes, as InDesign's Stroke panel names them.</summary>
+public enum LineCap
+{
+    Butt,
+    Round,
+    Projecting,
 }
 
 /// <summary>Stroke styles every InDesign document has.</summary>
@@ -241,10 +255,52 @@ public abstract class PageItem : IdmlNode
                 SetAttribute(corner + "CornerRadius", IdmlXml.Format(radius));
             }
         }
+        if (style.EndCap is { } cap)
+        {
+            SetAttribute("EndCap", cap switch
+            {
+                LineCap.Round => "RoundEndCap",
+                LineCap.Projecting => "ProjectingEndCap",
+                _ => "ButtEndCap",
+            });
+        }
+        if (style.Opacity is { } opacity)
+        {
+            SetOpacity(opacity);
+        }
         if (style.Rotation is { } rotation && rotation != 0)
         {
             Rotate(rotation);
         }
+    }
+
+    // <Item><TransparencySetting><BlendingSetting Opacity="50" /></TransparencySetting></Item>, after Properties.
+    private void SetOpacity(double opacity)
+    {
+        if (opacity is < 0 or > 100)
+        {
+            throw new IdmlException($"Opacity {opacity} is outside 0 to 100.");
+        }
+        var transparency = Element.Element("TransparencySetting");
+        if (transparency is null)
+        {
+            transparency = new XElement("TransparencySetting");
+            if (Element.Element("Properties") is { } properties)
+            {
+                properties.AddAfterSelf(transparency);
+            }
+            else
+            {
+                Element.AddFirst(transparency);
+            }
+        }
+        var blending = transparency.Element("BlendingSetting");
+        if (blending is null)
+        {
+            blending = new XElement("BlendingSetting");
+            transparency.AddFirst(blending);
+        }
+        blending.SetAttributeValue("Opacity", IdmlXml.Format(opacity));
     }
 
     /// <summary>

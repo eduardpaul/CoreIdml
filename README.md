@@ -32,7 +32,7 @@ IdmlPdf.Export(template, "x200.pdf", new PdfExportOptions { DocumentPath = "x200
 - **PDF in, PDF out.** Export with embedded font subsets, images, tables, threads and hyphenation; rebuild editable
   IDML from a PDF; measure text exactly to find overset stories. All in managed code, on the device.
 - **Built for programs and agents.** Size-controlled JSON summaries with stable ids, indexed text runs, diffs,
-  validation, and an MCP server with 33 tools.
+  validation, and an MCP server with 34 tools.
 - **Runs where your code runs.** A server, a desktop app, a phone, a browser tab. No InDesign Server, no service to
   call; the native builds need no .NET runtime.
 

@@ -42,6 +42,8 @@ internal sealed class McpTestClient
         }
         var responses = Server.Handle(message.ToJsonString());
         Assert.Single(responses);
+        // Over stdio every message is one line: a line break inside one (a multi-line schema, say) breaks the client.
+        Assert.DoesNotContain('\n', responses[0]);
         return Parse(responses[0]);
     }
 

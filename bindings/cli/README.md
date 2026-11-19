@@ -22,7 +22,7 @@ optional dependencies (`--omit=optional`, or a lockfile made on another platform
 
 ## As an MCP server
 
-`coreidml mcp` serves 33 tools to Claude and other MCP clients over stdio. Pin the version so every start runs the
+`coreidml mcp` serves 34 tools to Claude and other MCP clients over stdio. Pin the version so every start runs the
 same build:
 
 ```json

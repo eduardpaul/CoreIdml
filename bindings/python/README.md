@@ -115,8 +115,9 @@ with Document.create(spec) as doc:
 
 Images are `{"type": "image", "path": "/photos/a.jpg", "fit": "fill", ...}`; IDML links images, so ship the files
 with the document. Every item also takes `name`, `label`, `tag` (to appear in the XML structure), `layer`,
-`fill`, `stroke`, `strokeWeight` and `rotation`. `doc.apply(spec)` adds a spec's styles and pages to an existing
-document.
+`fill`, `stroke` (shapes have no outline without one), `strokeWeight`, `strokeTint`, `strokeType`, `endCap`,
+`opacity` and `rotation`. `doc.apply(spec)` adds a spec's styles and pages to an existing document. Every field, its
+unit, allowed values and defaults are in the [document spec reference](https://github.com/eduardpaul/CoreIdml/blob/main/plugins/coreidml/skills/idml-documents/references/document-spec.md).
 
 ### Templates and text
 

@@ -13,10 +13,10 @@ internal static class EditTools
         {
             Name = "idml_set_text",
             Title = "Set run text",
-            Description = "Replace the text of one content run of a story, keeping its formatting and everything else in the file untouched.",
+            Description = "Replace one content run's text, keeping its formatting.",
             InputSchema = Schema.Edit(
                 """ "storyId":{"type":"string"},"runIndex":{"type":"integer","minimum":0},"text":{"type":"string"},""" +
-                """ "force":{"type":"boolean","description":"Allow overwriting runs holding special characters such as page numbers"}""",
+                """ "force":{"type":"boolean","description":"Allow overwriting special characters (page numbers...)"}""",
                 "storyId", "runIndex", "text"),
             Access = ToolAccess.Edit,
             Idempotent = true,
@@ -31,11 +31,11 @@ internal static class EditTools
         {
             Name = "idml_relink_image",
             Title = "Relink image",
-            Description = "Point an image link at another file (URI or local path), keeping the frame geometry; with refit, re-measure a local JPEG/PNG and fit it to the frame.",
+            Description = "Point an image link at another file (absolute path or URI), keeping the frame; refit re-measures a local JPEG/PNG and fits it to the frame.",
             InputSchema = Schema.Edit(
-                """ "linkId":{"type":"string","description":"Link id from idml_summarize links[].id"},""" +
-                """ "linkSelf":{"type":"string","description":"Same as linkId (idmlkit's name; linkId is preferred)"},""" +
-                """ "newUri":{"type":"string","description":"New file: absolute local path or URI"},"refit":{"type":"boolean"}""",
+                """ "linkId":{"type":"string","description":"idml_summarize links[].id"},""" +
+                """ "linkSelf":{"type":"string","description":"Alias of linkId"},""" +
+                """ "newUri":{"type":"string"},"refit":{"type":"boolean"}""",
                 "newUri"),
             Access = ToolAccess.Edit,
             Idempotent = true,
@@ -52,10 +52,10 @@ internal static class EditTools
         {
             Name = "idml_fill",
             Title = "Fill template",
-            Description = "Fill a template: text keys match frame names, script labels, XML tags, then {{key}} placeholders; image keys map to local JPEG/PNG paths. Reports filled and missing keys.",
+            Description = "Fill a template: text keys match frame names, script labels, XML tags, then {{key}} placeholders; image keys map to absolute JPEG/PNG paths. Returns filled and missing keys.",
             InputSchema = Schema.Edit(
-                """ "text":{"type":"object","additionalProperties":{"type":"string"}},"images":{"type":"object","additionalProperties":{"type":"string"},"description":"Key to absolute image path"},""" +
-                """ "fit":{"type":"string","enum":["fill","fit","stretch","center","original"]},"placeholderFormat":{"type":"string","description":"Placeholder pattern, default {{{{{0}}}}} (i.e. {{key}})"}"""),
+                """ "text":{"type":"object","additionalProperties":{"type":"string"}},"images":{"type":"object","additionalProperties":{"type":"string"}},""" +
+                """ "fit":{"type":"string","enum":["fill","fit","stretch","center","original"]},"placeholderFormat":{"type":"string","description":"Default {{{{{0}}}}}, i.e. {{key}}"}"""),
             OutputSchema = """{"type":"object","properties":{"filled":{"type":"object","additionalProperties":{"type":"integer"}},"missing":{"type":"array","items":{"type":"string"}}},"required":["filled","missing"]}""",
             Access = ToolAccess.Edit,
             Apply = edit => IdmlJson.Fill(edit.Document, FillJson(edit.Args)),
@@ -64,7 +64,7 @@ internal static class EditTools
         {
             Name = "idml_replace_text",
             Title = "Replace text",
-            Description = "Find and replace text in every story (matches may span formatting runs, not paragraphs). Returns the number of replacements.",
+            Description = "Find and replace text in every story (matches may span runs, not paragraphs). Returns the count.",
             InputSchema = Schema.Edit(""" "find":{"type":"string"},"replacement":{"type":"string"}""", "find", "replacement"),
             OutputSchema = """{"type":"object","properties":{"replacements":{"type":"integer"}},"required":["replacements"]}""",
             Access = ToolAccess.Edit,
@@ -82,13 +82,13 @@ internal static class EditTools
         {
             Name = "idml_import_xml",
             Title = "Import XML",
-            Description = "Import XML data onto the XML structure (SimpleIDML rules: simpleidml-setcontent=false|delete|clear|remove-previous-br, simpleidml-ignorecontent, simpleidml-forcecontent, href for images). Pass the XML inline (xml) or as a file (xmlPath).",
+            Description = "Import XML data onto the XML structure (SimpleIDML rules: simpleidml-setcontent=false|delete|clear|remove-previous-br, simpleidml-ignorecontent, simpleidml-forcecontent, href for images). Pass xml or xmlPath.",
             InputSchema = Schema.Edit(
-                """ "xml":{"type":"string","description":"The XML to import"},"xmlPath":{"type":"string","description":"Absolute path of an XML file to import instead of xml"},""" +
-                """ "at":{"type":"string","description":"Target structure path, default the root"},""" +
-                """ "fit":{"type":"string","enum":["fill","fit","stretch","center","original"],"description":"How href images are fitted, default fill"},""" +
-                """ "characterStyles":{"type":"object","additionalProperties":{"type":"string"},"description":"Inline tag to character style name, e.g. {\"b\":\"Bold\"}"},""" +
-                """ "relinkOnly":{"type":"boolean","description":"Only relink href images; do not re-measure or refit them"}"""),
+                """ "xml":{"type":"string"},"xmlPath":{"type":"string","description":"Absolute XML file path, instead of xml"},""" +
+                """ "at":{"type":"string","description":"Structure path; default root"},""" +
+                """ "fit":{"type":"string","enum":["fill","fit","stretch","center","original"],"description":"href images; default fill"},""" +
+                """ "characterStyles":{"type":"object","additionalProperties":{"type":"string"},"description":"Inline tag to character style, e.g. {\"b\":\"Bold\"}"},""" +
+                """ "relinkOnly":{"type":"boolean","description":"Relink href images without refitting"}"""),
             OutputSchema = """{"type":"object","properties":{"updated":{"type":"integer"},"added":{"type":"integer"},"deleted":{"type":"integer"},"unmatched":{"type":"array","items":{"type":"string"}},"warnings":{"type":"array","items":{"type":"string"}}},"required":["updated","added","deleted"]}""",
             Access = ToolAccess.Edit,
             Apply = edit =>
@@ -115,7 +115,7 @@ internal static class EditTools
         {
             Name = "idml_merge",
             Title = "Merge documents",
-            Description = "Append the pages of other .idml files to a document (ids remapped, styles and swatches merged), e.g. one page per record. Each source is a path, or {path, pages:[0-based page indices]} to take only some pages.",
+            Description = "Append the pages of other .idml files (ids remapped, styles and swatches merged). Each source is a path, or {path, pages:[0-based indices]}.",
             InputSchema = Schema.Edit(
                 """ "sources":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"object","properties":{"path":{"type":"string"},"pages":{"type":"array","items":{"type":"integer","minimum":0}}},"required":["path"]}]}}""",
                 "sources"),
@@ -139,32 +139,91 @@ internal static class EditTools
         {
             Name = "idml_apply",
             Title = "Apply JSON spec",
-            Description = "Add the colours, paragraph/character styles (created, or updated when the name exists) and pages of a JSON document spec to an existing document. Pages without 'index' are appended; {\"index\": N, \"items\": [...]} adds items to existing page N (0-based).",
-            InputSchema = Schema.Edit(""" "spec":{"type":"object","description":"Document spec (see idml_create)"}""", "spec"),
+            Description = "Add a document spec's colours, styles (updated when the name exists) and pages to an existing document. Pages without index are appended; {\"index\":N,\"items\":[...]} draws on existing page N (0-based). Returns the added items (id, name, type, story), warnings for ignored spec fields, and with checkFit the text that does not fit.",
+            // The full schema is idml_create's (repeating it here would double its cost in every tool listing).
+            InputSchema = Schema.Edit(
+                """ "spec":{"type":"object","description":"Fields as in idml_create's spec schema, without page: colors, characterStyles, paragraphStyles, pages."},""" +
+                CheckFitProperty + "," + PdfTools.FontProperties,
+                "spec"),
             Access = ToolAccess.Edit,
             Apply = edit =>
             {
-                IdmlJson.Apply(edit.Document, SpecJson(edit.Args));
-                return $"{{\"ok\":true,\"pageCount\":{edit.Document.Pages.Count}}}";
+                var json = SpecJson(edit.Args);
+                var warnings = IdmlJson.CheckSpec(json);
+                var before = edit.Document.AllPageItems.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+                IdmlJson.Apply(edit.Document, json);
+                var result = new JsonObject
+                {
+                    ["ok"] = true,
+                    ["pageCount"] = edit.Document.Pages.Count,
+                    ["added"] = new JsonArray([.. edit.Document.AllPageItems.Where(item => !before.Contains(item.Id)).Select(ItemEntry)]),
+                    ["warnings"] = JsonText.Array(warnings),
+                };
+                if (edit.Args.Bool("checkFit"))
+                {
+                    result["fit"] = PdfTools.FitReport(edit.Document, PdfTools.ExportOptions(edit.Args, edit.DocumentPath).Fonts, all: false);
+                }
+                return JsonText.Write(result);
             },
         },
         new()
         {
             Name = "idml_create",
             Title = "Create document",
-            Description = "Create a new .idml file from a JSON document spec (page setup, colors, paragraph/character styles, pages with text, image, rectangle, ellipse, line and table items). Returns the validation report.",
-            InputSchema = Schema.Object(
-                """ "spec":{"type":"object","description":"Document spec, see the Idml README"},"outPath":{"type":"string","description":"Absolute path of the new .idml"}""",
-                ["spec", "outPath"]),
+            Description = "Create a new .idml from a document spec (page setup, colours, styles, pages of text, table, image, rectangle, ellipse and line items). Returns the validation report, pages with the created items (id, name, type, story), warnings for ignored spec fields, and with checkFit the text that does not fit. Then idml_render_page each page.",
+            InputSchema = SpecSchema.Object(
+                SpecSchema.Property + "," +
+                """ "outPath":{"type":"string","description":"Absolute path of the new .idml"},""" + CheckFitProperty + "," + PdfTools.FontProperties,
+                "spec", "outPath"),
             Access = ToolAccess.Write,
             Run = args =>
             {
-                using var document = IdmlJson.CreateDocument(SpecJson(args));
-                EditSession.Save(document, args.Path("outPath"));
-                return new(IdmlJson.ValidateToJson(document));
+                var json = SpecJson(args);
+                var warnings = IdmlJson.CheckSpec(json);
+                var outPath = args.Path("outPath");
+                using var document = IdmlJson.CreateDocument(json);
+                EditSession.Save(document, outPath);
+                var result = JsonNode.Parse(IdmlJson.ValidateToJson(document))!.AsObject();
+                result["pages"] = new JsonArray([.. document.Pages.Select(page => (JsonNode)new JsonObject
+                {
+                    ["index"] = page.Index,
+                    ["items"] = new JsonArray([.. page.PageItems.Select(ItemEntry)]),
+                })]);
+                result["warnings"] = JsonText.Array(warnings);
+                if (args.Bool("checkFit"))
+                {
+                    result["fit"] = PdfTools.FitReport(document, PdfTools.ExportOptions(args, outPath).Fonts, all: false);
+                }
+                return new(JsonText.Write(result));
             },
         },
     ];
+
+    private const string CheckFitProperty =
+        """ "checkFit":{"type":"boolean","description":"Also return overflowing stories by frame name (as idml_check_fit)"}""";
+
+    /// <summary>An item as create and apply report it: what later calls need to address it.</summary>
+    private static JsonNode ItemEntry(PageItem item)
+    {
+        var entry = new JsonObject
+        {
+            ["id"] = item.Id,
+            ["type"] = item.Kind,
+        };
+        if (item.Name is { Length: > 0 } name)
+        {
+            entry["name"] = name;
+        }
+        if (item.Page is { } page)
+        {
+            entry["page"] = page.Index;
+        }
+        if (item is TextFrame frame)
+        {
+            entry["story"] = frame.StoryId;
+        }
+        return entry;
+    }
 
     private static string LinkId(ToolArguments args) =>
         args.OptionalString("linkId") ?? args.OptionalString("linkSelf") ?? throw ToolException.Invalid("Missing required argument 'linkId' (or its alias 'linkSelf').");

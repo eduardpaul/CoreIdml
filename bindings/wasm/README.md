@@ -171,8 +171,10 @@ const doc = idml.create({
 doc.fill({ text: { number: 'F-001' } });
 ```
 
-Every item also takes `name`, `label`, `tag` (to appear in the XML structure), `layer`, `fill`, `stroke`,
-`strokeWeight` and `rotation`. Images must be in the engine's file system, since they are measured to fit.
+Every item also takes `name`, `label`, `tag` (to appear in the XML structure), `layer`, `fill`, `stroke` (shapes
+have no outline without one), `strokeWeight`, `strokeTint`, `strokeType`, `endCap`, `opacity` and `rotation`. Images
+must be in the engine's file system, since they are measured to fit. Every field, its unit, allowed values and
+defaults are in the [document spec reference](https://github.com/eduardpaul/CoreIdml/blob/main/plugins/coreidml/skills/idml-documents/references/document-spec.md).
 
 ### Templates, text, links and XML
 
