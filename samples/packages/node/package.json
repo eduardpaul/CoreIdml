@@ -1,0 +1,12 @@
+{
+  "name": "coreidml-node-demo",
+  "private": true,
+  "type": "module",
+  "description": "The data sheet template filled with the published @coreidml/node package.",
+  "scripts": {
+    "start": "node demo.mjs"
+  },
+  "dependencies": {
+    "@coreidml/node": "0.0.8"
+  }
+}

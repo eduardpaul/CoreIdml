@@ -1,0 +1,13 @@
+{
+  "name": "coreidml-web-demo",
+  "private": true,
+  "type": "module",
+  "description": "The data sheet template filled in the browser with the published @coreidml/wasm package.",
+  "scripts": {
+    "start": "node serve.mjs",
+    "check": "node serve.mjs --check"
+  },
+  "dependencies": {
+    "@coreidml/wasm": "0.0.8"
+  }
+}

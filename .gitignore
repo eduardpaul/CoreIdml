@@ -37,6 +37,9 @@ bindings/python/src/coreidml/_lib/
 .dart_tool/
 pubspec.lock
 
+# What the demos of samples/packages write
+/samples/packages/*/out/
+
 # Local test samples that must never be committed
 real_samples*/
 

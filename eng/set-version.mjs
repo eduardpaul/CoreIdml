@@ -53,6 +53,11 @@ const manifests = [
   { path: 'plugins/coreidml/.claude-plugin/plugin.json', pattern: /^(  "version": ")([^"]+)(",)$/m, format: (v) => v },
   { path: 'plugins/coreidml/.mcp.json', pattern: /("@coreidml\/cli@)([^"]+)(")/, format: (v) => v },
   { path: '.claude-plugin/marketplace.json', pattern: /^(      "version": ")([^"]+)(",)$/m, format: (v) => v },
+  // The demos that install the published packages (samples/packages): the last release.
+  { path: 'samples/packages/python/requirements.txt', pattern: /^(coreidml==)(\S+)()$/m, format: pythonVersion },
+  { path: 'samples/packages/dotnet/Demo.csproj', pattern: /(<PackageReference Include="CoreIdml\.Pdf" Version=")([^"]+)(")/, format: (v) => v },
+  { path: 'samples/packages/node/package.json', pattern: /("@coreidml\/node": ")([^"]+)(")/, format: (v) => v },
+  { path: 'samples/packages/web/package.json', pattern: /("@coreidml\/wasm": ")([^"]+)(")/, format: (v) => v },
 ];
 
 const props = read('Directory.Build.props');

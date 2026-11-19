@@ -147,6 +147,11 @@ pre-release). The tag must not be older than the version on `main`. `.github/wor
    Only after npm published it, and not for pre-releases. A push with the workflow's own token starts no workflow,
    so that commit shows no checks; it changes only version numbers.
 
+When the release workflow has finished, `.github/workflows/packages.yml` (**Published packages**) waits until npm,
+PyPI and nuget.org serve the new version, then runs the demos of `samples/packages` (Python, .NET, Node.js and the
+browser) and the command line from npm and as a .NET tool, with the published packages, on Windows, macOS and
+Linux, x64 and arm64. Run it by hand to check any published version.
+
 Every build takes its version from the tag (`-p:Version`, and `eng/set-version.mjs <version>` before packaging), so
 what is committed is never used to build a release. If a release fails, `main` is left as it was: fix the cause and
 re-run the failed jobs, or push a new tag.

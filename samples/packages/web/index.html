@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoreIdml in the browser</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1d2433; }
+    h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+    pre { background: #f3f5f8; padding: .75rem 1rem; border-radius: 6px; white-space: pre-wrap; }
+    .links a { margin-right: 1rem; }
+    progress { width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>CoreIdml in the browser</h1>
+  <p>The data sheet template, filled with the published <code>@coreidml/wasm</code> package in a Web Worker: nothing
+    is uploaded anywhere.</p>
+  <progress id="progress" max="1" value="0"></progress>
+  <pre id="log">Starting the engine…</pre>
+  <p class="links" id="links"></p>
+  <script type="module" src="demo.js"></script>
+</body>
+</html>

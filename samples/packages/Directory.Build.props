@@ -1,0 +1,4 @@
+<Project>
+  <!-- The demos in this folder use the published packages, as any application would: none of the repository's build
+       settings (Directory.Build.props, Directory.Packages.props at the root) apply to them. -->
+</Project>

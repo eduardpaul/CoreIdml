@@ -1,0 +1,6 @@
+<Project>
+  <!-- See Directory.Build.props: package versions are in each demo's project, not managed centrally. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
