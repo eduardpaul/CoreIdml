@@ -25,6 +25,9 @@ includes tests and docs.
 | Gradients and effects | [gradients-and-effects.md](gradients-and-effects.md) |
 | Drop caps | [drop-caps.md](drop-caps.md) |
 
+For every other InDesign feature, what the MCP tools can author and what the preview draws, see
+[feature-matrix.md](feature-matrix.md). Its "Gaps not in the plan" section lists features the six plans do not cover.
+
 ## What the fixtures show, and phase 0
 
 All five IDMLs (`tests/fixtures/*.idml` and `docs/reference/InDesign/FICHA_CORESCEM_AP-ML.idml`) were unzipped and
