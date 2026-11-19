@@ -33,7 +33,7 @@ abstract final class CoreIdml {
   static CoreIdmlBindings load([String? path]) {
     final loaded = _bindings;
     if (loaded != null) {
-      if (path != null && path != _path) {
+      if (path != null && !_sameFile(path, _path)) {
         throw IdmlException('The native library is already loaded from $_path; a process can use only one.', CoreIdmlStatus.invalidOperation);
       }
       return loaded;
@@ -45,14 +45,42 @@ abstract final class CoreIdml {
     } on ArgumentError catch (error) {
       throw IdmlException('Could not load the CoreIdml native library from ${location ?? 'the app itself'}: $error');
     }
-    final bindings = CoreIdmlBindings(library);
-    final abi = bindings.abiVersion();
+    // The ABI version first, on its own: binding every function would fail on the first one an older library lacks,
+    // and the reason (another release) would be lost.
+    final int abi;
+    try {
+      abi = library.lookupFunction<Int32 Function(), int Function()>('coreidml_abi_version')();
+    } on ArgumentError catch (error) {
+      throw IdmlException('The library at ${location ?? 'the app itself'} is not the CoreIdml native library: $error');
+    }
     if (abi != coreIdmlAbiVersion) {
       throw IdmlException('The native library at $location has ABI version $abi; this package needs $coreIdmlAbiVersion. '
           'Use the library and the package from the same release.');
     }
+    final CoreIdmlBindings bindings;
+    try {
+      bindings = CoreIdmlBindings(library);
+    } on ArgumentError catch (error) {
+      throw IdmlException('The native library at $location lacks a function of ABI version $abi: $error');
+    }
     _path = location;
     return _bindings = bindings;
+  }
+
+  /// Whether two paths name the same file: links resolved, made absolute, and case ignored where file names ignore it.
+  static bool _sameFile(String a, String? b) {
+    if (b == null) return false;
+    if (a == b) return true;
+    String canonical(String path) {
+      try {
+        return File(path).resolveSymbolicLinksSync();
+      } on FileSystemException {
+        return File(path).absolute.path;
+      }
+    }
+
+    final (x, y) = (canonical(a), canonical(b));
+    return Platform.isWindows || Platform.isMacOS ? x.toLowerCase() == y.toLowerCase() : x == y;
   }
 
   /// The loaded library (loads it if needed).

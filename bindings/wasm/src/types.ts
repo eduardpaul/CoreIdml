@@ -372,7 +372,7 @@ export interface PdfExportOptions extends ProgressOptions {
 export interface PdfImportOptions extends ProgressOptions {
   /** 1-based page numbers; every page by default. */
   pages?: number[];
-  /** Where extracted images are written in the in-memory file system. Default: a new `/import/<n>` folder. */
+  /** Where extracted images are written in the in-memory file system. Default: a new `/import/<n>` folder, removed when the document is closed. */
   imageDirectory?: string;
   preserveLineBreaks?: boolean;
   /** Rebuilds vector shapes. Default true. */

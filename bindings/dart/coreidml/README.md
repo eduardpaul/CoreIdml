@@ -220,7 +220,8 @@ final (fromBytes, _) = await IdmlBackground.importPdfBytes(bytes, cancellation: 
 ```
 
 `progress` runs on your isolate. `cancel()` is seen by the background isolate while it renders: the work stops after
-the current page and the future fails with `CoreIdmlStatus.cancelled`. The document stays usable, and stays yours:
+the current page and the future fails with `CoreIdmlStatus.cancelled`. A `progress` that throws stops the work the
+same way, and the future fails with what it threw. The document stays usable, and stays yours:
 the library serializes calls on one document, so a call made meanwhile waits for the export. Do not close a document
 while background work on it is running. Documents imported in the background belong to your isolate like any other.
 

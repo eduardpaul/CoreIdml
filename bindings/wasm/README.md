@@ -226,8 +226,8 @@ folders of the engine's file system to use those instead. The report says what t
 
 The other way, `importPdf` rebuilds an editable document from the bytes of a PDF: text frames with inferred
 paragraph and character styles, image frames and shapes. IDML links its images, so the extracted images are written
-to `imageDirectory` (by default a new `/import/<n>` folder), where the document's links point, and returned as
-bytes too:
+to `imageDirectory` (by default a new `/import/<n>` folder, removed again when the document is closed), where the
+document's links point, and returned as bytes too:
 
 ```js
 const { document, report, imageDirectory, images } = idml.importPdf(pdfBytes);

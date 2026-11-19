@@ -1,4 +1,4 @@
-// Messages between the main thread and the worker that runs one PDF export or import (see background.ts).
+// Messages between the main thread and the pooled workers that run the PDF exports and imports (see background.ts).
 
 import type { PdfSource } from './calls.ts';
 

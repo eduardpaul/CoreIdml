@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ABI_VERSION, Status, type Out, type Pointer, type StatusCode } from './abi.generated.ts';
@@ -91,7 +93,7 @@ export class CoreIdml {
   static load(options: LoadOptions = {}): CoreIdml {
     const wanted = options.libraryPath === undefined ? undefined : toPath(options.libraryPath);
     if (loaded) {
-      if (wanted !== undefined && wanted !== loaded.libraryPath) {
+      if (wanted !== undefined && !sameFile(wanted, loaded.libraryPath)) {
         throw new IdmlError(`The native library is already loaded from ${loaded.libraryPath}; a process can use only one.`, Status.invalidOperation);
       }
       return loaded;
@@ -122,10 +124,7 @@ export class CoreIdml {
     if (typeof source === 'string' || source instanceof URL) {
       check(native, native.documentOpenFile(toPath(source), handle));
     } else {
-      const bytes = source instanceof ArrayBuffer ? new Uint8Array(source) : source;
-      if (!(bytes instanceof Uint8Array)) {
-        throw new IdmlError('source must be a path, a file: URL, or the bytes of an .idml file.', Status.invalidArgument);
-      }
+      const bytes = toBytes(source, 'source must be a path, a file: URL, or the bytes of an .idml file.');
       check(native, native.documentOpen(bytes, bytes.length, handle));
     }
     return createDocument(native, Number(handle[0]));
@@ -296,9 +295,7 @@ export class IdmlDocument implements Disposable {
   setRunText(storyId: string, runIndex: number, text: string, options: { force?: boolean } = {}): void {
     requireString(storyId, 'storyId');
     requireString(text, 'text');
-    if (!Number.isInteger(runIndex)) {
-      throw new IdmlError('runIndex must be an integer.', Status.invalidArgument);
-    }
+    requireInt32(runIndex, 'runIndex');
     check(this.#native, this.#native.documentSetRunText(this.#open(), storyId, runIndex, text, options.force ? 1 : 0));
   }
 
@@ -333,9 +330,10 @@ export class IdmlDocument implements Disposable {
    */
   importPages(source: IdmlDocument, pages: readonly number[] = []): number {
     const from = IdmlDocument.#handleOf(source, 'source');
-    if (!Array.isArray(pages) || !pages.every((page) => Number.isInteger(page))) {
+    if (!Array.isArray(pages)) {
       throw new IdmlError('pages must be an array of 0-based page indices.', Status.invalidArgument);
     }
+    pages.forEach((page) => requireInt32(page, 'pages'));
     const added: Out<number> = [0];
     const indices = pages.length === 0 ? null : Int32Array.from(pages);
     check(this.#native, this.#native.documentImportPages(this.#open(), from, indices, pages.length, added));
@@ -467,11 +465,37 @@ function pdfSource(source: string | URL | Uint8Array | ArrayBuffer): PdfSource {
   if (typeof source === 'string' || source instanceof URL) {
     return { path: toPath(source) };
   }
-  const bytes = source instanceof ArrayBuffer ? new Uint8Array(source) : source;
+  return { bytes: toBytes(source, 'source must be a path, a file: URL, or the bytes of a PDF.') };
+}
+
+/** Bytes given as a Uint8Array (a Buffer is one) or an ArrayBuffer; anything else is refused with `message`. */
+function toBytes(data: unknown, message: string): Uint8Array {
+  const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
   if (!(bytes instanceof Uint8Array)) {
-    throw new IdmlError('source must be a path, a file: URL, or the bytes of a PDF.', Status.invalidArgument);
+    throw new IdmlError(message, Status.invalidArgument);
   }
-  return { bytes };
+  return bytes;
+}
+
+/** Whether two paths name the same file: made absolute, links resolved, and case ignored where file names ignore it. */
+function sameFile(a: string, b: string): boolean {
+  const canonical = (path: string): string => {
+    const full = resolve(path);
+    try {
+      return realpathSync.native(full);
+    } catch {
+      return full;
+    }
+  };
+  const [x, y] = [canonical(a), canonical(b)];
+  return process.platform === 'win32' || process.platform === 'darwin' ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+
+/** A 32-bit signed integer, as the C API takes (larger numbers would wrap around silently). */
+function requireInt32(value: unknown, name: string): void {
+  if (!Number.isInteger(value) || (value as number) < -0x8000_0000 || (value as number) > 0x7fff_ffff) {
+    throw new IdmlError(`${name} must be a 32-bit integer.`, Status.invalidArgument);
+  }
 }
 
 /** An options object as JSON, or null (the library's defaults) when it sets nothing. */

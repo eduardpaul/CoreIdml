@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
@@ -13,14 +14,14 @@ export type WorkerResult = Extract<WorkerMessage, { type: 'result' }>;
 const workerUrl = new URL(`./worker${extname(fileURLToPath(import.meta.url))}`, import.meta.url);
 
 /**
- * Starts the worker. It inherits the process's Node options, except `--input-type`: that one only applies to code
+ * Starts a worker. It inherits the process's Node options, except `--input-type`: that one only applies to code
  * given with `--eval` or stdin, and a worker started from a file refuses to run with it. Only then are the options
  * passed explicitly (an explicit list is checked, and some process-wide options are refused in a worker).
  */
-function startWorker(job: WorkerJob): Worker {
+function startWorker(): Worker {
   const execArgv = process.execArgv;
   if (!execArgv.some((option) => option === '--input-type' || option.startsWith('--input-type='))) {
-    return new Worker(workerUrl, { workerData: job });
+    return new Worker(workerUrl);
   }
   const kept: string[] = [];
   for (let index = 0; index < execArgv.length; index++) {
@@ -32,13 +33,50 @@ function startWorker(job: WorkerJob): Worker {
     }
   }
   try {
-    return new Worker(workerUrl, { workerData: job, execArgv: kept });
+    return new Worker(workerUrl, { execArgv: kept });
   } catch (error) {
     if ((error as { code?: string }).code !== 'ERR_WORKER_INVALID_EXEC_ARGV') {
       throw error;
     }
-    return new Worker(workerUrl, { workerData: job, execArgv: [] });
+    return new Worker(workerUrl, { execArgv: [] });
   }
+}
+
+// Workers are kept between calls: starting one (a new isolate, loading the modules, binding every function of the
+// library) costs far more than a call to a warm one. A worker runs one call at a time; calls made together each get
+// one. Idle workers are unreferenced, so they never keep the process alive, and at most a few are kept.
+const idle: Worker[] = [];
+const maxIdle = Math.max(1, Math.min(4, availableParallelism()));
+
+function acquireWorker(): Worker {
+  const reused = idle.pop();
+  if (reused !== undefined) {
+    reused.ref();
+    return reused;
+  }
+  const worker = startWorker();
+  // A worker that stops (an uncaught error, terminate) is never handed out again.
+  worker.once('exit', () => {
+    const index = idle.indexOf(worker);
+    if (index >= 0) {
+      idle.splice(index, 1);
+    }
+  });
+  return worker;
+}
+
+function releaseWorker(worker: Worker): void {
+  if (idle.length < maxIdle) {
+    worker.unref();
+    idle.push(worker);
+  } else {
+    void worker.terminate();
+  }
+}
+
+/** How many workers wait for a call (for tests). */
+export function idleWorkers(): number {
+  return idle.length;
 }
 
 /** The error of a call whose signal was aborted before it started. */
@@ -47,7 +85,7 @@ export function abortedBeforeStart(signal: AbortSignal): IdmlError {
 }
 
 /**
- * Runs one blocking PDF call on a new worker thread, so the event loop stays free.
+ * Runs one blocking PDF call on a worker thread, so the event loop stays free.
  *
  * Why a worker and not koffi's `func.async`: the library keeps the last error per thread, and an async koffi call runs
  * on a libuv pool thread that JavaScript cannot reach afterwards, so the message of a failure would be lost. A long
@@ -77,7 +115,13 @@ export function runInWorker(native: Native, operation: WorkerOperation, control:
   return new Promise<WorkerResult>((resolve, reject) => {
     let settled = false;
     let cause: unknown;
-    const worker = startWorker(job);
+    let worker: Worker;
+    try {
+      worker = acquireWorker();
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     const requestCancel = (reason: unknown): void => {
       cause ??= reason;
@@ -86,16 +130,7 @@ export function runInWorker(native: Native, operation: WorkerOperation, control:
     const onAbort = (): void => requestCancel(signal!.reason);
     signal?.addEventListener('abort', onAbort, { once: true });
 
-    const finish = (action: () => void): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      signal?.removeEventListener('abort', onAbort);
-      action();
-    };
-
-    worker.on('message', (message: WorkerMessage) => {
+    const onMessage = (message: WorkerMessage): void => {
       switch (message.type) {
         case 'progress':
           if (!settled && onProgress && Atomics.load(flag, 0) === 0) {
@@ -112,10 +147,10 @@ export function runInWorker(native: Native, operation: WorkerOperation, control:
           if (settled && message.handle !== undefined) {
             native.documentClose(message.handle); // nobody is waiting for this document any more
           }
-          finish(() => resolve(message));
+          finish(true, () => resolve(message));
           break;
         case 'error':
-          finish(() => {
+          finish(true, () => {
             const code = message.code as StatusCode;
             reject(
               message.idml
@@ -125,8 +160,30 @@ export function runInWorker(native: Native, operation: WorkerOperation, control:
           });
           break;
       }
-    });
-    worker.on('error', (error) => finish(() => reject(error)));
-    worker.on('exit', (code) => finish(() => reject(new IdmlError(`The CoreIdml worker thread stopped (exit code ${code}) before the call finished.`))));
+    };
+    const onError = (error: Error): void => finish(false, () => reject(error));
+    const onExit = (code: number): void =>
+      finish(false, () => reject(new IdmlError(`The CoreIdml worker thread stopped (exit code ${code}) before the call finished.`)));
+
+    /** Settles once; a worker that answered goes back to the pool, one that failed or stopped does not. */
+    function finish(answered: boolean, action: () => void): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      worker.off('message', onMessage);
+      worker.off('error', onError);
+      worker.off('exit', onExit);
+      if (answered) {
+        releaseWorker(worker);
+      }
+      action();
+    }
+
+    worker.on('message', onMessage);
+    worker.on('error', onError);
+    worker.on('exit', onExit);
+    worker.postMessage(job);
   });
 }

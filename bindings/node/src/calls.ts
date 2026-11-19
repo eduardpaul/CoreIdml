@@ -2,8 +2,8 @@
 // message on the thread that made the call (the library keeps it per thread) and releases every string and buffer
 // it receives exactly once, also when the call fails.
 
-import { Status, type Out, type Pointer, type ProgressCallback as NativeProgress } from './abi.generated.ts';
-import { IdmlError, check, freeAll, optionalString, takeBytes, takeString, type Native } from './native.ts';
+import { type Out, type Pointer, type ProgressCallback as NativeProgress } from './abi.generated.ts';
+import { check, freeAll, optionalString, takeBytes, takeString, type Native } from './native.ts';
 
 export type { NativeProgress };
 
@@ -58,9 +58,6 @@ export function importPdf(native: Native, source: PdfSource, optionsJson: string
   if ('path' in source) {
     status = native.pdfImportFile(source.path, optionalString(optionsJson), progress, null, document, report);
   } else {
-    if (!(source.bytes instanceof Uint8Array)) {
-      throw new IdmlError('source must be a path, a file: URL, or the bytes of a PDF.', Status.invalidArgument);
-    }
     status = native.pdfImport(source.bytes, source.bytes.length, optionalString(optionsJson), progress, null, document, report);
   }
   const handle = Number(document[0]);

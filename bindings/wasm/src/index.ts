@@ -112,13 +112,25 @@ let loading: { url: string; library: Promise<CoreIdml> } | undefined;
 
 // Documents that are never closed are released when they are garbage collected. Handles are never reused by the
 // library, so a late finalizer cannot close another document.
-const finalizer = new FinalizationRegistry<{ exports: WasmExports; handle: number }>(({ exports, handle }) => {
+const finalizer = new FinalizationRegistry<{ exports: WasmExports; handle: number; folder: string | null }>(({ exports, handle, folder }) => {
   try {
     exports.DocumentClose(handle);
   } catch {
     // Nothing useful to do while finalizing.
   }
+  if (folder !== null) {
+    removeQuietly(exports, folder);
+  }
 });
+
+/** Removes a folder of the in-memory file system made for a document; a failure leaves it (it is only memory). */
+function removeQuietly(exports: WasmExports, folder: string): void {
+  try {
+    exports.FileDelete(folder);
+  } catch {
+    // Nothing useful to do.
+  }
+}
 
 /**
  * The loaded engine. Get it with {@link CoreIdml.load}, once; then every call is synchronous and runs on the thread
@@ -138,14 +150,20 @@ export class CoreIdml {
 
   /** Downloads and starts the WebAssembly build. Later calls return the same instance. */
   static load(options: LoadOptions = {}): Promise<CoreIdml> {
-    const url = new URL(options.frameworkUrl ?? new URL('./_framework/', import.meta.url)).href.replace(/\/?$/, '/');
+    let base: URL;
+    try {
+      base = frameworkBase(options.frameworkUrl);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const url = base.href;
     if (loading) {
       if (loading.url !== url) {
-        return Promise.reject(new IdmlError(`CoreIdml is already loaded from ${loading.url}; a page can use only one build.`, Status.invalidOperation));
+        return Promise.reject(new IdmlError(`CoreIdml is already loaded from ${loading.url}, not ${url}; a page can use only one build.`, Status.invalidOperation));
       }
       return loading.library;
     }
-    const library = CoreIdml.#start(url);
+    const library = CoreIdml.#start(base);
     loading = { url, library };
     // A failed load may be retried (a network error, a wrong URL).
     library.catch(() => {
@@ -156,10 +174,14 @@ export class CoreIdml {
     return library;
   }
 
-  static async #start(url: string): Promise<CoreIdml> {
+  static async #start(base: URL): Promise<CoreIdml> {
+    const url = base.href;
+    // dotnet.js inside the folder, keeping the folder URL's query (a cache-busting version, a signed URL).
+    const script = new URL('dotnet.js', base);
+    script.search = base.search;
     let exports: WasmExports;
     try {
-      const { dotnet } = await import(/* webpackIgnore: true */ /* @vite-ignore */ `${url}dotnet.js`);
+      const { dotnet } = await import(/* webpackIgnore: true */ /* @vite-ignore */ script.href);
       const runtime = await dotnet.create();
       const assembly = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
       exports = assembly.CoreIdml.Wasm.WasmExports;
@@ -192,21 +214,33 @@ export class CoreIdml {
 
   /**
    * Rebuilds an editable document from the bytes of a PDF: text frames with inferred styles, image frames, shapes.
-   * IDML links its images, so the extracted images are written to `imageDirectory` (default a new `/import/<n>`
-   * folder), left there for the document's links, and returned as bytes.
+   * IDML links its images, so the extracted images are written to `imageDirectory`, where the document's links point,
+   * and returned as bytes. The default, a new `/import/<n>` folder, is removed when the document is closed.
    */
   importPdf(data: Uint8Array | ArrayBuffer, options: PdfImportOptions = {}): PdfImport {
     const bytes = toBytes(data, 'data must be a Uint8Array or an ArrayBuffer holding a PDF file.');
     const exports = this.#exports;
     let imageDirectory = options.imageDirectory;
+    // A folder made here belongs to the document: it is removed when the document is closed or collected, or at once
+    // when the import fails. A folder the caller named is the caller's.
+    let owned: string | null = null;
     if (imageDirectory === undefined) {
       do {
         imageDirectory = `/import/${++this.#imports}`;
       } while (exports.FileExists(imageDirectory));
+      owned = imageDirectory;
     }
-    const json = optionsJson({ ...folderDefaults(exports, options, false), ...options, imageDirectory });
-    const handle = withProgress(options, (progress) => call(exports, () => exports.PdfImport(bytes, json, progress)));
-    const document = createDocument(exports, handle);
+    const json = optionsJson({ ...options, ...folderDefaults(exports, options, false), imageDirectory });
+    let handle: number;
+    try {
+      handle = withProgress(options, (progress) => call(exports, () => exports.PdfImport(bytes, json, progress)));
+    } catch (error) {
+      if (owned !== null) {
+        removeQuietly(exports, owned);
+      }
+      throw error;
+    }
+    const document = createDocument(exports, handle, owned);
     const report = JSON.parse(exports.TakeReport() ?? '{}') as PdfImportReport;
     const images: Record<string, Uint8Array> = {};
     for (const path of report.images ?? []) {
@@ -266,6 +300,27 @@ export class CoreIdml {
 
 }
 
+/**
+ * The framework folder as an absolute URL whose path ends in '/', its query kept. A relative URL is relative to the
+ * page or worker (as in IdmlWorker.start), or to this module where there is no location (Node).
+ */
+function frameworkBase(frameworkUrl: string | URL | undefined): URL {
+  if (frameworkUrl === undefined || frameworkUrl === null) {
+    return new URL('./_framework/', import.meta.url);
+  }
+  let url: URL;
+  try {
+    url = new URL(frameworkUrl, globalThis.location?.href ?? import.meta.url);
+  } catch (error) {
+    throw new IdmlError(`frameworkUrl is not a valid URL: ${String(frameworkUrl)}`, Status.invalidArgument, { cause: error });
+  }
+  url.hash = '';
+  if (!url.pathname.endsWith('/')) {
+    url.pathname += '/';
+  }
+  return url;
+}
+
 /** The folders addFonts (and, for an export, addLinks) fill, when they have files and the options name none. */
 function folderDefaults(exports: WasmExports, options: { fontDirectories?: unknown; linkDirectories?: unknown }, links: boolean): object {
   return {
@@ -275,7 +330,7 @@ function folderDefaults(exports: WasmExports, options: { fontDirectories?: unkno
 }
 
 // Documents are created by CoreIdml only; IdmlDocument hands its private constructor to this module.
-let createDocument: (exports: WasmExports, handle: number) => IdmlDocument;
+let createDocument: (exports: WasmExports, handle: number, folder?: string | null) => IdmlDocument;
 
 /**
  * An InDesign document held by the engine. Close it with {@link close} or `using`; a document that is forgotten
@@ -284,15 +339,18 @@ let createDocument: (exports: WasmExports, handle: number) => IdmlDocument;
 export class IdmlDocument implements Disposable {
   readonly #exports: WasmExports;
   #handle: number;
+  /** A folder of the in-memory file system that goes with the document (the images of a PDF import). */
+  readonly #folder: string | null;
 
-  private constructor(exports: WasmExports, handle: number) {
+  private constructor(exports: WasmExports, handle: number, folder: string | null) {
     this.#exports = exports;
     this.#handle = handle;
-    finalizer.register(this, { exports, handle }, this);
+    this.#folder = folder;
+    finalizer.register(this, { exports, handle, folder }, this);
   }
 
   static {
-    createDocument = (exports, handle) => new IdmlDocument(exports, handle);
+    createDocument = (exports, handle, folder = null) => new IdmlDocument(exports, handle, folder);
   }
 
   /** Whether {@link close} was called. */
@@ -354,6 +412,9 @@ export class IdmlDocument implements Disposable {
 
   /** The XML structure, or the subtree at `at` (e.g. `/Root/article[2]`), as XML. */
   exportXml(options: { at?: string } = {}): string {
+    if (options.at !== undefined && options.at !== null) {
+      requireString(options.at, 'at');
+    }
     const at = options.at ?? null;
     return this.#call((handle) => this.#exports.DocumentExportXml(handle, at));
   }
@@ -379,7 +440,10 @@ export class IdmlDocument implements Disposable {
 
   /** Fills a template: keys match frame names, script labels, XML tags and `{{placeholders}}`. */
   fill(data: FillData = {}): FillReport {
-    const json = JSON.stringify(data ?? {});
+    if (data === null || typeof data !== 'object') {
+      throw new IdmlError('data must be an object such as { text: { key: "value" } }.', Status.invalidArgument);
+    }
+    const json = JSON.stringify(data);
     return JSON.parse(this.#call((handle) => this.#exports.DocumentFill(handle, json))) as FillReport;
   }
 
@@ -415,6 +479,9 @@ export class IdmlDocument implements Disposable {
   importXml(xml: string, options: ImportXmlOptions = {}): ImportXmlReport {
     requireString(xml, 'xml');
     const { at, ...rest } = options;
+    if (at !== undefined && at !== null) {
+      requireString(at, 'at');
+    }
     const json = optionsJson(rest);
     return JSON.parse(this.#call((handle) => this.#exports.DocumentImportXml(handle, xml, at ?? null, json))) as ImportXmlReport;
   }
@@ -441,7 +508,7 @@ export class IdmlDocument implements Disposable {
    */
   exportPdfBytes(options: PdfExportOptions = {}): PdfExport {
     const exports = this.#exports;
-    const json = optionsJson({ ...folderDefaults(exports, options ?? {}, true), ...options });
+    const json = optionsJson({ ...options, ...folderDefaults(exports, options ?? {}, true) });
     const pdf = withProgress(options ?? {}, (progress) => this.#call((handle) => exports.DocumentExportPdfBytes(handle, json, progress)));
     const report = JSON.parse(exports.TakeReport() ?? '{}') as PdfExportReport;
     return { pdf, report };
@@ -455,7 +522,13 @@ export class IdmlDocument implements Disposable {
       const handle = this.#handle;
       this.#handle = 0;
       finalizer.unregister(this);
-      this.#exports.DocumentClose(handle);
+      try {
+        this.#exports.DocumentClose(handle);
+      } finally {
+        if (this.#folder !== null) {
+          removeQuietly(this.#exports, this.#folder);
+        }
+      }
     }
   }
 
@@ -481,7 +554,11 @@ export class IdmlDocument implements Disposable {
   }
 }
 
-/** Runs a call into the library; a failure becomes an {@link IdmlError} with the library's status code and message. */
+/**
+ * Runs a call into the library; a failure becomes an {@link IdmlError}. A failure the library recorded arrives with
+ * the library's message and gets its status code. Anything else (an argument JavaScript could not pass) never reached
+ * the library, whose last error then belongs to an earlier call: it is reported as it is, with `Status.failed`.
+ */
 function call<T>(exports: WasmExports, action: () => T): T {
   try {
     return action();
@@ -490,7 +567,11 @@ function call<T>(exports: WasmExports, action: () => T): T {
       throw error;
     }
     const code = exports.LastErrorCode();
-    throw new IdmlError(exports.LastErrorMessage() ?? messageOf(error), (code === Status.ok ? Status.failed : code) as StatusCode, { cause: error });
+    const message = exports.LastErrorMessage();
+    if (code !== Status.ok && message !== null && error instanceof Error && error.message === message) {
+      throw new IdmlError(message, code as StatusCode, { cause: error });
+    }
+    throw new IdmlError(messageOf(error), Status.failed, { cause: error });
   }
 }
 

@@ -203,6 +203,7 @@ final class IdmlDocument implements Finalizable {
   /// keeping its formatting. A run holding special characters, such as a page number, is only overwritten with
   /// [force].
   void setRunText(String storyId, int runIndex, String text, {bool force = false}) {
+    _requireInt32(runIndex, 'runIndex');
     final native = _native;
     using((arena) => _check(native, native.documentSetRunText(
         _open(), storyId.toNativeUtf8(allocator: arena), runIndex, text.toNativeUtf8(allocator: arena), force ? 1 : 0)));
@@ -228,6 +229,9 @@ final class IdmlDocument implements Finalizable {
   /// Appends pages of [source] (0-based [pages]; all of them when empty) to this document, remapping every id;
   /// styles, swatches and tags are merged once. [source] may be this document. Returns the number of pages added.
   int importPages(IdmlDocument source, [List<int> pages = const []]) {
+    for (final page in pages) {
+      _requireInt32(page, 'pages');
+    }
     final native = _native;
     return using((arena) {
       final indices = arena<Int32>(pages.isEmpty ? 1 : pages.length);
@@ -357,6 +361,13 @@ final class IdmlDocument implements Finalizable {
     if (status == CoreIdmlStatus.ok) return;
     final message = native.lastErrorMessage();
     throw IdmlException(message == nullptr ? 'The call failed with status $status.' : message.toDartString(), status);
+  }
+
+  /// A 32-bit signed integer, as the C API takes: a larger Dart int would be truncated silently.
+  static void _requireInt32(int value, String name) {
+    if (value < -0x80000000 || value > 0x7fffffff) {
+      throw IdmlException('$name must be a 32-bit integer.', CoreIdmlStatus.invalidArgument);
+    }
   }
 
   /// JSON text for a `Map` (or any value `jsonEncode` accepts); a `String` is taken to be JSON already.

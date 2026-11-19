@@ -147,6 +147,13 @@ def check(status: int) -> None:
     raise IdmlError(message.decode("utf-8") if message else f"The call failed with status {status}.", code)
 
 
+def release(*pointers: ctypes.c_void_p) -> None:
+    """Releases what a failed call handed out, without reading it (the error was read first)."""
+    for pointer in pointers:
+        if pointer.value:
+            native().coreidml_free(pointer)
+
+
 def take_bytes(pointer: ctypes.c_void_p, length: int) -> bytes:
     """Copies a buffer the library handed out, and releases it."""
     try:

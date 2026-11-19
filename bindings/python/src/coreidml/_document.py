@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Callable, Optional, Union, cast
 
 from ._abi import PROGRESS_CALLBACK, Status
-from ._native import IdmlError, check, native, take_bytes, take_text
+from ._native import IdmlError, check, native, release, take_bytes, take_text
 
 _Bytes = Union[bytes, bytearray, memoryview]
 _Path = Union[str, "os.PathLike[str]"]
@@ -79,10 +79,17 @@ class Document:
                 status = lib.coreidml_pdf_import_file(_file(source), options_json, callback.function, None, ctypes.byref(handle), ctypes.byref(report))
             else:
                 raise IdmlError("source must be a path or the bytes of a PDF file.", Status.INVALID_ARGUMENT)
-            document = cls(handle.value)
-            result = _take_json(report)
+            # The error message is read before anything else is called: it is valid only until the next call.
             try:
                 callback.check(status)
+            except BaseException:
+                release(report)
+                if handle.value:
+                    lib.coreidml_document_close(handle.value)
+                raise
+            document = cls(handle.value)
+            try:
+                result = _take_json(report)
             except BaseException:
                 document.close()
                 raise
@@ -247,9 +254,12 @@ class Document:
         report = ctypes.c_void_p()
         with _Progress(progress) as callback:
             status = native().coreidml_document_export_pdf(handle, file, options_json, callback.function, None, ctypes.byref(report))
-            result = _take_json(report)
-            callback.check(status)
-        return result
+            try:
+                callback.check(status)  # reads the error message before anything is released
+            except BaseException:
+                release(report)
+                raise
+            return _take_json(report)
 
     def export_pdf_bytes(self, options: Optional[_Json] = None, progress: Optional[ProgressCallback] = None) -> tuple[bytes, dict[str, Any]]:
         """Renders the document to a PDF in memory. Returns ``(pdf, report)``; options and report as for
@@ -259,10 +269,17 @@ class Document:
         with _Progress(progress) as callback:
             status = native().coreidml_document_export_pdf_bytes(
                 handle, options_json, callback.function, None, ctypes.byref(data), ctypes.byref(length), ctypes.byref(report))
-            pdf = take_bytes(data, length.value)
-            result = _take_json(report)
-            callback.check(status)
-        return pdf, result
+            try:
+                callback.check(status)  # reads the error message before anything is released
+            except BaseException:
+                release(data, report)
+                raise
+            try:
+                pdf = take_bytes(data, length.value)
+            except BaseException:
+                release(report)
+                raise
+            return pdf, _take_json(report)
 
     # ---- Lifetime ------------------------------------------------------------------------------------------------
 

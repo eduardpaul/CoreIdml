@@ -197,8 +197,9 @@ try {
 }
 ```
 
-- Each call starts a worker, which uses the library already loaded in the process. The PDF is moved back, not
-  copied. Starting a worker costs a few tens of milliseconds, small next to the work these calls are for.
+- The calls run on a small pool of worker threads, which use the library already loaded in the process. A worker is
+  kept for the next call, so only the first call pays for starting one; idle workers never keep the process alive.
+  The PDF is moved back, not copied.
 - Several calls can run at once, on the same document or on different ones; calls on one document take turns.
 - Aborting the `signal` (or `onProgress` returning `false`) cancels at the next page boundary; the promise rejects
   with `Status.cancelled` and the signal's reason as `cause`. A signal that is already aborted rejects at once.
