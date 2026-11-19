@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CoreIdml.Pdf" Version="1.0.1" />
+    <PackageReference Include="CoreIdml.Pdf" Version="1.1.0" />
   </ItemGroup>
 
 </Project>
