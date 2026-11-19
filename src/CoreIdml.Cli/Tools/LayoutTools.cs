@@ -33,12 +33,16 @@ internal static class LayoutTools
                     document.MovePageItem(item, 0, 0, RequirePage(document, pageIndex));
                     item = RequireItem(document, args);
                 }
-                var bounds = item.Bounds;
-                var target = new Rect(args.OptionalDouble("x") ?? bounds.X, args.OptionalDouble("y") ?? bounds.Y, args.OptionalDouble("width") ?? bounds.Width, args.OptionalDouble("height") ?? bounds.Height);
-                if (target.Width <= 0 || target.Height <= 0)
+                // Only sizes the caller gives must be positive: a horizontal or vertical line is 0 high or wide, and
+                // keeps that size when it is only moved or restyled.
+                var width = args.OptionalDouble("width");
+                var height = args.OptionalDouble("height");
+                if (width is <= 0 || height is <= 0)
                 {
                     throw ToolException.Invalid("width and height must be positive.");
                 }
+                var bounds = item.Bounds;
+                var target = new Rect(args.OptionalDouble("x") ?? bounds.X, args.OptionalDouble("y") ?? bounds.Y, width ?? bounds.Width, height ?? bounds.Height);
                 if (Math.Abs(target.Width - bounds.Width) > 1e-6 || Math.Abs(target.Height - bounds.Height) > 1e-6)
                 {
                     item.SetBounds(target);
@@ -358,7 +362,7 @@ internal static class LayoutTools
             ? parsed
             : throw ToolException.Invalid($"Unknown {argument} '{value}'. Use {string.Join(", ", Enum.GetNames<TEnum>().Select(name => char.ToLowerInvariant(name[0]) + name[1..]))}.");
 
-    private const string BoundsSchema = """{"type":"object","properties":{"id":{"type":"string"},"kind":{"type":"string"},"name":{"type":"string"},"pageIndex":{"type":"integer"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"},"layer":{"type":"string"}},"required":["id","kind","x","y","width","height"]}""";
+    private const string BoundsSchema = """{"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string"},"kind":{"type":"string"},"name":{"type":"string"},"pageIndex":{"type":"integer"},"pageName":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"},"layer":{"type":"string"}},"required":["id","kind","x","y","width","height"]}""";
 
     private const string PageSchema = """{"type":"object","properties":{"pageIndex":{"type":"integer"},"pageId":{"type":"string"},"pageCount":{"type":"integer"},"pages":{"type":"array","items":{"type":"object"}}},"required":["pageCount","pages"]}""";
 
@@ -454,15 +458,51 @@ internal static class LayoutTools
         return 0;
     });
 
+    /// <summary>
+    /// The item's type in the document spec's words (text, table, image, rectangle, ellipse, line), so results match
+    /// what was asked for; other kinds (polygon, group, button…) as InDesign names them, lower-cased.
+    /// </summary>
+    internal static string SpecType(PageItem item) => item switch
+    {
+        TextFrame frame when HoldsOnlyTables(frame) => "table",
+        TextFrame => "text",
+        GraphicFrame { Graphic: not null } => "image",
+        GraphicFrame when item.Kind == "Oval" => "ellipse",
+        GraphicFrame when item.Kind == "Rectangle" => "rectangle",
+        GraphicLine => "line",
+        _ => char.ToLowerInvariant(item.Kind[0]) + item.Kind[1..],
+    };
+
+    /// <summary>A frame whose story is one or more tables and no text outside them (what a spec "table" makes).</summary>
+    private static bool HoldsOnlyTables(TextFrame frame) =>
+        frame.Document.FindStory(frame.StoryId)?.Element is { } story
+        && story.Descendants("Table").Any()
+        && story.Descendants("Content").All(content => content.Ancestors("Table").Any() || string.IsNullOrWhiteSpace(content.Value));
+
+    /// <summary>
+    /// Where a result says which page: pageIndex (0-based, as every tool's arguments count) and pageName (the page's
+    /// name as InDesign shows it: "1", "iii", "A3"). Nothing for items off the pages.
+    /// </summary>
+    internal static void AddPage(JsonObject result, Page? page)
+    {
+        if (page is not null)
+        {
+            result["pageIndex"] = page.Index;
+            result["pageName"] = page.Name;
+        }
+    }
+
     internal static string Describe(PageItem item)
     {
         var bounds = item.Bounds;
         var result = new JsonObject
         {
             ["id"] = item.Id,
+            ["type"] = SpecType(item),
             ["kind"] = item.Kind,
             ["name"] = item.Name,
             ["pageIndex"] = item.Page?.Index,
+            ["pageName"] = item.Page?.Name,
             ["x"] = Math.Round(bounds.X, 3),
             ["y"] = Math.Round(bounds.Y, 3),
             ["width"] = Math.Round(bounds.Width, 3),

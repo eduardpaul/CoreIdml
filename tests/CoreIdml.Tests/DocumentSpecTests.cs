@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using CoreIdml.Json;
+using CoreIdml.Packaging;
 
 namespace CoreIdml.Tests;
 
@@ -140,6 +141,69 @@ public class DocumentSpecTests
         var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument($$"""{ "pages": [ { "items": [ {{item}} ] } ] }"""));
 
         Assert.Equal(message, exception.Message);
+    }
+
+    [Fact]
+    public void Every_error_of_a_spec_is_reported_at_once()
+    {
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument("""
+            { "page": { "size": "B9" },
+              "colors": [ { "name": "Brand" } ],
+              "paragraphStyles": [ { "name": "Body", "basedOn": "Nope", "align": "middle" } ],
+              "pages": [ { "items": [
+                { "type": "rectangle", "fill": "Accent" },
+                { "type": "image", "fit": "cover" },
+                { "type": "text", "text": "x", "style": "Body", "continueFrom": "missing" },
+                { "type": "star" }
+              ] } ] }
+            """));
+
+        Assert.Equal(
+            """
+            The spec has 9 errors; nothing was created:
+            - page: Unknown page size 'B9'. Use A3, A4, A5, Letter, Legal or width/height.
+            - colors[0]: Colour 'Brand' needs cmyk, rgb or hex.
+            - paragraphStyles[0]: Unknown paragraph style 'Nope'.
+            - paragraphStyles[0]: Unknown align 'middle'. Use left, center, right, justify or justifyAll.
+            - pages[0].items[0]: Unknown swatch 'Accent'. Declare it in colors first.
+            - pages[0].items[1]: Image items need a path.
+            - pages[0].items[1]: Unknown fit 'cover'. Use fill, fit, stretch, center, original.
+            - pages[0].items[2]: continueFrom: no text frame named 'missing'.
+            - pages[0].items[3]: Unknown item type 'star'. Use text, rectangle, ellipse, line, image or table.
+            """.ReplaceLineEndings("\n"),
+            exception.Message);
+    }
+
+    [Fact]
+    public void A_spec_with_errors_leaves_the_document_as_it_was()
+    {
+        using var document = IdmlJson.CreateDocument("""{ "pages": [ { "items": [ { "type": "text", "name": "first", "text": "x" } ] } ] }""");
+        var before = document.ToArray(new IdmlSaveOptions { Timestamp = DateTimeOffset.UnixEpoch });
+
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.Apply(document, """
+            { "colors": [ { "name": "Brand", "hex": "#123456" } ],
+              "pages": [ { "items": [ { "type": "rectangle", "fill": "Brand" }, { "type": "rectangle", "fill": "Accent" }, { "type": "text", "continueFrom": "first", "stroke": "Nope" } ] } ] }
+            """));
+
+        Assert.Equal(IdmlErrorKind.NotFound, exception.Kind);
+        Assert.StartsWith("The spec has 2 errors; nothing was changed:", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(before, document.ToArray(new IdmlSaveOptions { Timestamp = DateTimeOffset.UnixEpoch }));
+    }
+
+    [Fact]
+    public void Names_declared_earlier_in_the_spec_are_not_errors()
+    {
+        using var document = IdmlJson.CreateDocument("""
+            { "colors": [ { "name": "Brand", "rgb": [10, 20, 30] } ],
+              "characterStyles": [ { "name": "Strong", "fontStyle": "Bold" } ],
+              "paragraphStyles": [ { "name": "Base", "color": "Brand" }, { "name": "Body", "basedOn": "Base" } ],
+              "pages": [ { "items": [
+                { "type": "text", "name": "a", "paragraphs": [ { "style": "Body", "runs": [ { "text": "x", "style": "Strong" } ] } ] },
+                { "type": "text", "continueFrom": "a" }
+              ] } ] }
+            """);
+
+        Assert.Equal(2, document.AllPageItems.Count());
     }
 
     private static XElement Item(IdmlDocument document, string name) =>

@@ -107,7 +107,7 @@ internal static class DocumentTools
         {
             Name = "idml_diff",
             Title = "Compare documents",
-            Description = "Changes between two .idml files: stories run by run, image links, page count.",
+            Description = "Changes between two .idml files: stories run by run, image links, page count, page items (added, removed, moved or resized, changed settings).",
             InputSchema = Schema.Object(
                 """ "before":{"type":"string"},"after":{"type":"string"}""",
                 ["before", "after"]),

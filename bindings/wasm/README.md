@@ -112,7 +112,7 @@ them.
 | `xmlStructure()` | The XML structure as a tree, or `null` when there is none. |
 | `exportXml({ at? })` | The XML structure as XML, or the subtree at a path such as `'/Root/article[2]'`. |
 | `validate()` | Checks references, ids, layers, threads and XML bindings: `{ isValid: true, issues: [] }`. |
-| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count. |
+| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count, page items. |
 | **Editing** | |
 | `fill(data)` | Fills a template; returns which keys were `filled` and which are `missing`. |
 | `replaceText(find, replacement)` | Replaces text in every story; returns how many times. |

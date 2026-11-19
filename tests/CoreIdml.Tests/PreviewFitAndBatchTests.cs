@@ -114,7 +114,7 @@ public class PreviewFitAndBatchTests
         Assert.True(dryRun.GetProperty("dryRun").GetBoolean());
         Assert.Equal(2, dryRun.GetProperty("result").GetProperty("operations").GetInt32());
         Assert.Contains(dryRun.GetProperty("diff").GetProperty("changes").EnumerateArray(), change => change.GetProperty("after").GetString() == "Breve");
-        Assert.Contains("Operation 1 (idml_delete_item)", failed);
+        Assert.Contains("Operation 2 of 2 (idml_delete_item on 'nope') failed", failed);
         Assert.Contains("nothing was saved", failed);
         Assert.Equal(before, File.ReadAllBytes(path));
         Assert.Equal(3, done.GetProperty("results").GetArrayLength());

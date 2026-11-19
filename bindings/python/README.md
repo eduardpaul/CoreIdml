@@ -65,7 +65,7 @@ Options, specs and fill data are `dict`s (or the same as JSON text) with the cam
 | `xml_structure()` | The XML structure as a tree of `dict`s, or `None` when there is none. |
 | `export_xml(at=None)` | The XML structure as XML, or the subtree at a path such as `"/Root/article[2]"`. |
 | `validate()` | Checks references, ids, layers, threads and XML bindings: `{"isValid": True, "issues": []}`. |
-| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count. |
+| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count, page items. |
 | **Editing** | |
 | `fill(data)` | Fills a template; returns which keys were `filled` and which are `missing`. |
 | `replace_text(find, replacement)` | Replaces text in every story; returns how many times. |

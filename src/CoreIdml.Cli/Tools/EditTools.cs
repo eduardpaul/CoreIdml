@@ -139,7 +139,7 @@ internal static class EditTools
         {
             Name = "idml_apply",
             Title = "Apply JSON spec",
-            Description = "Add a document spec's colours, styles (updated when the name exists) and pages to an existing document. Pages without index are appended; {\"index\":N,\"items\":[...]} draws on existing page N (0-based). Returns the added items (id, name, type, story), warnings for ignored spec fields, and with checkFit the text that does not fit.",
+            Description = "Add a document spec's colours, styles (updated when the name exists) and pages to an existing document. Pages without index are appended; {\"index\":N,\"items\":[...]} draws on existing page N (0-based). Returns the added items (id, name, type, pageIndex, story), warnings for ignored spec fields, and with checkFit the text that does not fit.",
             // The full schema is idml_create's (repeating it here would double its cost in every tool listing).
             InputSchema = Schema.Edit(
                 """ "spec":{"type":"object","description":"Fields as in idml_create's spec schema, without page: colors, characterStyles, paragraphStyles, pages."},""" +
@@ -170,7 +170,7 @@ internal static class EditTools
         {
             Name = "idml_create",
             Title = "Create document",
-            Description = "Create a new .idml from a document spec (page setup, colours, styles, pages of text, table, image, rectangle, ellipse and line items). Returns the validation report, pages with the created items (id, name, type, story), warnings for ignored spec fields, and with checkFit the text that does not fit. Then idml_render_page each page.",
+            Description = "Create a new .idml from a document spec (page setup, colours, styles, pages of text, table, image, rectangle, ellipse and line items). Returns the validation report, pages with the created items (id, name, type, pageIndex, story), warnings for ignored spec fields, and with checkFit the text that does not fit. Then idml_render_page each page.",
             InputSchema = SpecSchema.Object(
                 SpecSchema.Property + "," +
                 """ "outPath":{"type":"string","description":"Absolute path of the new .idml"},""" + CheckFitProperty + "," + PdfTools.FontProperties,
@@ -184,10 +184,12 @@ internal static class EditTools
                 using var document = IdmlJson.CreateDocument(json);
                 EditSession.Save(document, outPath);
                 var result = JsonNode.Parse(IdmlJson.ValidateToJson(document))!.AsObject();
-                result["pages"] = new JsonArray([.. document.Pages.Select(page => (JsonNode)new JsonObject
+                result["pages"] = new JsonArray([.. document.Pages.Select(page =>
                 {
-                    ["index"] = page.Index,
-                    ["items"] = new JsonArray([.. page.PageItems.Select(ItemEntry)]),
+                    var entry = new JsonObject();
+                    LayoutTools.AddPage(entry, page);
+                    entry["items"] = new JsonArray([.. page.PageItems.Select(ItemEntry)]);
+                    return (JsonNode)entry;
                 })]);
                 result["warnings"] = JsonText.Array(warnings);
                 if (args.Bool("checkFit"))
@@ -208,16 +210,14 @@ internal static class EditTools
         var entry = new JsonObject
         {
             ["id"] = item.Id,
-            ["type"] = item.Kind,
+            ["type"] = LayoutTools.SpecType(item),
+            ["kind"] = item.Kind,
         };
         if (item.Name is { Length: > 0 } name)
         {
             entry["name"] = name;
         }
-        if (item.Page is { } page)
-        {
-            entry["page"] = page.Index;
-        }
+        LayoutTools.AddPage(entry, item.Page);
         if (item is TextFrame frame)
         {
             entry["story"] = frame.StoryId;

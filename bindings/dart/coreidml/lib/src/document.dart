@@ -170,7 +170,7 @@ final class IdmlDocument implements Finalizable {
   /// Checks references, ids, layers, threads and XML bindings: `{isValid: true, issues: [...]}`.
   Map<String, dynamic> validate() => _jsonCall((native, json) => native.documentValidate(_open(), json))!;
 
-  /// What changed from this document to [other]: stories run by run, links, page count.
+  /// What changed from this document to [other]: stories run by run, links, page count, page items.
   Map<String, dynamic> diff(IdmlDocument other) =>
       _jsonCall((native, json) => native.documentDiff(_open(), other._open(), json))!;
 

@@ -555,18 +555,27 @@ public class CliAndMcpTests
         Assert.True(result.GetProperty("isValid").GetBoolean());
         var items = result.GetProperty("pages")[0].GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(["band", "pull-quote"], items.Select(item => item.GetProperty("name").GetString()));
-        Assert.Equal("Rectangle", items[0].GetProperty("type").GetString());
+        Assert.Equal(["rectangle", "text"], items.Select(item => item.GetProperty("type").GetString()));
+        Assert.Equal(["Rectangle", "TextFrame"], items.Select(item => item.GetProperty("kind").GetString()));
+        Assert.All(items, item => Assert.Equal(0, item.GetProperty("pageIndex").GetInt32()));
+        Assert.All(items, item => Assert.Equal("1", item.GetProperty("pageName").GetString()));
+        Assert.Equal(0, result.GetProperty("pages")[0].GetProperty("pageIndex").GetInt32());
         var story = items[1].GetProperty("story").GetString();
         Assert.Equal(["paragraphStyles[0]: unknown field 'fontSize', ignored (did you mean 'size'?)."], result.GetProperty("warnings").EnumerateArray().Select(warning => warning.GetString()));
         var overset = Assert.Single(result.GetProperty("fit").GetProperty("stories").EnumerateArray());
         Assert.Equal(story, overset.GetProperty("storyId").GetString());
         Assert.Equal("pull-quote", overset.GetProperty("frames")[0].GetProperty("name").GetString());
+        Assert.Equal(0, overset.GetProperty("frames")[0].GetProperty("pageIndex").GetInt32());
+        Assert.Equal("1", overset.GetProperty("frames")[0].GetProperty("pageName").GetString());
+        Assert.False(overset.GetProperty("frames")[0].TryGetProperty("page", out _));
 
         var render = client.CallJson("idml_check_fit", new JsonObject { ["path"] = path, ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false });
         Assert.Equal("pull-quote", render.GetProperty("stories")[0].GetProperty("frames")[0].GetProperty("name").GetString());
         var pdf = client.CallJson("idml_to_pdf", new JsonObject { ["path"] = path, ["outPath"] = TestFiles.TempPath(".pdf"), ["fonts"] = new JsonArray(TestFiles.Fonts), ["useSystemFonts"] = false });
         var frame = Assert.Single(pdf.GetProperty("oversetFrames").EnumerateArray());
         Assert.Equal("pull-quote", frame.GetProperty("frame").GetString());
+        Assert.Equal(0, frame.GetProperty("pageIndex").GetInt32());
+        Assert.Equal("1", frame.GetProperty("pageName").GetString());
         Assert.Equal(story, frame.GetProperty("storyId").GetString());
     }
 
@@ -585,9 +594,78 @@ public class CliAndMcpTests
 
         var added = Assert.Single(result.GetProperty("added").EnumerateArray());
         Assert.Equal("dot", added.GetProperty("name").GetString());
-        Assert.Equal(0, added.GetProperty("page").GetInt32());
+        Assert.Equal(0, added.GetProperty("pageIndex").GetInt32());
+        Assert.Equal("ellipse", added.GetProperty("type").GetString());
         Assert.Equal(2, result.GetProperty("pageCount").GetInt32());
         Assert.Contains("unknown field 'colour'", result.GetProperty("warnings")[0].GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Edit_item_moves_and_restyles_horizontal_and_vertical_lines()
+    {
+        // Their bounds are 0 high or 0 wide; only a width or height the caller gives must be positive.
+        var path = TestFiles.TempPath(".idml");
+        var edited = TestFiles.TempPath(".idml");
+        var client = new McpTestClient();
+        client.CallText("idml_create", new JsonObject
+        {
+            ["spec"] = JsonNode.Parse("""{ "pages": [ { "items": [ { "type": "line", "name": "cap", "x": 20, "y": 40, "x2": 200, "y2": 40 }, { "type": "line", "name": "post", "x": 20, "y": 60, "x2": 20, "y2": 160 } ] } ] }"""),
+            ["outPath"] = path,
+        });
+
+        var result = client.CallJson("idml_batch", new JsonObject
+        {
+            ["path"] = path,
+            ["outPath"] = edited,
+            ["operations"] = JsonNode.Parse("""
+            [
+              { "tool": "idml_edit_item", "arguments": { "name": "cap", "stroke": "Paper", "strokeWeight": 3 } },
+              { "tool": "idml_edit_item", "arguments": { "name": "cap", "y": 50 } },
+              { "tool": "idml_edit_item", "arguments": { "name": "post", "x": 30, "stroke": "Paper" } }
+            ]
+            """),
+        });
+
+        var cap = result.GetProperty("results")[1].GetProperty("result");
+        Assert.Equal("line", cap.GetProperty("type").GetString());
+        Assert.Equal("GraphicLine", cap.GetProperty("kind").GetString());
+        Assert.Equal(50, cap.GetProperty("y").GetDouble(), 3);
+        Assert.Equal(0, cap.GetProperty("height").GetDouble(), 3);
+        var post = result.GetProperty("results")[2].GetProperty("result");
+        Assert.Equal(30, post.GetProperty("x").GetDouble(), 3);
+        Assert.Equal(0, post.GetProperty("width").GetDouble(), 3);
+        using var document = IdmlDocument.Open(edited);
+        var line = document.AllPageItems.Single(item => item.Name == "cap").Element;
+        Assert.Equal("Color/Paper", line.Attribute("StrokeColor")?.Value);
+        Assert.Equal("3", line.Attribute("StrokeWeight")?.Value);
+        Assert.Contains("must be positive", client.CallError("idml_edit_item", new JsonObject { ["path"] = path, ["name"] = "cap", ["height"] = 0, ["dryRun"] = true }), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Dry_runs_of_layout_and_look_edits_describe_them()
+    {
+        var path = TestFiles.TempPath(".idml");
+        var client = new McpTestClient();
+        client.CallText("idml_create", new JsonObject
+        {
+            ["spec"] = JsonNode.Parse("""{ "pages": [ { "items": [ { "type": "rectangle", "name": "box", "x": 10, "y": 10, "width": 50, "height": 50 } ] } ] }"""),
+            ["outPath"] = path,
+        });
+
+        var look = client.CallJson("idml_edit_item", new JsonObject { ["path"] = path, ["name"] = "box", ["fill"] = "Black", ["x"] = 20, ["dryRun"] = true });
+        var style = client.CallJson("idml_define_style", new JsonObject { ["path"] = path, ["kind"] = "paragraph", ["name"] = "Body", ["size"] = 11, ["dryRun"] = true });
+
+        var diff = look.GetProperty("diff");
+        Assert.False(diff.GetProperty("identical").GetBoolean());
+        var changes = diff.GetProperty("changes").EnumerateArray().ToList();
+        var geometry = Assert.Single(changes, change => change.GetProperty("kind").GetString() == "item-geometry");
+        Assert.StartsWith("x=10 y=10 width=50 height=50", geometry.GetProperty("before").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("x=20 y=10 width=50 height=50", geometry.GetProperty("after").GetString(), StringComparison.Ordinal);
+        var changed = Assert.Single(changes, change => change.GetProperty("kind").GetString() == "item-changed");
+        Assert.Contains("FillColor=Color/Black", changed.GetProperty("after").GetString(), StringComparison.Ordinal);
+        Assert.False(look.TryGetProperty("note", out _));
+        Assert.True(style.GetProperty("diff").GetProperty("identical").GetBoolean());
+        Assert.Contains("Resources/Styles.xml", style.GetProperty("note").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -132,7 +132,7 @@ book.Save("book.idml");
 
 ```csharp
 var issues = IdmlValidator.Validate(doc);                         // references, ids, layers, threads, XML bindings
-var changes = IdmlJson.Diff(before, after);                       // stories run by run, links, page count
+var changes = IdmlJson.Diff(before, after);                       // stories run by run, links, page count, page items
 var fit = TextFit.Estimate(story);                                // a quick overset estimate; CoreIdml.Pdf measures exactly
 ```
 

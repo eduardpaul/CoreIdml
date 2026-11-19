@@ -142,20 +142,33 @@ internal static class EditSession
         }
     }
 
-    /// <summary>The edit's own result, the story/link/page diff and the package parts that would be rewritten.</summary>
+    /// <summary>
+    /// The edit's own result, the package parts that would be rewritten, and the diff (stories, links, page count, page
+    /// items). Changes the diff does not describe (styles, colours, layers, preferences) are named in a note.
+    /// </summary>
     public static string DryRunReport(byte[] original, IdmlDocument edited, string result)
     {
         using var before = IdmlDocument.Open(original);
         var beforeParts = before.Package.PartPaths.ToHashSet(StringComparer.Ordinal);
+        var changed = edited.Package.PartPaths.Where(part => edited.Package.IsModified(part) && beforeParts.Contains(part)).ToList();
+        var added = edited.Package.PartPaths.Where(part => !beforeParts.Contains(part)).ToList();
+        var removed = beforeParts.Where(part => !edited.Package.Contains(part)).Order(StringComparer.Ordinal).ToList();
         var report = new JsonObject
         {
             ["dryRun"] = true,
             ["result"] = JsonNode.Parse(result),
-            ["changedParts"] = JsonText.Array(edited.Package.PartPaths.Where(part => edited.Package.IsModified(part) && beforeParts.Contains(part))),
-            ["addedParts"] = JsonText.Array(edited.Package.PartPaths.Where(part => !beforeParts.Contains(part))),
-            ["removedParts"] = JsonText.Array(beforeParts.Where(part => !edited.Package.Contains(part)).Order(StringComparer.Ordinal)),
+            ["changedParts"] = JsonText.Array(changed),
+            ["addedParts"] = JsonText.Array(added),
+            ["removedParts"] = JsonText.Array(removed),
             ["diff"] = JsonNode.Parse(IdmlJson.DiffJson(before, edited)),
         };
+        var undescribed = changed.Concat(added).Concat(removed)
+            .Where(part => !part.StartsWith("Stories/", StringComparison.Ordinal) && !part.StartsWith("Spreads/", StringComparison.Ordinal) && !part.StartsWith("MasterSpreads/", StringComparison.Ordinal))
+            .ToList();
+        if (undescribed.Count > 0)
+        {
+            report["note"] = $"The diff compares stories, links, page count and page items. Changes in {string.Join(", ", undescribed)} (styles, colours, layers, preferences) are not described there; they are listed only in the parts above.";
+        }
         return JsonText.Write(report);
     }
 }

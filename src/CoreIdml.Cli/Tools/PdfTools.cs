@@ -229,7 +229,7 @@ internal static partial class PdfTools
         using var measurer = new TextMeasurer(document, fonts);
         IReadOnlyList<StoryFit> fits = storyId is null ? measurer.CheckFit(document) : [measurer.CheckFit(document.FindStory(storyId)!)];
         var listed = all ? fits : fits.Where(fit => fit.Overset).ToList();
-        var names = document.AllPageItems.OfType<Dom.TextFrame>().ToDictionary(frame => frame.Id, frame => frame.Name, StringComparer.Ordinal);
+        var frames = document.AllPageItems.OfType<Dom.TextFrame>().ToDictionary(frame => frame.Id, StringComparer.Ordinal);
         return new JsonObject
         {
             ["checked"] = fits.Count,
@@ -242,14 +242,19 @@ internal static partial class PdfTools
                 ["overflowPoints"] = fit.OverflowPoints,
                 ["oversetCharacters"] = fit.OversetCharacters,
                 ["lines"] = fit.Lines,
-                ["frames"] = new JsonArray([.. fit.Frames.Select(frame => (JsonNode)WithoutNulls(new JsonObject
+                ["frames"] = new JsonArray([.. fit.Frames.Select(frame =>
                 {
-                    ["frameId"] = frame.FrameId,
-                    ["name"] = names.GetValueOrDefault(frame.FrameId) is { Length: > 0 } name ? name : null,
-                    ["page"] = frame.PageName,
-                    ["lines"] = frame.Lines,
-                    ["textAreaHeight"] = frame.TextAreaHeight,
-                }))]),
+                    var item = frames.GetValueOrDefault(frame.FrameId);
+                    var entry = new JsonObject
+                    {
+                        ["frameId"] = frame.FrameId,
+                        ["name"] = item?.Name is { Length: > 0 } name ? name : null,
+                    };
+                    LayoutTools.AddPage(entry, item?.Page);
+                    entry["lines"] = frame.Lines;
+                    entry["textAreaHeight"] = frame.TextAreaHeight;
+                    return (JsonNode)WithoutNulls(entry);
+                })]),
             })]),
             ["missingFonts"] = new JsonArray([.. measurer.FontSubstitutions.Select(font => (JsonNode)new JsonObject
             {
@@ -267,13 +272,14 @@ internal static partial class PdfTools
         {
             var frames = document.FindStory(storyId)?.Frames;
             var last = frames is { Count: > 0 } ? frames[^1] : null;
-            return (JsonNode)WithoutNulls(new JsonObject
+            var entry = WithoutNulls(new JsonObject
             {
                 ["storyId"] = storyId,
                 ["frame"] = last?.Name is { Length: > 0 } name ? name : null,
                 ["frameId"] = last?.Id,
-                ["page"] = last?.Page?.Name,
             });
+            LayoutTools.AddPage(entry, last?.Page);
+            return (JsonNode)entry;
         })]);
 
     private static JsonObject WithoutNulls(JsonObject value)

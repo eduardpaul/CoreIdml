@@ -130,7 +130,7 @@ final class CoreIdmlBindings {
   /// Checks references, ids, layers, threads and XML bindings: {"isValid":true, "issues":[...]}.
   final int Function(int document, Pointer<Pointer<Utf8>> json) documentValidate;
 
-  /// What changed between two documents, as JSON: stories run by run, links, page count.
+  /// What changed between two documents, as JSON: stories run by run, links, page count, page items.
   final int Function(int before, int after, Pointer<Pointer<Utf8>> json) documentDiff;
 
   /// Fills a template from JSON fill data: {"text":{"key":"value"}, "images":{"key":"/path/photo.jpg"}}. Keys match

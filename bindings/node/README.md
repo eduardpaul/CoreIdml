@@ -92,7 +92,7 @@ Reading:
 | `xmlStructure()` | The XML structure as a tree of `{ tag, id, path, boundTo, attributes, text, children }`, or `null`. |
 | `exportXml({ at }?)` | The XML structure, or the subtree at a path such as `/Root/article[2]`, as XML. |
 | `validate()` | `{ isValid, issues }`: references, ids, layers, threads and XML bindings. |
-| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count. |
+| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count, page items. |
 
 Editing:
 

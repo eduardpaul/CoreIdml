@@ -228,7 +228,10 @@ public sealed class DiffReport
 
 public sealed class DiffEntry
 {
-    /// <summary>story-added, story-removed, run-changed, runs-restructured, link-changed, link-added, link-removed, page-count.</summary>
+    /// <summary>
+    /// story-added, story-removed, run-changed, runs-restructured, link-changed, link-added, link-removed, page-count,
+    /// item-added, item-removed, item-geometry (page-relative bounds), item-changed (the item's changed settings, as name=value).
+    /// </summary>
     public string Kind { get; set; } = string.Empty;
 
     public string? Id { get; set; }

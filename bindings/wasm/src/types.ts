@@ -318,7 +318,7 @@ export interface ValidationReport extends JsonObject {
 }
 
 export interface DiffChange extends JsonObject {
-  /** `story-added`, `story-removed`, `run-changed`, `runs-restructured`, `link-changed`, `link-added`, `link-removed`, `page-count`. */
+  /** `story-added`, `story-removed`, `run-changed`, `runs-restructured`, `link-changed`, `link-added`, `link-removed`, `page-count`, `item-added`, `item-removed`, `item-geometry` (page-relative bounds), `item-changed` (changed settings as name=value). */
   kind: string;
   id?: string;
   runIndex?: number;

@@ -128,7 +128,7 @@ export interface NativeFunctions {
   documentExportXml(document: number, at: string, xml: Out<Pointer>): number;
   /** Checks references, ids, layers, threads and XML bindings: {"isValid":true, "issues":[...]}. */
   documentValidate(document: number, json: Out<Pointer>): number;
-  /** What changed between two documents, as JSON: stories run by run, links, page count. */
+  /** What changed between two documents, as JSON: stories run by run, links, page count, page items. */
   documentDiff(before: number, after: number, json: Out<Pointer>): number;
   /**
    * Fills a template from JSON fill data: {"text":{"key":"value"}, "images":{"key":"/path/photo.jpg"}}. Keys match

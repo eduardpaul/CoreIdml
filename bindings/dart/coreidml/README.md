@@ -96,7 +96,7 @@ A spec describes page size, colours, styles and pages of text frames, images, ta
 | `xmlStructure()` | The XML structure as a tree (`tag`, `path`, `boundTo`, `attributes`, `text`, `children`); null without one. |
 | `exportXml({at})` | The XML structure, or the subtree at a path such as `/Root/article[2]`, as XML. |
 | `validate()` | `{isValid, issues}`: references, ids, layers, threads, XML bindings. |
-| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count. |
+| `diff(other)` | What changed from this document to `other`: stories run by run, links, page count, page items. |
 | `fill(data)` | Fills a template; see below. Returns `{filled, missing}`. |
 | `replaceText(find, replacement)` | Replaces text in every story; returns the number of replacements. |
 | `setRunText(storyId, runIndex, text, {force})` | Rewrites one content run, keeping its formatting. Runs with special characters (a page number) need `force: true`. |

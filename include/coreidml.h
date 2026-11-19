@@ -141,7 +141,7 @@ COREIDML_API int32_t coreidml_document_export_xml(coreidml_document document, co
 /* Checks references, ids, layers, threads and XML bindings: {"isValid":true, "issues":[...]}. */
 COREIDML_API int32_t coreidml_document_validate(coreidml_document document, char** json);
 
-/* What changed between two documents, as JSON: stories run by run, links, page count. */
+/* What changed between two documents, as JSON: stories run by run, links, page count, page items. */
 COREIDML_API int32_t coreidml_document_diff(coreidml_document before, coreidml_document after, char** json);
 
 /* ---- Editing ---------------------------------------------------------------------------------------------- */

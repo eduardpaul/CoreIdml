@@ -53,7 +53,9 @@ public static partial class IdmlJson
         ArgumentNullException.ThrowIfNull(spec);
         var unit = spec.Unit;
         var setup = spec.Page ?? new PageSetupSpec();
-        var size = ResolveSize(setup, unit);
+        // An unknown page size is reported with the spec's other errors; A4 stands in until then.
+        var sizeError = SizeError(setup);
+        var size = sizeError is null ? ResolveSize(setup, unit) : PageSizes.A4;
         var pageCount = Math.Max(1, spec.Pages?.Count(page => page.Index is null) ?? 1);
         var document = IdmlDocument.Create(new DocumentOptions
         {
@@ -65,7 +67,15 @@ public static partial class IdmlJson
             ColumnGutter = setup.ColumnGutter is { } gutter ? Units.FromUnit(gutter, unit) : 12,
             Bleed = setup.Bleed is { } bleed ? Units.FromUnit(bleed, unit) : 0,
         });
-        Render(document, spec, reuseExistingPages: true);
+        try
+        {
+            Render(document, spec, reuseExistingPages: true, sizeError is null ? null : [new SpecError("page", sizeError, IdmlErrorKind.InvalidOperation)]);
+        }
+        catch
+        {
+            document.Dispose();
+            throw;
+        }
         return document;
     }
 
@@ -114,10 +124,17 @@ public static partial class IdmlJson
 
     // ---- rendering --------------------------------------------------------------------------------
 
-    private static void Render(IdmlDocument document, DocumentSpec spec, bool reuseExistingPages)
+    /// <summary>
+    /// Builds the spec into the document. Every error is found first (<see cref="FindSpecErrors"/>) and reported
+    /// together, so a spec either applies completely or changes nothing.
+    /// </summary>
+    private static void Render(IdmlDocument document, DocumentSpec spec, bool reuseExistingPages, List<SpecError>? earlierErrors = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(spec);
+        var errors = earlierErrors ?? [];
+        errors.AddRange(FindSpecErrors(document, spec, reuseExistingPages));
+        ThrowSpecErrors(errors, creating: reuseExistingPages);
         var unit = spec.Unit;
 
         foreach (var color in spec.Colors ?? [])
@@ -280,7 +297,7 @@ public static partial class IdmlJson
                 break;
             }
             default:
-                throw new IdmlException($"Unknown item type '{item.Type}'. Use text, rectangle, ellipse, line, image or table.");
+                throw new IdmlException(ItemTypeError(item.Type));
         }
 
         if (type != "line")
@@ -350,10 +367,17 @@ public static partial class IdmlJson
                 "A5" => PageSizes.A5,
                 "LETTER" => PageSizes.Letter,
                 "LEGAL" => PageSizes.Legal,
-                var other => throw new IdmlException($"Unknown page size '{other}'. Use A3, A4, A5, Letter, Legal or width/height."),
+                _ => throw new IdmlException(SizeError(setup)!),
             };
         return setup.Landscape == true && size.Height > size.Width ? new Size(size.Height, size.Width) : size;
     }
+
+    /// <summary>Why the page setup's size is unknown, or null when it is fine.</summary>
+    private static string? SizeError(PageSetupSpec setup) =>
+        setup.Width is not null && setup.Height is not null
+        || (setup.Size ?? "A4").ToUpperInvariant() is "A3" or "A4" or "A5" or "LETTER" or "LEGAL"
+            ? null
+            : $"Unknown page size '{setup.Size!.ToUpperInvariant()}'. Use A3, A4, A5, Letter, Legal or width/height.";
 
     private static Spacing? ToSpacing(SpacingSpec? spec, string? unit)
     {
@@ -375,9 +399,13 @@ public static partial class IdmlJson
     /// <summary>An enum value by name, ignoring case; anything else is an error that lists the names it accepts.</summary>
     private static TEnum ParseChoice<TEnum>(string value, string field)
         where TEnum : struct, Enum =>
+        ChoiceError<TEnum>(value, field) is { } message ? throw new IdmlException(message) : Enum.Parse<TEnum>(value, ignoreCase: true);
+
+    private static string? ChoiceError<TEnum>(string value, string field)
+        where TEnum : struct, Enum =>
         Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
-            ? parsed
-            : throw new IdmlException($"Unknown {field} '{value}'. Use {string.Join(", ", Enum.GetNames<TEnum>().Select(name => char.ToLowerInvariant(name[0]) + name[1..]))}.");
+            ? null
+            : $"Unknown {field} '{value}'. Use {string.Join(", ", Enum.GetNames<TEnum>().Select(name => char.ToLowerInvariant(name[0]) + name[1..]))}.";
 
     private static ParagraphFormat ToParagraphFormat(IdmlDocument document, TextFormatSpec spec) => new()
     {
@@ -426,15 +454,17 @@ public static partial class IdmlJson
         || spec.FirstLineIndent is not null || spec.LeftIndent is not null || spec.RightIndent is not null || spec.Underline is not null
         || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null;
 
-    private static Justification? ParseJustification(string? align) => align?.Replace("-", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal).ToLowerInvariant() switch
+    private static Justification? ParseJustification(string? align) =>
+        align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));
+
+    private static Justification? TryJustification(string align) => align.Replace("-", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal).ToLowerInvariant() switch
     {
-        null => null,
         "left" => Justification.Left,
         "center" or "centre" => Justification.Center,
         "right" => Justification.Right,
         "justify" => Justification.LeftJustified,
         "justifyall" => Justification.FullyJustified,
-        _ => throw new IdmlException($"Unknown align '{align}'. Use left, center, right, justify or justifyAll."),
+        _ => null,
     };
 
     private static Capitalization? ParseCaps(string? caps) => caps is null ? null : ParseChoice<Capitalization>(caps, "caps");
@@ -442,11 +472,11 @@ public static partial class IdmlJson
     private static TextPosition? ParsePosition(string? position) => position is null ? null : ParseChoice<TextPosition>(position, "position");
 
     private static Swatch RequireSwatch(IdmlDocument document, string name) =>
-        document.Swatches.Find(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown swatch '{name}'. Declare it in colors first.");
+        document.Swatches.Find(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, SwatchMissing(name));
 
     private static ParagraphStyle RequireParagraphStyle(IdmlDocument document, string name) =>
-        document.Styles.FindParagraphStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown paragraph style '{name}'.");
+        document.Styles.FindParagraphStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, ParagraphStyleMissing(name));
 
     private static CharacterStyle RequireCharacterStyle(IdmlDocument document, string name) =>
-        document.Styles.FindCharacterStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, $"Unknown character style '{name}'.");
+        document.Styles.FindCharacterStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, CharacterStyleMissing(name));
 }

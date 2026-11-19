@@ -254,7 +254,7 @@ export class IdmlDocument implements Disposable {
     return this.#json((native, handle, out) => native.documentValidate(handle, out)) as ValidationReport;
   }
 
-  /** What changed from this document to `other`: stories run by run, links, page count. */
+  /** What changed from this document to `other`: stories run by run, links, page count, page items. */
   diff(other: IdmlDocument): DiffReport {
     const after = IdmlDocument.#handleOf(other, 'other');
     return this.#json((native, handle, out) => native.documentDiff(handle, after, out)) as DiffReport;

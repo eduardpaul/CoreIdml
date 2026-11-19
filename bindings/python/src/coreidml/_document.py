@@ -164,7 +164,7 @@ class Document:
         return _take_json(text)
 
     def diff(self, other: "Document") -> dict[str, Any]:
-        """What changed from this document to ``other``: stories run by run, links, page count."""
+        """What changed from this document to ``other``: stories run by run, links, page count, page items."""
         text = ctypes.c_void_p()
         check(native().coreidml_document_diff(self._open_handle(), _document(other, "other"), ctypes.byref(text)))
         return _take_json(text)

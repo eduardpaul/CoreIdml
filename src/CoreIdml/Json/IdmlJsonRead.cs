@@ -243,7 +243,7 @@ public static partial class IdmlJson
         }, Output.XmlImportReportSpec);
     }
 
-    /// <summary>What changed between two versions of a document: stories (by id, run by run), links and page count.</summary>
+    /// <summary>What changed between two versions of a document: stories (by id, run by run), links, page count and page items.</summary>
     public static DiffReport Diff(IdmlDocument before, IdmlDocument after)
     {
         ArgumentNullException.ThrowIfNull(before);
@@ -300,8 +300,110 @@ public static partial class IdmlJson
         {
             report.Changes.Add(new DiffEntry { Kind = "link-added", Id = id, After = uri });
         }
+        DiffItems(before, after, report.Changes);
         report.Identical = report.Changes.Count == 0;
         return report;
+    }
+
+    /// <summary>
+    /// Page items by id, on pages and masters: added, removed, moved or resized (page-relative bounds), and changed in
+    /// their own settings (fill, stroke, layer, name, visibility, frame options…), each changed setting as name=value.
+    /// </summary>
+    private static void DiffItems(IdmlDocument before, IdmlDocument after, List<DiffEntry> changes)
+    {
+        static Dictionary<string, PageItem> ById(IdmlDocument document) =>
+            document.AllPageItems.Concat(document.MasterSpreads.SelectMany(master => master.AllPageItems))
+                .GroupBy(item => item.Id, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var oldItems = ById(before);
+        var newItems = ById(after);
+        foreach (var (id, item) in oldItems.Where(pair => !newItems.ContainsKey(pair.Key)))
+        {
+            changes.Add(new DiffEntry { Kind = "item-removed", Id = id, Before = DescribeItem(item) });
+        }
+        foreach (var (id, item) in newItems.Where(pair => !oldItems.ContainsKey(pair.Key)))
+        {
+            changes.Add(new DiffEntry { Kind = "item-added", Id = id, After = DescribeItem(item) });
+        }
+        foreach (var (id, oldItem) in oldItems)
+        {
+            if (!newItems.TryGetValue(id, out var newItem))
+            {
+                continue;
+            }
+            var (oldPlace, newPlace) = (Placement(oldItem), Placement(newItem));
+            if (oldPlace != newPlace)
+            {
+                changes.Add(new DiffEntry { Kind = "item-geometry", Id = id, Before = oldPlace, After = newPlace });
+            }
+            var oldSettings = ItemSettings(oldItem.Element);
+            var newSettings = ItemSettings(newItem.Element);
+            var changed = oldSettings.Keys.Union(newSettings.Keys, StringComparer.Ordinal)
+                .Where(key => oldSettings.GetValueOrDefault(key) != newSettings.GetValueOrDefault(key))
+                .Order(StringComparer.Ordinal)
+                .ToList();
+            if (changed.Count > 0)
+            {
+                changes.Add(new DiffEntry
+                {
+                    Kind = "item-changed",
+                    Id = id,
+                    Before = Truncate(string.Join("; ", changed.Select(key => $"{key}={oldSettings.GetValueOrDefault(key) ?? "(none)"}")), 400),
+                    After = Truncate(string.Join("; ", changed.Select(key => $"{key}={newSettings.GetValueOrDefault(key) ?? "(none)"}")), 400),
+                });
+            }
+        }
+    }
+
+    private static string DescribeItem(PageItem item) =>
+        (item.Name is { Length: > 0 } name ? $"{item.Kind} '{name}'" : item.Kind) + ", " + Placement(item);
+
+    /// <summary>Page-relative bounds in points, and the page ("x=10 y=20 width=100 height=0 on page 1").</summary>
+    private static string Placement(PageItem item)
+    {
+        static string N(double value) => Math.Round(value, 2).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var bounds = item.Bounds;
+        var where = item.Page is { } page ? $" on page {page.Name}" : item.Spread is MasterSpread master ? $" on master {master.Name}" : " off the pages";
+        return $"x={N(bounds.X)} y={N(bounds.Y)} width={N(bounds.Width)} height={N(bounds.Height)}{where}";
+    }
+
+    /// <summary>
+    /// An item's own settings as path=value: its attributes (not its transform, which <see cref="Placement"/> covers)
+    /// and those of its setting elements (Properties, TextFramePreference, TransparencySetting…), leaving out nested page
+    /// items (compared on their own), its path (geometry) and placed graphics (links).
+    /// </summary>
+    private static Dictionary<string, string> ItemSettings(XElement element)
+    {
+        var settings = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Walk(XElement node, string prefix)
+        {
+            foreach (var attribute in node.Attributes())
+            {
+                if (prefix.Length == 0 && attribute.Name.LocalName is "Self" or "ItemTransform")
+                {
+                    continue;
+                }
+                settings[prefix + attribute.Name.LocalName] = attribute.Value;
+            }
+            var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var child in node.Elements())
+            {
+                var name = child.Name.LocalName;
+                if (PageItem.IsPageItemKind(name) || name is "PathGeometry" or "Image" or "PDF" or "EPS" or "ImportedPage" or "WMF" or "PICT" or "SVG")
+                {
+                    continue;
+                }
+                var count = seen[name] = seen.GetValueOrDefault(name) + 1;
+                var path = prefix + name + (count > 1 ? $"[{count}]" : string.Empty);
+                if (!child.HasElements && child.Value.Length > 0)
+                {
+                    settings[path] = child.Value;
+                }
+                Walk(child, path + ".");
+            }
+        }
+        Walk(element, string.Empty);
+        return settings;
     }
 
     public static string DiffJson(IdmlDocument before, IdmlDocument after) =>

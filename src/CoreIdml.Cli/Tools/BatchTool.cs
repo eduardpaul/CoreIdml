@@ -36,16 +36,16 @@ internal static class BatchTool
             var tool = ToolCatalog.Find(name);
             if (tool?.Apply is not { } apply || tool.Name == Definition.Name)
             {
-                throw ToolException.Invalid($"Operation {index}: '{name}' is not an edit tool that can run in a batch (edit tools: {string.Join(", ", ToolCatalog.All.Where(candidate => candidate.Apply is not null && candidate.Name != Definition.Name).Select(candidate => candidate.Name))}).");
+                throw ToolException.Invalid($"Operation {index + 1} of {operations.Count}: '{name}' is not an edit tool that can run in a batch (edit tools: {string.Join(", ", ToolCatalog.All.Where(candidate => candidate.Apply is not null && candidate.Name != Definition.Name).Select(candidate => candidate.Name))}).");
             }
             var arguments = operation.Get("arguments") ?? default;
             if (arguments.ValueKind is not (JsonValueKind.Object or JsonValueKind.Undefined))
             {
-                throw ToolException.Invalid($"Operation {index} ({name}): 'arguments' must be an object.");
+                throw ToolException.Invalid($"{Label(index, operations.Count, name, arguments)}: 'arguments' must be an object.");
             }
             if (arguments.ValueKind == JsonValueKind.Object && SessionArguments.FirstOrDefault(key => arguments.TryGetProperty(key, out _)) is { } misplaced)
             {
-                throw ToolException.Invalid($"Operation {index} ({name}): '{misplaced}' belongs to the batch itself, not to its operations.");
+                throw ToolException.Invalid($"{Label(index, operations.Count, name, arguments)}: '{misplaced}' belongs to the batch itself, not to its operations.");
             }
             string result;
             try
@@ -54,10 +54,31 @@ internal static class BatchTool
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                throw new ToolException(ToolException.KindOf(exception), $"Operation {index} ({name}) failed, nothing was saved: {ToolException.Describe(exception)}");
+                throw new ToolException(ToolException.KindOf(exception), $"{Label(index, operations.Count, name, arguments)} failed, nothing was saved: {ToolException.Describe(exception)}");
             }
             results.Add((JsonNode)new JsonObject { ["tool"] = name, ["result"] = JsonNode.Parse(result) });
         }
         return JsonText.Write(new JsonObject { ["operations"] = operations.Count, ["results"] = results });
+    }
+
+    /// <summary>
+    /// How errors name an operation: counted from 1 with the total, the tool, and what it works on when the arguments
+    /// say ("Operation 3 of 3 (idml_edit_item on 'cap')").
+    /// </summary>
+    private static string Label(int index, int count, string tool, JsonElement arguments)
+    {
+        string? target = null;
+        if (arguments.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var key in (string[])["name", "itemId", "storyId", "linkId"])
+            {
+                if (arguments.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+                {
+                    target = value.GetString();
+                    break;
+                }
+            }
+        }
+        return $"Operation {index + 1} of {count} ({tool}{(target is null ? "" : $" on '{target}'")})";
     }
 }
