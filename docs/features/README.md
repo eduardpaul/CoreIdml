@@ -25,6 +25,14 @@ includes tests and docs.
 | Gradients and effects | [gradients-and-effects.md](gradients-and-effects.md) |
 | Drop caps | [drop-caps.md](drop-caps.md) |
 
+Two further plans, for new plugin skills rather than layout fidelity, have their own work plan in
+[accessibility-and-variants.md](accessibility-and-variants.md):
+
+| Feature | Plan | Skill draft |
+| --- | --- | --- |
+| Accessibility review (Section 508, WCAG, PDF/UA) | [accessibility-plan.md](accessibility-plan.md) | [accessibility-skill-draft.md](accessibility-skill-draft.md) |
+| Responsive layouts and editions (Liquid rules, alternate layouts, Flex Layout, conditional text, localization) | [responsive-layout-plan.md](responsive-layout-plan.md) | [responsive-layout-skill-draft.md](responsive-layout-skill-draft.md) |
+
 For every other InDesign feature, what the MCP tools can author and what the preview draws, see
 [feature-matrix.md](feature-matrix.md). Its "Gaps not in the plan" section lists features the six plans do not cover.
 
@@ -173,7 +181,7 @@ Each release updates the spec reference's "Not supported" section, the skill (`S
 - Primary text frames and smart text reflow.
 - Master page resizing (authoring `MasterPageTransform`).
 - Authoring overrides before phase 0 confirms the format.
-- Alternate layouts (see `docs/internal/responsive-layout-plan.md` in the main tree).
+- Alternate layouts (see [responsive-layout-plan.md](responsive-layout-plan.md)).
 
 **Rules and paragraphs**
 

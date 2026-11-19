@@ -19,7 +19,9 @@ Checked against commit `a7828e8` by reading the code. Rows marked † were infer
 
 **Legend:** ✅ yes · 🟡 partly (see notes) · ❌ no · — does not apply
 
-The six features with an implementation plan already ([README.md](README.md)) are marked **[plan]**. Rows marked
+Features with an implementation plan already (the six in [README.md](README.md), plus
+[accessibility](accessibility-plan.md) and [responsive layouts and editions](responsive-layout-plan.md)) are marked
+**[plan]**. Rows marked
 **[new]** are gaps this inventory found that no plan covers yet; they are summarised in
 [Gaps not in the plan](#gaps-not-in-the-plan).
 
@@ -36,7 +38,8 @@ The six features with an implementation plan already ([README.md](README.md)) ar
 | Sections and page numbering | `Section` in designmap | 🟡 | 🟡 | Kept consistent when pages move; not authorable. Page-number markers print the page's `Name`, which already includes the section's style and prefix. |
 | Master pages **[plan]** | `MasterSpreads/*.xml`, `Page@AppliedMaster`, `OverrideList` | ❌ | ✅ | Drawn: left/right, based-on masters, overridden items skipped, per-page folios. Not drawn: `ShowMasterItems=false` spreads. `idml_add_page` always applies the first master. |
 | Layers | `Layer`, `ItemLayer` | ✅ | ✅ | Spec `layer` (created when missing), `idml_edit_item` layer, visibility, lock. Hidden and non-printing layers are skipped. |
-| Alternate and liquid layouts | `AlternateLayout*`, `LiquidLayout*` | ❌ | ❌ | Out of scope. |
+| Alternate and liquid layouts **[plan]** | `Section@AlternateLayout`, `Page@LayoutRule`, `*LayoutConstraints` | ❌ | ❌ | Rules kept, never applied; no tool resizes a page. See [responsive-layout-plan.md](responsive-layout-plan.md). |
+| Flex Layout (InDesign 2026+) **[plan]** | not documented yet | ❌ | ❌ † | If InDesign writes it as its own container element, its children are not page items for CoreIdml: not found, filled or drawn. See [responsive-layout-plan.md](responsive-layout-plan.md). |
 
 ## Page items and shapes
 
@@ -113,7 +116,7 @@ The six features with an implementation plan already ([README.md](README.md)) ar
 | Vertical justification | `VerticalJustification` | ✅ | ✅ | `verticalAlign`: top, center, bottom, justify. |
 | First baseline offset | `FirstBaselineOffset`, `MinimumFirstBaselineOffset` | ❌ | ✅ | |
 | Overset detection | — | ✅ | ✅ | `idml_check_fit` (exact, from the composer); summary `likelyOverset` (estimate). |
-| Auto-size frames **[new]** | `TextFramePreference@AutoSizingType` | ❌ | ❌ † | The frame keeps its stored size; text that InDesign would show by growing the frame is reported overset. |
+| Auto-size frames **[plan]** | `TextFramePreference@AutoSizingType` | ❌ | ❌ † | The frame keeps its stored size; text that InDesign would show by growing the frame is reported overset. See [responsive-layout-plan.md](responsive-layout-plan.md), phase 1. |
 | Balance columns **[new]** | `TextFramePreference@VerticalBalanceColumns` | ❌ | ❌ † | |
 | Span and split columns **[new]** | `SpanColumnType`, `SpanSplitColumnCount` | ❌ | ❌ † | Headlines that span columns are composed in one column. |
 | Text in non-rectangular frames **[new]** | text in `Oval`, `Polygon` | ❌ | 🟡 | Composed in the bounding box ([IdmlRenderer.cs:225](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.cs#L225)), so lines run outside the shape. |
@@ -210,7 +213,7 @@ The six features with an implementation plan already ([README.md](README.md)) ar
 | Bookmarks | `Bookmark` | ❌ | ❌ | No PDF outline. |
 | Table of contents | generated story | 🟡 | ✅ | Drawn as the stored text; no tool regenerates it. |
 | Index markers | `PageReference` | — | — | Invisible in InDesign too. |
-| Conditional text **[new]** | `Condition`, `AppliedConditions` | ❌ | ❌ † | Text under a hidden condition is still drawn. |
+| Conditional text **[plan]** | `Condition`, `AppliedConditions` | ❌ | ❌ † | Text under a hidden condition is still drawn. See [responsive-layout-plan.md](responsive-layout-plan.md), phase 1. |
 | Tracked changes **[new]** | `Change@ChangeType` | ❌ | ❌ | Text inside `Change` is always drawn ([StoryReader.cs:14](../../src/CoreIdml.Pdf/Layout/StoryReader.cs#L14)), so **deleted text appears** in the preview; InDesign's layout shows only the accepted text. |
 | Notes | `Note` | — | ✅ | Skipped, as InDesign does. |
 | Find and replace | — | ✅ | — | `idml_replace_text` (plain text, across runs). GREP is not offered. |
@@ -228,6 +231,7 @@ The six features with an implementation plan already ([README.md](README.md)) ar
 | Bleed, trim and crop marks | ❌ | ❌ | See bleed above. |
 | PDF/X, output intents, colour management | ❌ | ❌ | CMYK and RGB written as device colours; CMYK previews use a naive conversion. |
 | Spreads as one PDF page | ❌ | ❌ | One PDF page per document page. |
+| Tagged PDF, accessibility **[plan]** | ❌ | ❌ | Untagged: no structure tree, `/Lang`, alt text or artifacts. The IDML's accessibility settings (alt text, export tags, Articles) are kept but not authorable. See [accessibility-plan.md](accessibility-plan.md). |
 
 ## Gaps not in the plan
 
@@ -246,7 +250,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 8 | **Text stroke, skew, underline options** | Solid, upright, thin | S | Text render mode 2, a skew in `Tm`, underline weight/offset/colour. |
 | 9 | **TIFF and PSD images** | Missing | M | TIFF decoder (uncompressed, LZW, deflate) for the common case; PSD composite image. |
 | 10 | **Nested and GREP styles** | Run-in heads plain | M | Applied when reading the story into runs. |
-| 11 | **Auto-size frames, span columns, balance columns** | Overset or one column | M | All in frame-area construction. |
+| 11 | **Auto-size frames, span columns, balance columns** | Overset or one column | M | All in frame-area construction. Auto-size is now in [responsive-layout-plan.md](responsive-layout-plan.md). |
 | 12 | **Above-line and custom anchored objects** | Missing | M | Custom position relative to frame, page or margin. |
 | 13 | **Cell border types, footer row repeat, cell rotation, diagonal lines** | Simplified | S each | |
 | 14 | **Bleed in the PDF** | Cut at trim | S | MediaBox = trim + bleed, TrimBox and BleedBox. |
