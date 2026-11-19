@@ -653,6 +653,28 @@ public class CliAndMcpTests
     }
 
     [Fact]
+    public void Define_style_takes_the_alignments_its_schema_lists_and_warns_about_the_rest()
+    {
+        var path = DocumentWithText("Hello");
+        var client = new McpTestClient();
+        var tool = new McpTestClient().Request("tools/list").GetProperty("tools").EnumerateArray().Single(t => t.GetProperty("name").GetString() == "idml_define_style");
+        var aligns = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("align").GetProperty("enum").EnumerateArray().Select(value => value.GetString()!).ToList();
+
+        foreach (var align in aligns.Append("justify-all"))
+        {
+            Assert.Equal("""{"ok":true}""", client.CallText("idml_define_style", new JsonObject { ["path"] = path, ["kind"] = "paragraph", ["name"] = "P " + align, ["align"] = align, ["inPlace"] = true }));
+        }
+        var warned = client.CallJson("idml_define_style", new JsonObject { ["path"] = path, ["kind"] = "paragraph", ["name"] = "Q", ["fontSize"] = 12, ["caps"] = "allCaps", ["inPlace"] = true });
+        var color = client.CallJson("idml_add_color", new JsonObject { ["path"] = path, ["name"] = "Brand", ["hex"] = "#336699", ["alpha"] = 50, ["inPlace"] = true });
+
+        Assert.Equal(["arguments: unknown field 'fontSize', ignored (did you mean 'size'?)."], warned.GetProperty("warnings").EnumerateArray().Select(warning => warning.GetString()));
+        Assert.Equal(["arguments: unknown field 'alpha', ignored."], color.GetProperty("warnings").EnumerateArray().Select(warning => warning.GetString()));
+        using var document = IdmlDocument.Open(path);
+        Assert.Equal("FullyJustified", document.Styles.FindParagraphStyle("P justifyAll")!.Element.Attribute("Justification")?.Value);
+        Assert.Equal("FullyJustified", document.Styles.FindParagraphStyle("P justify-all")!.Element.Attribute("Justification")?.Value);
+    }
+
+    [Fact]
     public void The_spec_schema_names_every_field_of_the_spec_model()
     {
         var tools = new McpTestClient().Request("tools/list").GetProperty("tools").EnumerateArray();

@@ -426,7 +426,7 @@ public static partial class IdmlJson
         || spec.FirstLineIndent is not null || spec.LeftIndent is not null || spec.RightIndent is not null || spec.Underline is not null
         || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null;
 
-    private static Justification? ParseJustification(string? align) => align?.ToLowerInvariant() switch
+    private static Justification? ParseJustification(string? align) => align?.Replace("-", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal).ToLowerInvariant() switch
     {
         null => null,
         "left" => Justification.Left,
@@ -434,7 +434,7 @@ public static partial class IdmlJson
         "right" => Justification.Right,
         "justify" => Justification.LeftJustified,
         "justifyall" => Justification.FullyJustified,
-        var other => throw new IdmlException($"Unknown align '{other}'. Use left, center, right, justify or justifyAll."),
+        _ => throw new IdmlException($"Unknown align '{align}'. Use left, center, right, justify or justifyAll."),
     };
 
     private static Capitalization? ParseCaps(string? caps) => caps is null ? null : ParseChoice<Capitalization>(caps, "caps");

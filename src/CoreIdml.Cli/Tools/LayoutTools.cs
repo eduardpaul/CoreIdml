@@ -195,9 +195,9 @@ internal static class LayoutTools
             InputSchema = Schema.Edit(
                 """ "kind":{"type":"string","enum":["paragraph","character"]},"name":{"type":"string"},"basedOn":{"type":"string"},""" +
                 """ "font":{"type":"string"},"fontStyle":{"type":"string"},"size":{"type":"number"},"leading":{"type":"number"},"color":{"type":"string","description":"Swatch name"},"tint":{"type":"number"},""" +
-                """ "align":{"type":"string","enum":["left","center","right","justify","justify-all"]},"spaceBefore":{"type":"number"},"spaceAfter":{"type":"number"},""" +
+                """ "align":{"type":"string","enum":["left","center","right","justify","justifyAll"]},"spaceBefore":{"type":"number"},"spaceAfter":{"type":"number"},""" +
                 """ "firstLineIndent":{"type":"number"},"leftIndent":{"type":"number"},"rightIndent":{"type":"number"},"underline":{"type":"boolean"},"strikeThrough":{"type":"boolean"},""" +
-                """ "tracking":{"type":"number"},"caps":{"type":"string"},"position":{"type":"string"}""",
+                """ "tracking":{"type":"number"},"caps":{"type":"string","enum":["normal","allCaps","smallCaps","capToSmallCap"]},"position":{"type":"string","enum":["normal","superscript","subscript"]}""",
                 "kind", "name"),
             Access = ToolAccess.Edit,
             Idempotent = true,
@@ -213,9 +213,9 @@ internal static class LayoutTools
                 {
                     style.Remove(key);
                 }
-                var spec = new JsonObject { [kind == "paragraph" ? "paragraphStyles" : "characterStyles"] = new JsonArray(style) };
-                IdmlJson.Apply(edit.Document, JsonText.Write(spec));
-                return JsonText.Ok;
+                var spec = JsonText.Write(new JsonObject { [kind == "paragraph" ? "paragraphStyles" : "characterStyles"] = new JsonArray(style) });
+                IdmlJson.Apply(edit.Document, spec);
+                return WithWarnings(spec);
             },
         },
         new()
@@ -235,8 +235,9 @@ internal static class LayoutTools
                 {
                     color.Remove(key);
                 }
-                IdmlJson.Apply(edit.Document, JsonText.Write(new JsonObject { ["colors"] = new JsonArray(color) }));
-                return JsonText.Ok;
+                var spec = JsonText.Write(new JsonObject { ["colors"] = new JsonArray(color) });
+                IdmlJson.Apply(edit.Document, spec);
+                return WithWarnings(spec);
             },
         },
         new()
@@ -333,6 +334,17 @@ internal static class LayoutTools
         {
             frame.VerticalJustification = Choice<VerticalJustification>(verticalAlign, "verticalAlign");
         }
+    }
+
+    /// <summary>{"ok":true}, with the warnings of a one-entry spec built from a tool's arguments when there are any.</summary>
+    private static string WithWarnings(string spec)
+    {
+        var warnings = IdmlJson.CheckSpec(spec)
+            .Select(warning => warning.Replace("paragraphStyles[0]", "arguments", StringComparison.Ordinal)
+                .Replace("characterStyles[0]", "arguments", StringComparison.Ordinal)
+                .Replace("colors[0]", "arguments", StringComparison.Ordinal))
+            .ToList();
+        return warnings.Count == 0 ? JsonText.Ok : JsonText.Write(new JsonObject { ["ok"] = true, ["warnings"] = JsonText.Array(warnings) });
     }
 
     internal static Swatch RequireSwatch(IdmlDocument document, string name) =>
