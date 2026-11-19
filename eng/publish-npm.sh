@@ -23,7 +23,14 @@ if (( ${#platform[@]} == 0 || ${#node[@]} != 1 || ${#wasm[@]} != 1 || ${#cli[@]}
   exit 1
 fi
 
+# A version that is on the registry already is skipped, so a release that stopped halfway (one package without its
+# trusted publisher, say) can be run again: npm never accepts the same version twice.
 for tarball in "${platform[@]}" "${node[@]}" "${wasm[@]}" "${cli[@]}"; do
+  spec="$(tar -xzOf "$tarball" package/package.json | node -e 'const p = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(`${p.name}@${p.version}`)')"
+  if [[ -n "$(npm view "$spec" version 2>/dev/null)" ]]; then
+    echo "skipping $spec: already published"
+    continue
+  fi
   echo "publishing $(basename "$tarball") (tag $tag)"
   npm publish "$tarball" --access public --tag "$tag" "$@"
 done
