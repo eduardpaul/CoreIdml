@@ -122,7 +122,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Span and split columns **[new]** | `SpanColumnType`, `SpanSplitColumnCount` | ❌ | ❌ † | Headlines that span columns are composed in one column. |
 | Text in non-rectangular frames **[new]** | text in `Oval`, `Polygon` | ❌ | 🟡 | Composed in the bounding box ([IdmlRenderer.cs:225](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.cs#L225)), so lines run outside the shape. |
 | Text on a path | `TextPath` | ❌ | ❌ † | |
-| Baseline grid | `GridPreference`, `AlignToBaseline` | ❌ | ❌ † | Lines are not snapped: body text in grid-aligned documents drifts from InDesign's. |
+| Baseline grid | `GridPreference@BaselineStart`, `BaselineDivision`, `BaselineGridRelativeOption`; `BaselineFrameGridOption`; paragraph `GridAlignment="AlignBaseline"`, `GridAlignFirstLineOnly` | ❌ | ✅ | Measured against `06-frame-baseline-grid`: an aligned line moves down to the next grid line after leading, space before/after or the first-baseline offset, and the next line counts its leading from there; first line only snaps the first line of each paragraph; a custom frame grid (from the frame, its object style or the document default) starts its offset below the top of the frame, its inset, the page or the top margin. Every baseline on every page within 0.13 pt (InDesign starts a stroked frame half the stroke weight lower, which CoreIdml does not). Not done: CJK grid alignments (`AlignEmCenter`, ...), text in table cells and anchored frames, page-relative grids for rotated or scaled frames; vertical justification other than top still moves aligned lines off the grid (not measured). |
 
 ## Character formatting
 
@@ -255,7 +255,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 12 | **Above-line and custom anchored objects** | Missing | M | Custom position relative to frame, page or margin. |
 | 13 | **Cell border types, footer row repeat, cell rotation, diagonal lines** | Simplified | S each | |
 | 14 | **Bleed in the PDF** | Cut at trim | S | MediaBox = trim + bleed, TrimBox and BleedBox. |
-| 15 | **Mixed inks, OpenType features, optical kerning, baseline grid** | Approximated or missing | M each | Lower priority. |
+| 15 | **Mixed inks, OpenType features, optical kerning** | Approximated or missing | M each | Lower priority. |
 
 Agent-only gaps (the preview already draws them, the tools cannot author them), cheapest first: stroke alignment,
 join; baseline shift, scale and language in styles; cell fill, inset and vertical alignment per cell;

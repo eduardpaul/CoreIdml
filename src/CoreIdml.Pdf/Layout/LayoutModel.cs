@@ -83,6 +83,12 @@ internal sealed record ParagraphFormatting
     public IReadOnlyList<ResolvedTab> Tabs { get; init; } = [];
 
     public HyphenationSettings Hyphenation { get; init; } = new(false, 2, 2, 5, true);
+
+    /// <summary>Align to Baseline Grid (<c>GridAlignment="AlignBaseline"</c>): the paragraph's baselines snap to the frame's grid.</summary>
+    public bool AlignToBaselineGrid { get; init; }
+
+    /// <summary><c>GridAlignFirstLineOnly</c>: only the first line snaps; the others keep their leading from it.</summary>
+    public bool GridAlignFirstLineOnly { get; init; }
 }
 
 /// <summary>An element of a paragraph's content.</summary>
@@ -150,8 +156,28 @@ internal sealed record PageItemOp(XElement Element, Matrix Placement) : DrawOp
     public override DrawOp Offset(double dx, double dy) => this with { Placement = Placement.Then(Matrix.Translation(dx, dy)) };
 }
 
-/// <summary>Where a story is laid out: one entry per threaded frame, columns in the frame's inner coordinates.</summary>
-internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, string VerticalJustification, string FirstBaselineOffset, double MinimumFirstBaselineOffset, string PageName);
+/// <summary>
+/// Where a story is laid out: one entry per threaded frame, columns in the frame's inner coordinates.
+/// <paramref name="BaselineGrid"/> is the grid that grid-aligned paragraphs snap to (null: none, as in table cells).
+/// </summary>
+internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, string VerticalJustification, string FirstBaselineOffset, double MinimumFirstBaselineOffset, string PageName, BaselineGrid? BaselineGrid = null);
+
+/// <summary>
+/// A baseline grid in a frame's inner coordinates: lines at <see cref="Start"/>, then every <see cref="Increment"/>
+/// below it (no lines above the start, as InDesign draws it). <see cref="Increment"/> is positive.
+/// </summary>
+internal readonly record struct BaselineGrid(double Start, double Increment)
+{
+    /// <summary>
+    /// The first grid line at or below <paramref name="baseline"/>: InDesign moves a grid-aligned line down to the
+    /// next grid line, never up (06-frame-baseline-grid: 12 pt leading on a 14 pt grid gives lines 14 pt apart).
+    /// </summary>
+    public double Snap(double baseline) =>
+        baseline <= Start
+            ? Start
+            // A baseline within 0.01 pt of a line is on it (rounding in the inputs must not push it a line down).
+            : Start + (Math.Ceiling((baseline - Start - 0.01) / Increment) * Increment);
+}
 
 /// <summary>
 /// A laid-out line (for tests and reports). <see cref="Text"/> includes a list marker at its start;

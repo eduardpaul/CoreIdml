@@ -371,7 +371,7 @@ internal sealed class TextComposer
             index = end;
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             var metrics = Measure(line, paragraph.MarkStyle);
-            if (!flow.Place(metrics))
+            if (!flow.Place(metrics, format.AlignToBaselineGrid && (firstLine || !format.GridAlignFirstLineOnly)))
             {
                 return;
             }
@@ -1084,8 +1084,15 @@ internal sealed class TextComposer
 
         public void Add(DrawOp op) => columnOps.Add(op);
 
-        /// <summary>Positions the next line; false when the text no longer fits anywhere.</summary>
-        public bool Place(LineMetrics metrics)
+        /// <summary>
+        /// Positions the next line; false when the text no longer fits anywhere. With <paramref name="snapToGrid"/>
+        /// the baseline that leading, space before/after or the first-baseline offset give moves down to the frame's
+        /// baseline grid, and the next line's leading counts from there (06-frame-baseline-grid: 12 pt leading on a
+        /// 14 pt grid, lines 14 pt apart; 7 pt space after with 14 pt leading, paragraphs 28 pt apart; a 22/26
+        /// headline's first baseline down to the grid line below it). Whether it still fits is decided
+        /// after the snap.
+        /// </summary>
+        public bool Place(LineMetrics metrics, bool snapToGrid)
         {
             while (!Exhausted)
             {
@@ -1107,6 +1114,10 @@ internal sealed class TextComposer
                 else
                 {
                     baseline = Baseline + PendingSpace + metrics.Leading;
+                }
+                if (snapToGrid && Frame.BaselineGrid is { } grid)
+                {
+                    baseline = grid.Snap(baseline);
                 }
                 // InDesign keeps a line while its baseline is inside the column; descenders may hang below the frame.
                 if (baseline > column.Bottom + Epsilon && !(AtColumnTop && column.Height <= 0))

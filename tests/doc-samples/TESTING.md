@@ -360,7 +360,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `06-frame-span-balance` | D | Headlines span all or 2 columns; split columns; balanced columns end at the same height. | |
 | `06-frame-shapes` | D | Lines stay inside ovals, hexagons, stars, triangles and curved frames, with insets. | Today lines are composed in the bounding box. |
 | `06-frame-text-on-path` | D, C | Glyph positions along the path for each effect, alignment, flip. | PdfPig words on curved text may split; match by glyph. |
-| `06-frame-baseline-grid` | D | Baselines on the grid (14 pt) where aligned; first-line-only; custom frame grid. | The cyan hairlines are drawn items. |
+| `06-frame-baseline-grid` | D | Baselines on the grid (14 pt) where aligned; first-line-only; custom frame grid. | The cyan hairlines are drawn items. InDesign starts text in a stroked frame half the stroke weight in (0.125 pt here), frame grids too, so our baselines read 0.12 pt high outside the document grid. |
 
 ### 07 Characters
 

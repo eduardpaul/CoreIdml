@@ -507,6 +507,9 @@ internal sealed class StoryReader
                 (int)Values.Number(Get("HyphenateWordsLongerThan"), 5),
                 Get("HyphenateCapitalizedWords") != "false",
                 Values.Number(Get("HyphenationZone"), 36)),
+            // The other GridAlignment values (AlignEmTop, AlignEmCenter, ...) align to a CJK layout grid, not done.
+            AlignToBaselineGrid = Get("GridAlignment") == "AlignBaseline",
+            GridAlignFirstLineOnly = Get("GridAlignFirstLineOnly") == "true",
         };
         paragraphFormats[range] = format;
         return format;

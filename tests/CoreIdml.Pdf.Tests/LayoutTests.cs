@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using CoreIdml.Dom;
 using CoreIdml.Pdf.Layout;
 using CoreIdml.Pdf.Rendering;
@@ -156,6 +157,90 @@ public sealed class LayoutTests
         // Like InDesign cells (measured on real InDesign exports), the text block ends at the last baseline.
         var textHeight = face.Ascent * 10;
         Assert.Equal(frame.InnerBounds.Y + ((100 - textHeight) / 2) + (face.Ascent * 10), run.Y, 3);
+    }
+
+    /// <summary>A Liberation Serif 10/10 style aligned to the baseline grid (ascent 8.9 pt).</summary>
+    private static ParagraphStyle GridStyle(IdmlDocument document, bool firstLineOnly = false)
+    {
+        var style = document.Styles.AddParagraphStyle("Grid", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 10, Leading = 10 });
+        style.Element.SetAttributeValue("GridAlignment", "AlignBaseline");
+        if (firstLineOnly)
+        {
+            style.Element.SetAttributeValue("GridAlignFirstLineOnly", "true");
+        }
+        return style;
+    }
+
+    /// <summary>A line's baseline from the top of the page.</summary>
+    private static double PageY(TextFrame frame, LineInfo line) => line.Baseline - frame.InnerBounds.Y + frame.Bounds.Y;
+
+    [Fact]
+    public void Grid_aligned_lines_snap_down_to_the_document_baseline_grid()
+    {
+        // The blank document's grid: 12 pt from 36 pt below the top of the page. The first baseline (50 + 8.9) moves to
+        // 60 and the 10 pt leading becomes 12.
+        var (document, page) = NewDocument();
+        var frame = page.AddText(new Rect(50, 50, 120, 400), Lorem, GridStyle(document));
+        var layout = Layout(document, frame);
+
+        Assert.True(layout.Lines.Count >= 4);
+        for (var i = 0; i < layout.Lines.Count; i++)
+        {
+            Assert.Equal(60 + (12 * i), PageY(frame, layout.Lines[i]), 6);
+        }
+    }
+
+    [Fact]
+    public void Grid_align_first_line_only_snaps_the_first_line_of_each_paragraph()
+    {
+        var (document, page) = NewDocument();
+        var frame = page.AddText(new Rect(50, 50, 120, 400), Lorem + "\n" + Lorem, GridStyle(document, firstLineOnly: true));
+        var layout = Layout(document, frame);
+        var lines = layout.Lines.Select(line => PageY(frame, line)).ToList();
+        var second = layout.Lines.FindIndex(1, line => line.Text.StartsWith("Lorem", StringComparison.Ordinal));
+
+        Assert.Equal(60, lines[0], 6);
+        for (var i = 1; i < second; i++)
+        {
+            Assert.Equal(10, lines[i] - lines[i - 1], 6);
+        }
+        var expected = 36 + (Math.Ceiling((lines[second - 1] + 10 - 36 - 0.01) / 12) * 12);
+        Assert.Equal(expected, lines[second], 6);
+        Assert.Equal(10, lines[second + 1] - lines[second], 6);
+    }
+
+    [Theory]
+    [InlineData("TopOfFrame", 10, 0, 60)]   // frame top 50 + 10
+    [InlineData("TopOfInset", 10, 30, 90)]  // frame top 50 + inset 30 + 10
+    [InlineData("TopOfPage", 5, 0, 65)]     // 5, 25, 45, then 65 below 58.9
+    [InlineData("TopOfMargin", 0, 0, 60)]   // margin 40, then 60 below 58.9
+    public void A_custom_frame_grid_replaces_the_document_grid(string relativeTo, double start, double insetTop, double firstBaseline)
+    {
+        var (document, page) = NewDocument();
+        page.Margins = new Spacing(40, 36, 36, 36);
+        var frame = page.AddText(new Rect(50, 50, 120, 400), Lorem, GridStyle(document));
+        frame.Inset = new Spacing(insetTop, 0, 0, 0);
+        frame.Element.Add(new XElement("BaselineFrameGridOption",
+            new XAttribute("UseCustomBaselineFrameGrid", "true"),
+            new XAttribute("StartingOffsetForBaselineFrameGrid", start),
+            new XAttribute("BaselineFrameGridRelativeOption", relativeTo),
+            new XAttribute("BaselineFrameGridIncrement", 20)));
+        var layout = Layout(document, frame);
+
+        for (var i = 0; i < layout.Lines.Count; i++)
+        {
+            Assert.Equal(firstBaseline + (20 * i), PageY(frame, layout.Lines[i]), 6);
+        }
+    }
+
+    [Fact]
+    public void A_baseline_on_a_grid_line_stays_there()
+    {
+        var grid = new BaselineGrid(36, 14);
+        Assert.Equal(36, grid.Snap(10));
+        Assert.Equal(64, grid.Snap(64.005));
+        Assert.Equal(78, grid.Snap(64.02));
+        Assert.Equal(64, grid.Snap(57.06));
     }
 
     [Theory]

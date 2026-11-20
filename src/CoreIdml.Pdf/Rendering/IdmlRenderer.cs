@@ -252,7 +252,64 @@ internal sealed partial class IdmlRenderer : IDisposable
             Preference("VerticalJustification") ?? "TopAlign",
             Preference("FirstBaselineOffset") ?? "AscentOffset",
             Values.Number(Preference("MinimumFirstBaselineOffset"), 0),
-            pageName);
+            pageName,
+            BaselineGridOf(frame, chain, inner.Y, inner.Y + inset.Top));
+    }
+
+    /// <summary>
+    /// The baseline grid of a text frame, in its inner coordinates. A custom frame grid (<c>BaselineFrameGridOption</c>
+    /// with <c>UseCustomBaselineFrameGrid</c>, each attribute from the frame, its object style or the document default)
+    /// starts its offset below the top of the frame, of its inset, of the page or of the page's top margin; otherwise the
+    /// document grid (<c>GridPreference</c>) starts <c>BaselineStart</c> below the top of the page or of its top margin.
+    /// Measured in 06-frame-baseline-grid: the 14 pt document grid from 36 pt below the page top (p1 to p5), a 20 pt frame
+    /// grid 10 pt below the frame top (p5), 18 pt frame grids from the frame top and from the top of a 30 pt inset (p6).
+    /// A page-relative grid needs the frame on a page with no rotation, skew or scale (otherwise null: not measured).
+    /// </summary>
+    private BaselineGrid? BaselineGridOf(TextFrame frame, IReadOnlyList<XElement> chain, double frameTop, double insetTop)
+    {
+        var preferences = document.Package.TryGetXml("Resources/Preferences.xml")?.Root;
+        string? FrameGrid(string name) => chain.Select(element => element.Element("BaselineFrameGridOption"))
+            .Append(preferences?.Element("BaselineFrameGridOption"))
+            .Select(option => option?.Attribute(name)?.Value)
+            .FirstOrDefault(value => value is not null);
+        double start, increment;
+        bool fromMargin;
+        if (FrameGrid("UseCustomBaselineFrameGrid") == "true")
+        {
+            start = Values.Number(FrameGrid("StartingOffsetForBaselineFrameGrid"), 0);
+            increment = Values.Number(FrameGrid("BaselineFrameGridIncrement"), 12);
+            switch (FrameGrid("BaselineFrameGridRelativeOption"))
+            {
+                case "TopOfFrame":
+                    return Grid(frameTop + start);
+                case "TopOfPage":
+                    fromMargin = false;
+                    break;
+                case "TopOfMargin":
+                    fromMargin = true;
+                    break;
+                default:
+                    return Grid(insetTop + start);
+            }
+        }
+        else
+        {
+            var grid = preferences?.Element("GridPreference");
+            start = Values.Number(grid?.Attribute("BaselineStart")?.Value, 36);
+            increment = Values.Number(grid?.Attribute("BaselineDivision")?.Value, 12);
+            fromMargin = grid?.Attribute("BaselineGridRelativeOption")?.Value == "TopOfMarginOfBaselineGridRelativeOption";
+        }
+        // Anchored frames are not on a spread: their page position is only known when the anchor is placed.
+        var onSpread = frame.Element.Ancestors().Any(element => element.Name.LocalName is "Spread" or "MasterSpread");
+        var transform = frame.SpreadTransform;
+        if (!onSpread || frame.Page is not { } page || transform is not { A: 1, B: 0, C: 0, D: 1 })
+        {
+            return null;
+        }
+        // Inner y = page y + page top (spread) - the frame's translation.
+        return Grid(start + (fromMargin ? page.Margins.Top : 0) + page.SpreadBounds.Y - transform.Ty);
+
+        BaselineGrid? Grid(double top) => increment > 0 ? new BaselineGrid(top, increment) : null;
     }
 
     private Spacing FrameInset(XElement frame) => FrameInset(resolver.ObjectChain(frame));
