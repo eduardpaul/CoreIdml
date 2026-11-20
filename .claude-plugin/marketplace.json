@@ -9,7 +9,7 @@
     {
       "name": "coreidml",
       "source": "./plugins/coreidml",
-      "version": "1.1.1",
+      "version": "1.4.0",
       "displayName": "CoreIdml",
       "description": "Read, fill, edit and lay out Adobe InDesign IDML files, find overset text, validate, preview pages and export PDF, with a local MCP server of 34 tools. No InDesign needed.",
       "category": "productivity",

@@ -7,6 +7,6 @@
     "start": "node demo.mjs"
   },
   "dependencies": {
-    "@coreidml/node": "1.1.1"
+    "@coreidml/node": "1.4.0"
   }
 }
