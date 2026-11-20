@@ -275,6 +275,7 @@ internal sealed partial class IdmlRenderer : IDisposable
                 rects.Add(new Rect(inner.X + inset.Left + (i * (columnWidth + gutter)), inner.Y + inset.Top, columnWidth, height));
             }
         }
+        var page = frame.Page;
         return new FrameArea(
             frame.Id,
             rects,
@@ -284,9 +285,30 @@ internal sealed partial class IdmlRenderer : IDisposable
             pageName,
             BaselineGridOf(frame, chain, inner.Y, inner.Y + inset.Top))
         {
-            PageIndex = frame.Page is { } page ? page.Index : -1,
-            OddPage = frame.Page is not { } onPage || IsOddPage(onPage),
+            PageIndex = page?.Index ?? -1,
+            OddPage = page is null || IsOddPage(page),
+            Bounds = inner,
+            Page = page is null ? null : PageArea(frame, page),
         };
+    }
+
+    /// <summary>
+    /// The frame's page in the frame's inner coordinates (the bounding box, for a rotated frame), for anchored objects
+    /// positioned relative to the page edge or margins.
+    /// </summary>
+    private static PageArea PageArea(TextFrame frame, Page page)
+    {
+        var toFrame = Invert(frame.SpreadTransform);
+        Rect InFrame(Rect spread)
+        {
+            var corners = new[] { new Point(spread.Left, spread.Top), new Point(spread.Right, spread.Top), new Point(spread.Left, spread.Bottom), new Point(spread.Right, spread.Bottom) }
+                .Select(toFrame.Apply).ToList();
+            return Rect.FromEdges(corners.Min(p => p.X), corners.Min(p => p.Y), corners.Max(p => p.X), corners.Max(p => p.Y));
+        }
+        var bounds = page.SpreadBounds;
+        var margins = page.Margins;
+        var inside = Rect.FromEdges(bounds.Left + margins.Left, bounds.Top + margins.Top, bounds.Right - margins.Right, bounds.Bottom - margins.Bottom);
+        return new PageArea(InFrame(bounds), InFrame(inside), page.IsLeftPage);
     }
 
     /// <summary>

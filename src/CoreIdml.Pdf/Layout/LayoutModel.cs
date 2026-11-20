@@ -177,11 +177,29 @@ internal sealed record TextVariableItem(XElement Instance, RunStyle Style) : Inl
 internal sealed record TableItem(XElement Table, RunStyle Style) : InlineItem(Style);
 
 /// <summary>
-/// A page item anchored inline in the text (a shape, frame or group that flows like a character): its bounds in its
-/// own parent coordinates (where its ItemTransform puts it; the composer moves it to the line) and how far above the
-/// baseline its bottom sits.
+/// A page item anchored in the text (a shape, frame or group): its visible bounds in its own parent coordinates (where
+/// its ItemTransform puts it; the composer moves it to the line). Inline (<see cref="Anchored"/> null) it flows like a
+/// character, its bottom <see cref="YOffset"/> above the baseline; otherwise <see cref="Anchored"/> says where it goes.
 /// </summary>
-internal sealed record InlineObjectItem(XElement Element, Rect Bounds, double YOffset, RunStyle Style) : InlineItem(Style);
+internal sealed record InlineObjectItem(XElement Element, Rect Bounds, double YOffset, RunStyle Style) : InlineItem(Style)
+{
+    /// <summary>The above-line or custom position (<c>AnchoredObjectSetting</c>); null for an inline object.</summary>
+    public AnchorSettings? Anchored { get; init; }
+}
+
+/// <summary>
+/// Where an above-line (<paramref name="AboveLine"/>) or custom (<c>AnchoredPosition="Anchored"</c>) anchored object
+/// goes, as <c>AnchoredObjectSetting</c> stores it: the point of the object (<paramref name="AnchorPoint"/>, such as
+/// <c>BottomRightAnchor</c>) placed on the reference point (<paramref name="HorizontalReferencePoint"/> with
+/// <paramref name="HorizontalAlignment"/>, <paramref name="VerticalReferencePoint"/> with
+/// <paramref name="VerticalAlignment"/>) moved by the offsets; <paramref name="Pinned"/> is Keep Within Top/Bottom
+/// Column Boundaries (<c>PinPosition</c>), <paramref name="SpineRelative"/> Relative to Spine. Above the line,
+/// <paramref name="HorizontalAlignment"/> aligns it in the column, <paramref name="SpaceAbove"/> is Space Before
+/// (<c>AnchorSpaceAbove</c>) and <paramref name="YOffset"/> Space After.
+/// </summary>
+internal sealed record AnchorSettings(
+    bool AboveLine, string AnchorPoint, string HorizontalAlignment, string HorizontalReferencePoint, string VerticalAlignment,
+    string VerticalReferencePoint, double XOffset, double YOffset, double SpaceAbove, bool Pinned, bool SpineRelative);
 
 /// <summary>A paragraph: its formatting, content, and the style of its paragraph mark (height of an empty line).</summary>
 internal sealed record ParagraphModel(ParagraphFormatting Format, IReadOnlyList<InlineItem> Items, RunStyle MarkStyle)
@@ -241,6 +259,15 @@ internal sealed record LineOp(Point From, Point To, double Width, ResolvedColor 
 /// <summary>A page item anchored in text, drawn through <paramref name="Placement"/> (its parent coordinates to the frame's).</summary>
 internal sealed record PageItemOp(XElement Element, Matrix Placement) : DrawOp
 {
+    /// <summary>
+    /// A custom-positioned object: InDesign draws it after the text of its frame (02-item-anchored p3: the four boxes
+    /// follow the story's text in the content stream), not where its anchor is in the line.
+    /// </summary>
+    public bool AfterText { get; init; }
+
+    /// <summary>Placed from the frame, a column or the page rather than the line: vertical justification leaves it.</summary>
+    public bool FixedInFrame { get; init; }
+
     public override DrawOp Offset(double dx, double dy) => this with { Placement = Placement.Then(Matrix.Translation(dx, dy)) };
 }
 
@@ -258,7 +285,19 @@ internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, st
 
     /// <summary>The frame's page has an odd page number (for "start on next odd page" and "next even page").</summary>
     public bool OddPage { get; init; } = true;
+
+    /// <summary>The frame's geometric bounds in its inner coordinates (the Text Frame reference of anchored objects).</summary>
+    public Rect Bounds { get; init; }
+
+    /// <summary>The page the frame is on, in the frame's inner coordinates; null off the pages (and in a table cell).</summary>
+    public PageArea? Page { get; init; }
 }
+
+/// <summary>
+/// A page in a frame's inner coordinates: its edges, its margins and whether it is the left page of a facing spread
+/// (where anchored objects positioned relative to the spine mirror).
+/// </summary>
+internal sealed record PageArea(Rect Bounds, Rect Margins, bool LeftPage);
 
 /// <summary>
 /// A baseline grid in a frame's inner coordinates: lines at <see cref="Start"/>, then every <see cref="Increment"/>

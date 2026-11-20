@@ -79,13 +79,13 @@ public sealed class InlineObjectTests
     }
 
     [Fact]
-    public void Custom_positioned_anchored_objects_are_left_out_of_the_line()
+    public void Custom_positioned_anchored_objects_take_no_room_in_the_line()
     {
         var setting = new XElement("AnchoredObjectSetting", new XAttribute("AnchoredPosition", "Anchored"));
         var (document, frame, _) = DocumentWithInlineShape(setting: setting);
         using var _ = document;
         var ops = Layout(document, frame).OpsByFrame[frame.Id];
-        Assert.Empty(ops.OfType<PageItemOp>());
+        Assert.True(Assert.Single(ops.OfType<PageItemOp>()).AfterText);
         Assert.Equal("AB", ops.OfType<GlyphRunOp>().Single().Text);
     }
 

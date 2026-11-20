@@ -13,8 +13,9 @@ namespace CoreIdml.Pdf.Layout;
 /// space before/after (no space before at the top of a column), indents, tabs, alignment and justification (word
 /// spacing, letter spacing and glyph scaling within the paragraph's limits, <see cref="Justifier"/>), vertical
 /// justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line, laying the text
-/// out again from there), and inline tables (rows flow across columns and frames, header rows repeat).
-/// Not done: optical kerning, text wrap, anchored objects.
+/// out again from there), inline tables (rows flow across columns and frames, header rows repeat), and anchored objects
+/// (inline, above the line, custom-positioned: <see cref="PlaceCustom"/>).
+/// Not done: optical kerning, text wrap.
 /// Deterministic: same input, same output.
 /// </summary>
 internal sealed partial class TextComposer
@@ -253,10 +254,12 @@ internal sealed partial class TextComposer
                     result.Add(new Shaped { Kind = GlyphKind.Table, Style = table.Style, Font = table.Style.Font, Size = table.Style.Size, Table = table.Table });
                     break;
                 case InlineObjectItem inline:
+                    // An above-line or custom object takes no room in the line: only its anchor marker is there.
+                    var width = inline.Anchored is null ? inline.Bounds.Width : 0;
                     result.Add(new Shaped
                     {
                         Kind = GlyphKind.Inline, Style = inline.Style, Font = inline.Style.Font, Size = inline.Style.Size, Text = ObjectReplacement,
-                        Advance = inline.Bounds.Width, Natural = inline.Bounds.Width, Rise = inline.YOffset, Object = inline,
+                        Advance = width, Natural = width, Rise = inline.Anchored is null ? inline.YOffset : 0, Object = inline,
                     });
                     break;
             }
@@ -286,6 +289,14 @@ internal sealed partial class TextComposer
                 && ReferenceEquals(previous.Font, current.Font) && previous.Size == current.Size && previous.Style.Kerning && current.Style.Kerning)
             {
                 previous.Advance += previous.Font.Kerning(previous.Glyph, current.Glyph) * previous.Size * previous.Style.HorizontalScale;
+            }
+            // The marker of an above-line or custom object kerns with the letter after it as a word space would
+            // (12-pdf-accessibility p4: "Above-line" starts 0.58 pt left of the column, Liberation Serif's space-A pair
+            // at 10.5 pt).
+            else if (previous.Object?.Anchored is not null && current.Kind is GlyphKind.Normal && current.Style.Kerning
+                && current.Font.TryMap(' ', out var space))
+            {
+                previous.Advance += current.Font.Kerning(space, current.Glyph) * current.Size * current.Style.HorizontalScale;
             }
         }
         // A ligature drawn whole across a hyphenation point kerns with the glyph after it (07-char-opentype p1: ffl
@@ -713,7 +724,8 @@ internal sealed partial class TextComposer
             var snapToGrid = format.AlignToBaselineGrid && (firstLine || !format.GridAlignFirstLineOnly);
             firstLine = false;
             emitted = true;
-            if (!flow.Place(Measure(glyphs.GetRange(start, end - start), paragraph.MarkStyle), snapToGrid))
+            var metrics = Measure(glyphs.GetRange(start, end - start), paragraph.MarkStyle);
+            if (!flow.Place(metrics, snapToGrid))
             {
                 index = end;
                 columns.Add(int.MaxValue);
@@ -728,7 +740,7 @@ internal sealed partial class TextComposer
             index = end;
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             columns.Add(flow.ColumnOrdinal);
-            EmitLine(line, flow, format, indent, available, isLast, forced);
+            EmitLine(line, flow, format, indent, available, isLast, forced, metrics);
             if (dropCap is not null && columns.Count == 1)
             {
                 EmitDropCap(dropCap, flow, format);
@@ -977,16 +989,25 @@ internal sealed partial class TextComposer
                 : explicitStop;
     }
 
-    private sealed record LineMetrics(double Ascent, double Descent, double Leading, double CapHeight, double XHeight, double MaxSize);
+    private sealed record LineMetrics(double Ascent, double Descent, double Leading, double CapHeight, double XHeight, double MaxSize)
+    {
+        /// <summary>The room the line's above-line objects take above it (<see cref="AboveLineRoom"/>).</summary>
+        public double AboveLine { get; init; }
+    }
 
     private static LineMetrics Measure(List<Shaped> line, RunStyle markStyle)
     {
-        double ascent = 0, descent = 0, leading = 0, cap = 0, xHeight = 0, size = 0;
+        double ascent = 0, descent = 0, leading = 0, cap = 0, xHeight = 0, size = 0, aboveLine = 0;
         var any = false;
         foreach (var glyph in line)
         {
             if (glyph.Kind is GlyphKind.Table)
             {
+                continue;
+            }
+            if (glyph.Object?.Anchored is { } anchored)
+            {
+                aboveLine += anchored.AboveLine ? AboveLineRoom(glyph.Object) : 0;
                 continue;
             }
             any = true;
@@ -1010,9 +1031,12 @@ internal sealed partial class TextComposer
         if (!any)
         {
             var font = markStyle.Font;
-            return new LineMetrics(font.Ascent * markStyle.Size, font.Descent * markStyle.Size, markStyle.EffectiveLeading, font.CapHeight * markStyle.Size, font.XHeight * markStyle.Size, markStyle.Size);
+            return new LineMetrics(font.Ascent * markStyle.Size, font.Descent * markStyle.Size, markStyle.EffectiveLeading, font.CapHeight * markStyle.Size, font.XHeight * markStyle.Size, markStyle.Size)
+            {
+                AboveLine = aboveLine,
+            };
         }
-        return new LineMetrics(ascent, descent, leading, cap, xHeight, size);
+        return new LineMetrics(ascent, descent, leading, cap, xHeight, size) { AboveLine = aboveLine };
     }
 
     /// <summary>
@@ -1044,7 +1068,7 @@ internal sealed partial class TextComposer
         return to;
     }
 
-    private void EmitLine(List<Shaped> line, Flow flow, ParagraphFormatting format, double indent, double available, bool isLast, bool forced)
+    private void EmitLine(List<Shaped> line, Flow flow, ParagraphFormatting format, double indent, double available, bool isLast, bool forced, LineMetrics metrics)
     {
         // Drop trailing spaces and the break itself; a soft hyphen at the end becomes a visible hyphen.
         var visible = new List<Shaped>(line);
@@ -1136,6 +1160,7 @@ internal sealed partial class TextComposer
             runFirst = null;
         }
 
+        EmitAboveLine(visible, flow, format, baseline, metrics);
         var markerLength = 0;
         for (var index = 0; index < visible.Count; index++)
         {
@@ -1163,6 +1188,23 @@ internal sealed partial class TextComposer
                 x += advance;
                 runStart = x;
                 lineText.Append('\t');
+                continue;
+            }
+            if (glyph.Object is { Anchored: { } anchored } placed)
+            {
+                // Above-line objects are placed with their line (EmitAboveLine); a custom one from its anchor's position.
+                if (!anchored.AboveLine)
+                {
+                    flow.Add(PlaceCustom(placed, anchored, glyph, flow, x, baseline, metrics));
+                }
+                lineText.Append(glyph.Text);
+                // The marker is only as wide as its kerning with the next letter.
+                if (advance != 0)
+                {
+                    FlushRun();
+                    x += advance;
+                    runStart = x;
+                }
                 continue;
             }
             if (glyph.Object is { } inline)
@@ -1789,7 +1831,13 @@ internal sealed partial class TextComposer
             {
                 var column = Column;
                 double baseline;
-                if (AtColumnTop)
+                if (metrics.AboveLine != 0)
+                {
+                    // Above-line objects stack between the line before (or the column top) and this one, which keeps
+                    // its leading below them (see AboveLineRoom).
+                    baseline = (AtColumnTop ? column.Y : Baseline + PendingSpace) + metrics.AboveLine + metrics.Leading;
+                }
+                else if (AtColumnTop)
                 {
                     var offset = Frame.FirstBaselineOffset switch
                     {
@@ -1938,19 +1986,27 @@ internal sealed partial class TextComposer
             (Baseline, LastDescent, PendingSpace, usedBottom, contentPage) = (state.Baseline, state.LastDescent, state.PendingSpace, state.UsedBottom, state.ContentPage);
         }
 
-        /// <summary>Moves every column's ops into its frame, applying vertical justification.</summary>
+        /// <summary>
+        /// Moves every column's ops into its frame, applying vertical justification; custom-positioned objects go after
+        /// the frame's text (<see cref="PageItemOp.AfterText"/>).
+        /// </summary>
         public void Finish()
         {
             filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom));
             columnOps = [];
+            var afterText = new List<(List<DrawOp> Target, DrawOp Op)>();
             foreach (var column in filled)
             {
-                FinishColumn(column);
+                FinishColumn(column, afterText);
+            }
+            foreach (var (target, op) in afterText)
+            {
+                target.Add(op);
             }
             filled.Clear();
         }
 
-        private void FinishColumn(FilledColumn filledColumn)
+        private void FinishColumn(FilledColumn filledColumn, List<(List<DrawOp> Target, DrawOp Op)> afterText)
         {
             var (frameIndex, columnIndex, ops, used) = filledColumn;
             if (ops.Count == 0)
@@ -1969,7 +2025,15 @@ internal sealed partial class TextComposer
             var target = Layout.OpsByFrame[frame.FrameId];
             foreach (var op in ops)
             {
-                target.Add(dy > 0 ? op.Offset(0, dy) : op);
+                var moved = dy > 0 && op is not PageItemOp { FixedInFrame: true } ? op.Offset(0, dy) : op;
+                if (op is PageItemOp { AfterText: true })
+                {
+                    afterText.Add((target, moved));
+                }
+                else
+                {
+                    target.Add(moved);
+                }
             }
             if (dy > 0)
             {

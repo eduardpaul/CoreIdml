@@ -274,15 +274,17 @@ internal sealed class StoryReader
     }
 
     /// <summary>
-    /// A page item anchored in the text, when it flows inline (InDesign's default; above-line and custom-positioned
-    /// objects are not drawn).
+    /// A page item anchored in the text: inline (InDesign's default), above the line or custom-positioned
+    /// (<c>AnchoredPosition</c> <c>InlinePosition</c>, <c>AboveLine</c>, <c>Anchored</c>). Each
+    /// <c>AnchoredObjectSetting</c> attribute comes from the item, else its object style chain.
     /// </summary>
     private InlineObjectItem? InlineObject(XElement element)
     {
-        var setting = resolver.ObjectChain(element)
-            .Select(source => source.Element("AnchoredObjectSetting"))
-            .FirstOrDefault(candidate => candidate?.Attribute("AnchoredPosition") is not null);
-        if ((setting?.Attribute("AnchoredPosition")?.Value ?? "InlinePosition") != "InlinePosition")
+        var settings = resolver.ObjectChain(element).Select(source => source.Element("AnchoredObjectSetting")).OfType<XElement>().ToList();
+        string? Setting(string name) => settings.Select(setting => setting.Attribute(name)?.Value).FirstOrDefault(value => value is not null);
+        double Number(string name) => Values.Number(Setting(name), 0);
+        var position = Setting("AnchoredPosition") ?? "InlinePosition";
+        if (position is not ("InlinePosition" or "AboveLine" or "Anchored"))
         {
             return null;
         }
@@ -297,7 +299,23 @@ internal sealed class StoryReader
             return null;
         }
         // Inline: a positive Y offset raises the object above the baseline.
-        return new InlineObjectItem(element, bounds, Values.Number(setting?.Attribute("AnchorYoffset")?.Value, 0), StyleOf(element));
+        return new InlineObjectItem(element, bounds, Number("AnchorYoffset"), StyleOf(element))
+        {
+            Anchored = position == "InlinePosition"
+                ? null
+                : new AnchorSettings(
+                    position == "AboveLine",
+                    Setting("AnchorPoint") ?? "BottomRightAnchor",
+                    Setting("HorizontalAlignment") ?? "LeftAlign",
+                    Setting("HorizontalReferencePoint") ?? "TextFrame",
+                    Setting("VerticalAlignment") ?? "TopAlign",
+                    Setting("VerticalReferencePoint") ?? "LineBaseline",
+                    Number("AnchorXoffset"),
+                    Number("AnchorYoffset"),
+                    Number("AnchorSpaceAbove"),
+                    Setting("PinPosition") != "false",
+                    Setting("SpineRelative") == "true"),
+        };
     }
 
     /// <summary>Bounds including the part of the stroke outside the path, as InDesign sizes an inline object.</summary>
