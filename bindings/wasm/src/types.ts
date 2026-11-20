@@ -55,6 +55,16 @@ export interface TextFormat {
   startAt?: number;
   /** Paragraphs and paragraph styles: tab stops, replacing the style's; `[]` clears them. Put a tab character in the text. */
   tabs?: TabSpec[];
+  /** Paragraphs and paragraph styles: keep the last line with the next paragraph's first N lines (0 to 5; headings: 1). */
+  keepWithNext?: number;
+  /** Never break the paragraph across columns or frames. */
+  keepTogether?: boolean;
+  /** Lines kept before a column break (orphans; InDesign's default 2). */
+  keepFirstLines?: number;
+  /** Lines kept after a column break (widows; InDesign's default 2). */
+  keepLastLines?: number;
+  /** `anywhere` (default), `nextColumn`, `nextFrame`, `nextPage`, `nextOddPage` or `nextEvenPage`. */
+  startParagraph?: string;
 }
 
 /** A tab stop. */

@@ -531,6 +531,13 @@ internal sealed class StoryReader
             // The other GridAlignment values (AlignEmTop, AlignEmCenter, ...) align to a CJK layout grid, not done.
             AlignToBaselineGrid = Get("GridAlignment") == "AlignBaseline",
             GridAlignFirstLineOnly = Get("GridAlignFirstLineOnly") == "true",
+            Keeps = new KeepOptions(
+                (int)Values.Number(Get("KeepWithNext"), 0),
+                Get("KeepLinesTogether") == "true",
+                Get("KeepAllLinesTogether") == "true",
+                (int)Values.Number(Get("KeepFirstLines"), 2),
+                (int)Values.Number(Get("KeepLastLines"), 2),
+                Get("StartParagraph") ?? "Anywhere"),
         };
         paragraphFormats[range] = format;
         return format;

@@ -89,6 +89,20 @@ internal sealed record ParagraphFormatting
 
     /// <summary><c>GridAlignFirstLineOnly</c>: only the first line snaps; the others keep their leading from it.</summary>
     public bool GridAlignFirstLineOnly { get; init; }
+
+    public KeepOptions Keeps { get; init; } = KeepOptions.None;
+}
+
+/// <summary>
+/// A paragraph's keep options (Paragraph &gt; Keep Options): keep its last line with the first
+/// <paramref name="WithNext"/> lines of the next paragraph; keep its lines together (all of them, or at least
+/// <paramref name="FirstLines"/> at the start and <paramref name="LastLines"/> at the end of each part; InDesign's
+/// defaults of 2 and 2 only apply while <paramref name="LinesTogether"/> is on); and where it starts
+/// (<paramref name="Start"/>: Anywhere, NextColumn, NextFrame, NextPage, NextOddPage, NextEvenPage).
+/// </summary>
+internal sealed record KeepOptions(int WithNext, bool LinesTogether, bool AllLines, int FirstLines, int LastLines, string Start)
+{
+    public static readonly KeepOptions None = new(0, false, false, 2, 2, "Anywhere");
 }
 
 /// <summary>An element of a paragraph's content.</summary>
@@ -200,6 +214,12 @@ internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, st
 {
     /// <summary>What the frame's next/previous page markers, section markers and text variables print.</summary>
     public FrameMarkers Markers { get; init; } = FrameMarkers.None;
+
+    /// <summary>The document page the frame is on (0-based; -1 off the pages or on a master): where "start on next page" goes.</summary>
+    public int PageIndex { get; init; } = -1;
+
+    /// <summary>The frame's page has an odd page number (for "start on next odd page" and "next even page").</summary>
+    public bool OddPage { get; init; } = true;
 }
 
 /// <summary>

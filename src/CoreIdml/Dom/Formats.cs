@@ -41,6 +41,17 @@ public enum ListType
     Numbered,
 }
 
+/// <summary>Where a paragraph starts (Keep Options &gt; Start Paragraph, <c>StartParagraph</c>).</summary>
+public enum StartParagraph
+{
+    Anywhere,
+    NextColumn,
+    NextFrame,
+    NextPage,
+    NextOddPage,
+    NextEvenPage,
+}
+
 /// <summary>How text after a tab lines up with its stop.</summary>
 public enum TabAlignment
 {
@@ -189,10 +200,27 @@ public sealed class ParagraphFormat : CharacterFormat
 
     public bool? Hyphenation { get; init; }
 
+    /// <summary>
+    /// Keep lines together: all of them (<see cref="KeepAllLinesTogether"/>), or at least
+    /// <see cref="KeepFirstLines"/> and <see cref="KeepLastLines"/> on each side of a column break (orphans and widows;
+    /// InDesign's defaults are 2 and 2).
+    /// </summary>
     public bool? KeepLinesTogether { get; init; }
 
-    /// <summary>Keep with the next N lines.</summary>
+    /// <summary>With <see cref="KeepLinesTogether"/>: the paragraph never breaks across columns.</summary>
+    public bool? KeepAllLinesTogether { get; init; }
+
+    /// <summary>With <see cref="KeepLinesTogether"/>: lines a paragraph keeps before a column break (orphans).</summary>
+    public int? KeepFirstLines { get; init; }
+
+    /// <summary>With <see cref="KeepLinesTogether"/>: lines a paragraph keeps after a column break (widows).</summary>
+    public int? KeepLastLines { get; init; }
+
+    /// <summary>Keep the paragraph's last line with the next paragraph's first N lines (headings: 1 or 2).</summary>
     public int? KeepWithNext { get; init; }
+
+    /// <summary>Start the paragraph in the next column, frame or page (or the next odd or even page).</summary>
+    public StartParagraph? StartParagraph { get; init; }
 
     /// <summary>
     /// Bullet or numbered list. InDesign generates the bullet or number; it is not part of the text. For the usual
@@ -249,7 +277,20 @@ public sealed class ParagraphFormat : CharacterFormat
         Set(element, "RightIndent", RightIndent);
         Set(element, "Hyphenation", Hyphenation);
         Set(element, "KeepLinesTogether", KeepLinesTogether);
+        Set(element, "KeepAllLinesTogether", KeepAllLinesTogether);
+        Set(element, "KeepFirstLines", KeepFirstLines?.ToString(CultureInfo.InvariantCulture));
+        Set(element, "KeepLastLines", KeepLastLines?.ToString(CultureInfo.InvariantCulture));
         Set(element, "KeepWithNext", KeepWithNext?.ToString(CultureInfo.InvariantCulture));
+        Set(element, "StartParagraph", StartParagraph switch
+        {
+            Dom.StartParagraph.Anywhere => "Anywhere",
+            Dom.StartParagraph.NextColumn => "NextColumn",
+            Dom.StartParagraph.NextFrame => "NextFrame",
+            Dom.StartParagraph.NextPage => "NextPage",
+            Dom.StartParagraph.NextOddPage => "NextOddPage",
+            Dom.StartParagraph.NextEvenPage => "NextEvenPage",
+            _ => null,
+        });
         Set(element, "BulletsAndNumberingListType", ListType switch
         {
             Dom.ListType.None => "NoList",

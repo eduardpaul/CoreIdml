@@ -10,7 +10,8 @@ namespace CoreIdml.Pdf.Layout;
 /// Lays out story text into threaded frames and columns, the way InDesign's single-line composer would:
 /// greedy line breaking at spaces and hyphens, leading (fixed or Auto = 120%), first-baseline offset, space
 /// before/after (no space before at the top of a column), indents, tabs, alignment and justification (word spacing),
-/// vertical justification, and inline tables (rows flow across columns and frames, header rows repeat).
+/// vertical justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line,
+/// laying the text out again from there), and inline tables (rows flow across columns and frames, header rows repeat).
 /// Not done: hyphenation, the paragraph composer, optical kerning, ligatures, text wrap, anchored objects.
 /// Deterministic: same input, same output.
 /// </summary>
@@ -47,20 +48,123 @@ internal sealed class TextComposer
         }
         var flow = new Flow(frames, layout);
         layout.Paragraphs = paragraphs;
-        for (var index = 0; index < paragraphs.Count && !flow.Exhausted; index++)
+        // Keep options: the flow state before each paragraph, the column of each of its lines (null for a paragraph
+        // holding a table, which keeps leave alone), and the column breaks moved earlier to honour them.
+        var states = new Flow.State[paragraphs.Count];
+        var columns = new List<int>?[paragraphs.Count];
+        // The frame each paragraph starts in (StoryLayout.ParagraphFrames), kept apart while lines can still move.
+        var paragraphFrames = new int[paragraphs.Count];
+        var forcedBreaks = new HashSet<(int Paragraph, int Line)>();
+        // Every move is to an earlier break than any forced after it, so this ends; the budget bounds pathological input.
+        var budget = (paragraphs.Count * 4) + 16;
+        var index = 0;
+        for (; index < paragraphs.Count; index++)
         {
-            var lines = layout.Lines.Count;
-            LayoutParagraph(paragraphs[index], flow, isFirst: index == 0);
-            layout.ParagraphFrames.Add(layout.Lines.Count > lines ? layout.Lines[lines].FrameIndex : -1);
+            states[index] = flow.Save();
+            var linesBefore = layout.Lines.Count;
+            var lines = LayoutParagraph(paragraphs[index], flow, isFirst: index == 0, index, forcedBreaks);
+            paragraphFrames[index] = layout.Lines.Count > linesBefore ? layout.Lines[linesBefore].FrameIndex : -1;
+            columns[index] = paragraphs[index].Items.Any(item => item is TableItem) ? null : lines;
+            if (budget > 0 && EarlierBreak(paragraphs, columns, index, forcedBreaks) is { } moved)
+            {
+                budget--;
+                flow.Restore(states[moved.Paragraph]);
+                forcedBreaks.RemoveWhere(at => at.Paragraph > moved.Paragraph || (at.Paragraph == moved.Paragraph && at.Line > moved.Line));
+                forcedBreaks.Add(moved);
+                index = moved.Paragraph - 1;
+                continue;
+            }
             if (flow.Exhausted)
             {
-                layout.Overset = true;
-                layout.OversetCharacters += paragraphs.Skip(index + 1).Sum(p => p.Items.OfType<TextItem>().Where(t => !t.Generated).Sum(t => t.Text.Length));
+                break;
             }
         }
+        // Paragraphs after the one that ran out of room were not laid out.
+        layout.ParagraphFrames.AddRange(paragraphFrames.Take(Math.Min(index + 1, paragraphs.Count)));
+        if (flow.Exhausted)
+        {
+            layout.Overset = true;
+            layout.OversetCharacters += paragraphs.Skip(index + 1).Sum(p => p.Items.OfType<TextItem>().Where(t => !t.Generated).Sum(t => t.Text.Length));
+        }
         layout.LastDescent = flow.LastDescent;
-        flow.FinishColumn();
+        flow.Finish();
         return layout;
+    }
+
+    // ---- keep options ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The first column break in paragraph <paramref name="paragraph"/> (or between it and the paragraph before) that
+    /// its keep options forbid, moved to the latest allowed break before it in the same column: the lines after that
+    /// go to the next column. Null when every break is allowed, or when no break in that column is (InDesign then
+    /// breaks the keep rather than leave a column empty). <paramref name="columns"/> holds each laid-out line's column
+    /// (<see cref="int.MaxValue"/> for overset lines), so pushing lines into overset counts as a break too.
+    /// Measured in 08-para-keeps-breaks p1 to p3: a heading with Keep with Next moves to the next frame with its
+    /// paragraph; Keep All Lines Together moves a 4-line paragraph whole; Keep First 3 moves a paragraph that would
+    /// leave 2 lines behind; Keep Last 3 moves a line more to the next frame.
+    /// </summary>
+    private static (int Paragraph, int Line)? EarlierBreak(IReadOnlyList<ParagraphModel> paragraphs, List<int>?[] columns, int paragraph, HashSet<(int Paragraph, int Line)> forcedBreaks)
+    {
+        if (columns[paragraph] is not { } lines)
+        {
+            return null;
+        }
+        for (var line = 0; line < lines.Count; line++)
+        {
+            var previous = Previous(paragraph, line);
+            if (previous is not { } column || lines[line] == column || forcedBreaks.Contains((paragraph, line))
+                || (line == 0 && paragraphs[paragraph].Format.Keeps.Start != "Anywhere") || BreakAllowed(paragraphs, columns, paragraph, line))
+            {
+                continue;
+            }
+            // Walk back through the column's lines; a break before its first line would leave it empty.
+            var (p, l) = (paragraph, line);
+            while (true)
+            {
+                if (l > 0)
+                {
+                    l--;
+                }
+                else if (p > 0 && columns[p - 1] is { Count: > 0 } before)
+                {
+                    p--;
+                    l = before.Count - 1;
+                }
+                else
+                {
+                    return null;
+                }
+                if (Previous(p, l) != column)
+                {
+                    return null;
+                }
+                if (BreakAllowed(paragraphs, columns, p, l))
+                {
+                    return (p, l);
+                }
+            }
+        }
+        return null;
+
+        // The column of the line before line l of paragraph p; null at the story's start or after a table.
+        int? Previous(int p, int l) =>
+            l > 0 ? columns[p]![l - 1] : p > 0 && columns[p - 1] is { Count: > 0 } before ? before[^1] : null;
+    }
+
+    /// <summary>
+    /// Whether the keep options allow a column break before line <paramref name="line"/> of paragraph
+    /// <paramref name="paragraph"/>: not inside a paragraph that keeps its lines together (all of them, or fewer than
+    /// its first or last lines on one side), nor before the first lines the previous paragraph keeps with it.
+    /// </summary>
+    private static bool BreakAllowed(IReadOnlyList<ParagraphModel> paragraphs, List<int>?[] columns, int paragraph, int line)
+    {
+        var keeps = paragraphs[paragraph].Format.Keeps;
+        if (line > 0 && keeps.LinesTogether
+            && (keeps.AllLines || line < keeps.FirstLines || columns[paragraph]!.Count - line < keeps.LastLines))
+        {
+            return false;
+        }
+        return paragraph == 0 || columns[paragraph - 1] is null || line >= paragraphs[paragraph - 1].Format.Keeps.WithNext;
     }
 
     // ---- shaping ---------------------------------------------------------------------------------------
@@ -362,23 +466,43 @@ internal sealed class TextComposer
 
     // ---- paragraph layout ------------------------------------------------------------------------------
 
-    private void LayoutParagraph(ParagraphModel paragraph, Flow flow, bool isFirst)
+    /// <summary>
+    /// Lays out paragraph number <paramref name="number"/>: starts it where its Start Paragraph option says, goes to the
+    /// next column before the lines in <paramref name="forcedBreaks"/> (breaks moved earlier by keep options), and
+    /// returns the column (<see cref="Flow.ColumnOrdinal"/>) of each of its lines, <see cref="int.MaxValue"/> for the
+    /// lines that did not fit (counted at the last column's width).
+    /// </summary>
+    private List<int> LayoutParagraph(ParagraphModel paragraph, Flow flow, bool isFirst, int number, HashSet<(int Paragraph, int Line)> forcedBreaks)
     {
         var format = paragraph.Format;
+        // Before shaping, so that a page number in the paragraph is the page it moves to.
+        flow.StartParagraph(format.Keeps.Start);
+        if (forcedBreaks.Contains((number, 0)) && !flow.AtColumnTop)
+        {
+            flow.NextColumn();
+        }
         var glyphs = Shape(paragraph, flow.Frame);
         flow.PendingSpace += isFirst ? 0 : format.SpaceBefore;
+        var columns = new List<int>();
         var index = 0;
         var firstLine = true;
         var emitted = false;
-        while (!flow.Exhausted && (index < glyphs.Count || !emitted))
+        while (index < glyphs.Count || !emitted)
         {
             if (index < glyphs.Count && glyphs[index].Kind == GlyphKind.Table)
             {
-                LayoutTable(glyphs[index].Table!, flow, format);
+                if (!flow.Exhausted)
+                {
+                    LayoutTable(glyphs[index].Table!, flow, format);
+                }
                 index++;
                 emitted = true;
                 firstLine = false;
                 continue;
+            }
+            if (columns.Count > 0 && forcedBreaks.Contains((number, columns.Count)) && !flow.AtColumnTop)
+            {
+                flow.NextColumn();
             }
             var column = flow.Column;
             var indent = format.LeftIndent + (firstLine ? format.FirstLineIndent : 0);
@@ -386,17 +510,21 @@ internal sealed class TextComposer
             var (end, forced) = FitLine(glyphs, index, available, format, indent);
             var line = glyphs.GetRange(index, end - index);
             index = end;
+            emitted = true;
+            var snapToGrid = format.AlignToBaselineGrid && (firstLine || !format.GridAlignFirstLineOnly);
+            firstLine = false;
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             var metrics = Measure(line, paragraph.MarkStyle);
-            if (!flow.Place(metrics, format.AlignToBaselineGrid && (firstLine || !format.GridAlignFirstLineOnly)))
+            if (!flow.Place(metrics, snapToGrid))
             {
-                return;
+                columns.Add(int.MaxValue);
+                continue;
             }
+            columns.Add(flow.ColumnOrdinal);
             EmitLine(line, flow, format, indent, available, isLast, forced);
-            emitted = true;
-            firstLine = false;
         }
         flow.PendingSpace = format.SpaceAfter;
+        return columns;
     }
 
     /// <summary>Greedy fit: the end index (exclusive) of the line starting at <paramref name="start"/>.</summary>
@@ -1071,12 +1199,27 @@ internal sealed class TextComposer
 
     // ---- flow through frames and columns ---------------------------------------------------------------
 
-    /// <summary>The position in the frame/column sequence and the ops of the column being filled.</summary>
+    /// <summary>
+    /// The position in the frame/column sequence and the ops of the columns filled so far. Columns are moved into
+    /// their frames only at the end (<see cref="Finish"/>), so that keep options can return to a saved
+    /// <see cref="State"/> and lay the text out again.
+    /// </summary>
     private sealed class Flow
     {
         private readonly IReadOnlyList<FrameArea> frames;
+        private readonly List<FilledColumn> filled = [];
         private List<DrawOp> columnOps = [];
         private double usedBottom;
+        // The page (FrameArea.PageIndex) of the last line or table placed: a page the story has not used yet is
+        // where "start on next page" can begin without moving.
+        private int contentPage = int.MinValue;
+
+        private sealed record FilledColumn(int FrameIndex, int ColumnIndex, List<DrawOp> Ops, double UsedBottom);
+
+        /// <summary>Everything needed to go back to a point of the layout.</summary>
+        public readonly record struct State(
+            int FrameIndex, int ColumnIndex, int ColumnOrdinal, bool Exhausted, bool AtColumnTop, double Baseline, double LastDescent,
+            double PendingSpace, double UsedBottom, int ContentPage, int FilledColumns, int ColumnOps, int Lines, bool Overset);
 
         public Flow(IReadOnlyList<FrameArea> frames, StoryLayout layout)
         {
@@ -1095,6 +1238,9 @@ internal sealed class TextComposer
         public int FrameIndex { get; private set; }
 
         public int ColumnIndex { get; private set; }
+
+        /// <summary>How many columns the text has moved on from the first: the same number means the same column.</summary>
+        public int ColumnOrdinal { get; private set; }
 
         public bool Exhausted { get; private set; }
 
@@ -1163,6 +1309,7 @@ internal sealed class TextComposer
                 usedBottom = baseline;
                 AtColumnTop = false;
                 PendingSpace = 0;
+                contentPage = Frame.PageIndex;
                 return true;
             }
             return false;
@@ -1177,11 +1324,18 @@ internal sealed class TextComposer
             LastDescent = 0;
             usedBottom = Math.Max(usedBottom, bottom);
             AtColumnTop = false;
+            contentPage = Frame.PageIndex;
         }
 
         public bool NextColumn()
         {
-            FinishColumn();
+            if (Exhausted)
+            {
+                return false;
+            }
+            filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom));
+            columnOps = [];
+            ColumnOrdinal++;
             ColumnIndex++;
             if (ColumnIndex >= Frame.Columns.Count)
             {
@@ -1205,23 +1359,93 @@ internal sealed class TextComposer
             return true;
         }
 
-        /// <summary>Moves the column's ops into its frame, applying vertical justification.</summary>
-        public void FinishColumn()
+        /// <summary>
+        /// Moves to where a paragraph with Start Paragraph <paramref name="start"/> begins: the next column, the next
+        /// frame, the first frame on the next page, or on the next odd or even page (08-para-keeps-breaks p4 to p9; the
+        /// story's frames decide where that is: there p7's continuation frame is on p9, and p8 stays blank). A
+        /// paragraph already at the top of a column (frame, page) the story has put nothing in stays there.
+        /// </summary>
+        public void StartParagraph(string start)
         {
-            if (columnOps.Count == 0)
+            switch (start)
+            {
+                case "NextColumn":
+                    if (!AtColumnTop)
+                    {
+                        NextColumn();
+                    }
+                    break;
+                case "NextFrame":
+                    while (!Exhausted && !(AtColumnTop && ColumnIndex == 0))
+                    {
+                        NextFrame();
+                    }
+                    break;
+                case "NextPage" or "NextOddPage" or "NextEvenPage":
+                    while (!Exhausted && !(AtColumnTop && ColumnIndex == 0 && contentPage != Frame.PageIndex
+                        && (start == "NextPage" || Frame.OddPage == (start == "NextOddPage"))))
+                    {
+                        NextFrame();
+                    }
+                    break;
+            }
+        }
+
+        private void NextFrame()
+        {
+            while (NextColumn() && ColumnIndex != 0)
+            {
+            }
+        }
+
+        public State Save() => new(FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop, Baseline, LastDescent, PendingSpace, usedBottom,
+            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset);
+
+        /// <summary>Goes back to <paramref name="state"/>, dropping everything laid out since.</summary>
+        public void Restore(State state)
+        {
+            if (filled.Count > state.FilledColumns)
+            {
+                columnOps = filled[state.FilledColumns].Ops;
+                filled.RemoveRange(state.FilledColumns, filled.Count - state.FilledColumns);
+            }
+            columnOps.RemoveRange(state.ColumnOps, columnOps.Count - state.ColumnOps);
+            Layout.Lines.RemoveRange(state.Lines, Layout.Lines.Count - state.Lines);
+            Layout.Overset = state.Overset;
+            (FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop) = (state.FrameIndex, state.ColumnIndex, state.ColumnOrdinal, state.Exhausted, state.AtColumnTop);
+            (Baseline, LastDescent, PendingSpace, usedBottom, contentPage) = (state.Baseline, state.LastDescent, state.PendingSpace, state.UsedBottom, state.ContentPage);
+        }
+
+        /// <summary>Moves every column's ops into its frame, applying vertical justification.</summary>
+        public void Finish()
+        {
+            filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom));
+            columnOps = [];
+            foreach (var column in filled)
+            {
+                FinishColumn(column);
+            }
+            filled.Clear();
+        }
+
+        private void FinishColumn(FilledColumn filledColumn)
+        {
+            var (frameIndex, columnIndex, ops, used) = filledColumn;
+            if (ops.Count == 0)
             {
                 return;
             }
-            var column = Column;
-            var free = column.Bottom - usedBottom;
-            var dy = Frame.VerticalJustification switch
+            var frame = frames[Math.Min(frameIndex, frames.Count - 1)];
+            var column = frame.Columns.Count == 0 ? default : frame.Columns[Math.Min(columnIndex, frame.Columns.Count - 1)];
+            var free = column.Bottom - used;
+            var dy = frame.VerticalJustification switch
             {
                 "CenterAlign" => free / 2,
                 "BottomAlign" => free,
                 _ => 0,
             };
-            var target = Layout.OpsByFrame[Frame.FrameId];
-            foreach (var op in columnOps)
+            var target = Layout.OpsByFrame[frame.FrameId];
+            foreach (var op in ops)
             {
                 target.Add(dy > 0 ? op.Offset(0, dy) : op);
             }
@@ -1230,13 +1454,12 @@ internal sealed class TextComposer
                 for (var i = 0; i < Layout.Lines.Count; i++)
                 {
                     var line = Layout.Lines[i];
-                    if (line.FrameIndex == FrameIndex && line.Column == ColumnIndex)
+                    if (line.FrameIndex == frameIndex && line.Column == columnIndex)
                     {
                         Layout.Lines[i] = line with { Baseline = line.Baseline + dy };
                     }
                 }
             }
-            columnOps = [];
         }
     }
 }

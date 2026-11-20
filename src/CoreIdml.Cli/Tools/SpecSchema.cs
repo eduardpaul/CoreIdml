@@ -59,7 +59,12 @@ internal static class SpecSchema
           "numberText":{"type":"string","description":"^# the number, ^1-^9 that level's number, \\t a tab. Default ^#.\\t; e.g. ^#)\\t or ^1.^#\\t"},
           "listLevel":{"type":"integer","minimum":1,"maximum":9,"description":"Restarts after any paragraph of a higher level"},
           "startAt":{"type":"integer","description":"Paragraph: restart numbering at this number. Style: first number"},
-          "tabs":{"type":"array","description":"Paragraphs and paragraph styles: tab stops, replacing the style's; [] clears them (default stops every 36 pt). Put \\t in the text. Table of contents: [{\"position\":400,\"align\":\"right\",\"leader\":\".\"}]","items":{"$ref":"#/$defs/tab"}}}},
+          "tabs":{"type":"array","description":"Paragraphs and paragraph styles: tab stops, replacing the style's; [] clears them (default stops every 36 pt). Put \\t in the text. Table of contents: [{\"position\":400,\"align\":\"right\",\"leader\":\".\"}]","items":{"$ref":"#/$defs/tab"}},
+          "keepWithNext":{"type":"integer","minimum":0,"maximum":5,"description":"Paragraphs and paragraph styles: keep the last line with the next paragraph's first N lines. Headings: 1"},
+          "keepTogether":{"type":"boolean","description":"Never break the paragraph across columns or frames"},
+          "keepFirstLines":{"type":"integer","minimum":1,"maximum":50,"description":"Lines kept before a column break (orphans); InDesign's default 2"},
+          "keepLastLines":{"type":"integer","minimum":1,"maximum":50,"description":"Lines kept after a column break (widows); InDesign's default 2"},
+          "startParagraph":{"type":"string","enum":["anywhere","nextColumn","nextFrame","nextPage","nextOddPage","nextEvenPage"],"description":"Where the paragraph starts: chapter openers on nextPage or nextOddPage (the story's frames decide where that is)"}}},
         "tab":{"type":"object","required":["position"],"properties":{
           "position":{"type":"number","minimum":0,"description":"pt from the frame's left edge, inside its inset"},
           "align":{"type":"string","enum":["left","center","right","decimal"],"description":"Default left. decimal: alignOn sits on the stop; text without it ends there"},

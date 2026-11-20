@@ -276,6 +276,35 @@ public class DocumentSpecTests
     }
 
     [Fact]
+    public void Keep_options_write_InDesigns_attributes()
+    {
+        var spec = """
+        {
+          "paragraphStyles": [
+            { "name": "Heading", "keepWithNext": 1, "keepTogether": true, "startParagraph": "nextOddPage" },
+            { "name": "Body", "keepFirstLines": 3, "keepLastLines": 2 }
+          ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        var heading = document.Styles.FindParagraphStyle("Heading")!.Element;
+        Assert.Equal("1", heading.Attribute("KeepWithNext")!.Value);
+        Assert.Equal("true", heading.Attribute("KeepLinesTogether")!.Value);
+        Assert.Equal("true", heading.Attribute("KeepAllLinesTogether")!.Value);
+        Assert.Equal("NextOddPage", heading.Attribute("StartParagraph")!.Value);
+        var body = document.Styles.FindParagraphStyle("Body")!.Element;
+        // First and last lines only count with Keep Lines Together on.
+        Assert.Equal("true", body.Attribute("KeepLinesTogether")!.Value);
+        Assert.Null(body.Attribute("KeepAllLinesTogether"));
+        Assert.Equal("3", body.Attribute("KeepFirstLines")!.Value);
+        Assert.Equal("2", body.Attribute("KeepLastLines")!.Value);
+        Assert.Contains("paragraphStyles[0]: unknown field 'widows', ignored (did you mean 'keepLastLines'?).",
+            IdmlJson.CheckSpec("""{ "paragraphStyles": [ { "name": "H", "widows": 2 } ] }"""));
+    }
+
+    [Fact]
     public void Tab_fields_are_checked()
     {
         var warnings = IdmlJson.CheckSpec("""
@@ -297,6 +326,9 @@ public class DocumentSpecTests
     [InlineData("""{ "list": "numbered", "numberFormat": "roman" }""", "Unknown numberFormat 'roman'. Use 1, 01, 001, 0001, a, A, i or I.")]
     [InlineData("""{ "list": "numbered", "listLevel": 10 }""", "listLevel 10 is out of range. Use 1 to 9.")]
     [InlineData("""{ "list": "bullet", "bullet": "->" }""", "bullet '->' must be one character.")]
+    [InlineData("""{ "keepWithNext": 6 }""", "keepWithNext 6 is out of range. Use 0 to 5 lines.")]
+    [InlineData("""{ "keepLastLines": 0 }""", "keepLastLines 0 is out of range. Use 1 to 50.")]
+    [InlineData("""{ "startParagraph": "nextChapter" }""", "Unknown startParagraph 'nextChapter'. Use anywhere, nextColumn, nextFrame, nextPage, nextOddPage or nextEvenPage.")]
     public void Unknown_list_values_name_the_ones_allowed(string fields, string message)
     {
         var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument($$"""{ "paragraphStyles": [ { "name": "L", {{fields[1..^1]}} } ] }"""));

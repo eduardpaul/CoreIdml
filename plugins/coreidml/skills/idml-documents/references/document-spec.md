@@ -77,6 +77,10 @@ Format fields:
 | `listLevel` | 1 to 9. A level restarts after any paragraph of a higher level (a lower number). |
 | `startAt` | On a paragraph: restart the numbering here, at this number. On a style: the first number of its lists. |
 | `tabs` | Tab stops, replacing the style's (`[]` clears them); see [Tabs](#tabs). Paragraphs and paragraph styles only. |
+| `keepWithNext` | Keep the last line with the next paragraph's first N lines (0 to 5). Give headings `1` so a heading never ends a column or frame alone. Paragraphs and paragraph styles only, like the keep fields below. |
+| `keepTogether` | `true`: never break the paragraph across columns or frames (short boxes, captions, addresses). |
+| `keepFirstLines`, `keepLastLines` | At least this many lines before and after a column break (orphans and widows; InDesign uses 2 and 2 when either is set). |
+| `startParagraph` | `nextColumn`, `nextFrame`, `nextPage`, `nextOddPage` or `nextEvenPage` (default `anywhere`): chapter openers. "Page" means the next frame of the story on that page, so thread the story through frames on those pages. |
 
 ### Tabs
 

@@ -13,6 +13,7 @@ public static partial class IdmlJson
     [
         "leading", "align", "spaceBefore", "spaceAfter", "firstLineIndent", "leftIndent", "rightIndent",
         "list", "bullet", "bulletAfter", "numberFormat", "numberText", "listLevel", "startAt", "tabs",
+        "keepWithNext", "keepTogether", "keepFirstLines", "keepLastLines", "startParagraph",
     ];
     private static readonly string[] PageFields = ["index", "margins", "items"];
     private static readonly string[] CommonItemFields =
@@ -49,6 +50,8 @@ public static partial class IdmlJson
         ["numberExpression"] = "numberText", ["level"] = "listLevel", ["numberingLevel"] = "listLevel", ["start"] = "startAt",
         ["numberingStartAt"] = "startAt", ["tabStops"] = "tabs", ["tabList"] = "tabs", ["stops"] = "tabs", ["leaderChar"] = "leader",
         ["fill"] = "leader", ["alignmentCharacter"] = "alignOn", ["decimalChar"] = "alignOn", ["pos"] = "position", ["x"] = "position",
+        ["keepWithNextLines"] = "keepWithNext", ["keepLinesTogether"] = "keepTogether", ["keepAllLinesTogether"] = "keepTogether",
+        ["orphans"] = "keepFirstLines", ["widows"] = "keepLastLines", ["startOn"] = "startParagraph",
     };
 
     /// <summary>

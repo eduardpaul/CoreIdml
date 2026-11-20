@@ -222,7 +222,7 @@ public static partial class IdmlJson
         return value.Length == 6 && value.All(Uri.IsHexDigit);
     }
 
-    /// <summary>What is wrong with a format's bullets and numbering or tab stop values, or null.</summary>
+    /// <summary>What is wrong with a format's bullets and numbering, tab stop or keep option values, or null.</summary>
     private static string? ParagraphValueError(TextFormatSpec format)
     {
         if (format.List is { } list && TryListType(list) is null)
@@ -259,6 +259,22 @@ public static partial class IdmlJson
             {
                 return $"Tab leader '{leader}' is longer than InDesign's 8 characters.";
             }
+        }
+        if (format.KeepWithNext is { } keepWithNext && keepWithNext is < 0 or > 5)
+        {
+            return $"keepWithNext {keepWithNext} is out of range. Use 0 to 5 lines.";
+        }
+        if (format.KeepFirstLines is { } firstLines && firstLines is < 1 or > 50)
+        {
+            return $"keepFirstLines {firstLines} is out of range. Use 1 to 50.";
+        }
+        if (format.KeepLastLines is { } lastLines && lastLines is < 1 or > 50)
+        {
+            return $"keepLastLines {lastLines} is out of range. Use 1 to 50.";
+        }
+        if (format.StartParagraph is { } start && TryStartParagraph(start) is null)
+        {
+            return $"Unknown startParagraph '{start}'. Use anywhere, nextColumn, nextFrame, nextPage, nextOddPage or nextEvenPage.";
         }
         return null;
     }

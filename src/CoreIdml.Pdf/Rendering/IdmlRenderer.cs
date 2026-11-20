@@ -282,7 +282,11 @@ internal sealed partial class IdmlRenderer : IDisposable
             Preference("FirstBaselineOffset") ?? "AscentOffset",
             Values.Number(Preference("MinimumFirstBaselineOffset"), 0),
             pageName,
-            BaselineGridOf(frame, chain, inner.Y, inner.Y + inset.Top));
+            BaselineGridOf(frame, chain, inner.Y, inner.Y + inset.Top))
+        {
+            PageIndex = frame.Page is { } page ? page.Index : -1,
+            OddPage = frame.Page is not { } onPage || IsOddPage(onPage),
+        };
     }
 
     /// <summary>
@@ -339,6 +343,21 @@ internal sealed partial class IdmlRenderer : IDisposable
         return Grid(start + (fromMargin ? page.Margins.Top : 0) + page.SpreadBounds.Y - transform.Ty);
 
         BaselineGrid? Grid(double top) => increment > 0 ? new BaselineGrid(top, increment) : null;
+    }
+
+    /// <summary>
+    /// Whether a page counts as odd for "start on next odd page": its page number (the last digit of its name, "A-12"
+    /// is even), or, for a name without digits (roman numerals), the right-hand side in a facing document, or the
+    /// position in the document.
+    /// </summary>
+    private static bool IsOddPage(Page page)
+    {
+        var digit = page.Name.LastOrDefault(char.IsAsciiDigit);
+        if (digit != default)
+        {
+            return (digit - '0') % 2 == 1;
+        }
+        return page.Document.FacingPages ? !page.IsLeftPage : page.Index % 2 == 0;
     }
 
     private Spacing FrameInset(XElement frame) => FrameInset(resolver.ObjectChain(frame));

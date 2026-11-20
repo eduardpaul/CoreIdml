@@ -442,6 +442,24 @@ public static partial class IdmlJson
             tab.Align is { } align ? TryTabAlignment(align) ?? throw new IdmlException(ParagraphValueError(spec)!) : TabAlignment.Left,
             tab.Leader is { Length: > 8 } ? throw new IdmlException(ParagraphValueError(spec)!) : tab.Leader ?? string.Empty,
             tab.AlignOn is { } alignOn ? IsOneCharacter(alignOn) ? alignOn : throw new IdmlException(ParagraphValueError(spec)!) : ".")).ToList(),
+        KeepWithNext = spec.KeepWithNext is { } keepWithNext ? keepWithNext is >= 0 and <= 5 ? keepWithNext : throw new IdmlException(ParagraphValueError(spec)!) : null,
+        // First or last lines only count while Keep Lines Together is on; keepTogether turns on All Lines.
+        KeepLinesTogether = spec.KeepFirstLines is not null || spec.KeepLastLines is not null ? true : spec.KeepTogether,
+        KeepAllLinesTogether = spec.KeepTogether,
+        KeepFirstLines = spec.KeepFirstLines is { } firstLines ? firstLines is >= 1 and <= 50 ? firstLines : throw new IdmlException(ParagraphValueError(spec)!) : null,
+        KeepLastLines = spec.KeepLastLines is { } lastLines ? lastLines is >= 1 and <= 50 ? lastLines : throw new IdmlException(ParagraphValueError(spec)!) : null,
+        StartParagraph = spec.StartParagraph is { } start ? TryStartParagraph(start) ?? throw new IdmlException(ParagraphValueError(spec)!) : null,
+    };
+
+    private static StartParagraph? TryStartParagraph(string start) => start.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant() switch
+    {
+        "anywhere" => Dom.StartParagraph.Anywhere,
+        "nextcolumn" or "column" => Dom.StartParagraph.NextColumn,
+        "nextframe" or "frame" => Dom.StartParagraph.NextFrame,
+        "nextpage" or "page" => Dom.StartParagraph.NextPage,
+        "nextoddpage" or "oddpage" => Dom.StartParagraph.NextOddPage,
+        "nextevenpage" or "evenpage" => Dom.StartParagraph.NextEvenPage,
+        _ => null,
     };
 
     private static TabAlignment? TryTabAlignment(string align) => align.ToLowerInvariant() switch
@@ -503,7 +521,9 @@ public static partial class IdmlJson
         || spec.FirstLineIndent is not null || spec.LeftIndent is not null || spec.RightIndent is not null || spec.Underline is not null
         || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null
         || spec.List is not null || spec.Bullet is not null || spec.BulletAfter is not null || spec.NumberFormat is not null
-        || spec.NumberText is not null || spec.ListLevel is not null || spec.StartAt is not null || spec.Tabs is not null;
+        || spec.NumberText is not null || spec.ListLevel is not null || spec.StartAt is not null || spec.Tabs is not null
+        || spec.KeepWithNext is not null || spec.KeepTogether is not null || spec.KeepFirstLines is not null || spec.KeepLastLines is not null
+        || spec.StartParagraph is not null;
 
     private static Justification? ParseJustification(string? align) =>
         align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));

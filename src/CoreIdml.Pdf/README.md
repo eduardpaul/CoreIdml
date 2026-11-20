@@ -39,7 +39,8 @@ What is rendered: master items, groups, rotation, Bézier paths and rounded corn
 tints and opacity; stroke alignment; JPEG and PNG images clipped to their frames, with EXIF orientation; placed PDF
 pages as vector graphics; threaded frames, columns, leading, alignment and justification, tabs (left, right, centre
 and decimal stops, leaders), tables (row heights,
-spans, header rows, cell insets and edges), vertical justification, page numbers, bullets and numbering (bullet
+spans, header rows, cell insets and edges), vertical justification, keep options (keep with next, keep lines
+together, orphans and widows, start in the next column, frame or page), page numbers, bullets and numbering (bullet
 characters, number formats, list levels and restarts, hanging indents) and Spanish hyphenation. TrueType
 fonts are embedded as subsets, CFF fonts whole, and the fonts' embedding licence bits are honoured.
 

@@ -68,6 +68,8 @@ Common mistakes:
   `firstLineIndent` -14). InDesign draws the bullet or number; never type `•` or `1.` into the text.
 - Columns of text (contents pages, price lists): `tabs` on the paragraph style, a `\t` in the text, never runs of
   spaces. A right stop at the frame's inner width with `"leader": "."` makes a table of contents line.
+- Headings in threaded or multi-column text: `"keepWithNext": 1` on the heading style, so no heading ends a column
+  alone; `"startParagraph": "nextPage"` starts chapters on a new page.
 
 For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds into it (`x: -3`, `y: -3` in mm, 6 mm
 wider and taller than the page); use `cmyk` colours; keep text inside the margins.

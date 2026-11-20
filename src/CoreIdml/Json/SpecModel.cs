@@ -135,6 +135,21 @@ public class TextFormatSpec
 
     /// <summary>Tab stops (paragraphs and paragraph styles), replacing the style's; [] clears them.</summary>
     public List<TabSpec>? Tabs { get; set; }
+
+    /// <summary>Keep the paragraph's last line with the next paragraph's first N lines (0 to 5; headings: 1 or 2).</summary>
+    public int? KeepWithNext { get; set; }
+
+    /// <summary>True: never break the paragraph across columns or frames.</summary>
+    public bool? KeepTogether { get; set; }
+
+    /// <summary>Lines the paragraph keeps before a column break (orphans; turns Keep Lines Together on).</summary>
+    public int? KeepFirstLines { get; set; }
+
+    /// <summary>Lines the paragraph keeps after a column break (widows; turns Keep Lines Together on).</summary>
+    public int? KeepLastLines { get; set; }
+
+    /// <summary>anywhere (default), nextColumn, nextFrame, nextPage, nextOddPage or nextEvenPage.</summary>
+    public string? StartParagraph { get; set; }
 }
 
 /// <summary>A tab stop.</summary>
