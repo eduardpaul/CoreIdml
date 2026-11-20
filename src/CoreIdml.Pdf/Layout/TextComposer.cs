@@ -12,7 +12,7 @@ namespace CoreIdml.Pdf.Layout;
 /// before/after (no space before at the top of a column), indents, tabs, alignment and justification (word spacing),
 /// vertical justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line,
 /// laying the text out again from there), and inline tables (rows flow across columns and frames, header rows repeat).
-/// Not done: hyphenation, the paragraph composer, optical kerning, ligatures, text wrap, anchored objects.
+/// Not done: the paragraph composer, optical kerning, ligatures, text wrap, anchored objects.
 /// Deterministic: same input, same output.
 /// </summary>
 internal sealed class TextComposer
@@ -202,6 +202,11 @@ internal sealed class TextComposer
         // The item it was shaped from, and the index in that item's text of its (first) character.
         public InlineItem? Item;
         public int Index;
+        // A hyphenation point inside a ligature: the ligature that replaces the UnbrokenBefore glyphs before the point
+        // and the UnbrokenAfter glyphs after it when the line does not break there.
+        public Shaped? Unbroken;
+        public int UnbrokenBefore;
+        public int UnbrokenAfter;
     }
 
     private List<Shaped> Shape(ParagraphModel paragraph, FrameArea frame) => Shape(paragraph.Items, paragraph.Format, frame);
@@ -255,6 +260,11 @@ internal sealed class TextComposer
             {
                 result[i].Item = item;
                 result[i].Marker = item.Generated;
+                if (result[i].Unbroken is { } unbroken)
+                {
+                    unbroken.Item = item;
+                    unbroken.Marker = item.Generated;
+                }
             }
         }
         // Pair kerning between neighbours in the same font and size. A hyphenation point between two letters does not
@@ -274,6 +284,17 @@ internal sealed class TextComposer
                 previous.Advance += previous.Font.Kerning(previous.Glyph, current.Glyph) * previous.Size * previous.Style.HorizontalScale;
             }
         }
+        // A ligature drawn whole across a hyphenation point kerns with the glyph after it (07-char-opentype p1: ffl
+        // then u in "affluent"); the glyph before it keeps its kerning with the first component.
+        for (var i = 0; i < result.Count; i++)
+        {
+            if (result[i] is { Kind: GlyphKind.SoftHyphen, Unbroken: { } ligature } soft && i + soft.UnbrokenAfter + 1 < result.Count
+                && result[i + soft.UnbrokenAfter + 1] is { Kind: GlyphKind.Normal or GlyphKind.Space } next
+                && ReferenceEquals(ligature.Font, next.Font) && ligature.Size == next.Size && ligature.Style.Kerning && next.Style.Kerning)
+            {
+                ligature.Advance += ligature.Font.Kerning(ligature.Glyph, next.Glyph) * ligature.Size * ligature.Style.HorizontalScale;
+            }
+        }
         return result;
     }
 
@@ -281,7 +302,8 @@ internal sealed class TextComposer
     {
         // Discretionary break points from hyphenation, as soft hyphens after these text indices (ascending).
         hyphens.Clear();
-        if (hyphenation is { Enabled: true } && Hyphenator.Supports(style.Language))
+        var language = Hyphenator.LanguageOf(style.Language);
+        if (hyphenation is { Enabled: true } && language != HyphenationLanguage.None)
         {
             for (var start = 0; start < text.Length;)
             {
@@ -295,7 +317,7 @@ internal sealed class TextComposer
                 {
                     end++;
                 }
-                Hyphenator.AddPoints(text.AsSpan(start, end - start), hyphenation, start, hyphens);
+                Hyphenator.AddPoints(text.AsSpan(start, end - start), language, hyphenation, start, hyphens);
                 start = end;
             }
         }
@@ -393,14 +415,97 @@ internal sealed class TextComposer
     }
 
     /// <summary>
-    /// Replaces runs of glyphs by the font's standard ligatures (fi, fl, ...), as InDesign does by default. Only
-    /// glyphs of one font, size and position combine; a space or a hyphenation point keeps them apart.
+    /// Replaces runs of glyphs by the font's standard ligatures (fi, fl, ffi, ...), as InDesign does by default. Only
+    /// glyphs of one font, size and position combine; a space keeps them apart. A ligature across a hyphenation point
+    /// (the ffi of "of-fice") is drawn whole unless the line breaks there, as in InDesign (07-char-opentype p1:
+    /// "office" keeps its ffi ligature): the glyphs stay split at the point, and the point carries the ligature that
+    /// <see cref="EmitLine"/> puts back when the line does not break at it.
     /// </summary>
     private static void ApplyLigatures(List<Shaped> output, int start, RunStyle style)
     {
-        const int MaxComponents = 4;
-        Span<ushort> glyphs = stackalloc ushort[MaxComponents];
+        List<(int Start, int Hyphen, int End, ushort Glyph)>? crossings = null;
+        Span<ushort> components = stackalloc ushort[MaxLigatureComponents];
+        Span<int> indices = stackalloc int[MaxLigatureComponents];
+        // The ligatures of the unbroken text, looking through hyphenation points: keep those that span one.
         for (var i = start; i < output.Count; i++)
+        {
+            var count = LigatureComponents(output, i, components, indices);
+            if (count < 2 || !output[i].Font.TryLigature(components[..count], out var ligature, out var length))
+            {
+                continue;
+            }
+            var end = indices[length - 1];
+            var points = 0;
+            var hyphen = -1;
+            for (var k = i + 1; k < end; k++)
+            {
+                if (output[k].Kind == GlyphKind.SoftHyphen)
+                {
+                    points++;
+                    hyphen = k;
+                }
+            }
+            if (points == 1)
+            {
+                (crossings ??= []).Add((i, hyphen, end, ligature));
+            }
+            i = end;
+        }
+        // Split text: ligatures that do not cross a hyphenation point. Right to left, so indices stay valid.
+        var to = output.Count;
+        for (var c = (crossings?.Count ?? 0) - 1; c >= 0; c--)
+        {
+            var (first, hyphen, last, glyph) = crossings![c];
+            Ligate(output, last + 1, to, style);
+            var parts = output.GetRange(first, last - first + 1);
+            parts.RemoveAll(part => part.Kind == GlyphKind.SoftHyphen);
+            var soft = output[hyphen];
+            soft.Unbroken = NewLigature(parts, glyph, style);
+            soft.UnbrokenAfter = Ligate(output, hyphen + 1, last + 1, style) - (hyphen + 1);
+            soft.UnbrokenBefore = Ligate(output, first, hyphen, style) - first;
+            to = first;
+        }
+        Ligate(output, start, to, style);
+    }
+
+    private const int MaxLigatureComponents = 4;
+
+    /// <summary>
+    /// The glyphs that could form a ligature starting at <paramref name="index"/>: normal glyphs of one font, size
+    /// and position, read through hyphenation points. Their glyph ids go to <paramref name="components"/> and their
+    /// indices in <paramref name="output"/> to <paramref name="indices"/>.
+    /// </summary>
+    private static int LigatureComponents(List<Shaped> output, int index, Span<ushort> components, Span<int> indices)
+    {
+        var first = output[index];
+        if (first.Kind != GlyphKind.Normal)
+        {
+            return 0;
+        }
+        var count = 0;
+        for (var i = index; count < MaxLigatureComponents && i < output.Count; i++)
+        {
+            var next = output[i];
+            if (next.Kind == GlyphKind.SoftHyphen)
+            {
+                continue;
+            }
+            if (next.Kind != GlyphKind.Normal || !ReferenceEquals(next.Font, first.Font) || next.Size != first.Size || next.Rise != first.Rise)
+            {
+                break;
+            }
+            components[count] = next.Glyph;
+            indices[count] = i;
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>Forms the ligatures of output[from..to) that no hyphenation point splits; returns the new end.</summary>
+    private static int Ligate(List<Shaped> output, int from, int to, RunStyle style)
+    {
+        Span<ushort> glyphs = stackalloc ushort[MaxLigatureComponents];
+        for (var i = from; i < to; i++)
         {
             var first = output[i];
             if (first.Kind != GlyphKind.Normal)
@@ -408,7 +513,7 @@ internal sealed class TextComposer
                 continue;
             }
             var count = 0;
-            while (count < MaxComponents && i + count < output.Count && output[i + count] is { Kind: GlyphKind.Normal } next
+            while (count < MaxLigatureComponents && i + count < to && output[i + count] is { Kind: GlyphKind.Normal } next
                 && ReferenceEquals(next.Font, first.Font) && next.Size == first.Size && next.Rise == first.Rise)
             {
                 glyphs[count] = next.Glyph;
@@ -418,24 +523,31 @@ internal sealed class TextComposer
             {
                 continue;
             }
-            var natural = first.Font.Advance(ligature) * first.Size * style.HorizontalScale;
-            var last = output[i + length - 1];
-            output[i] = new Shaped
-            {
-                Kind = GlyphKind.Normal,
-                Font = first.Font,
-                Glyph = ligature,
-                Text = string.Concat(output.GetRange(i, length).Select(glyph => glyph.Text)),
-                Advance = natural + (style.Tracking / 1000 * first.Size),
-                Natural = natural,
-                Size = first.Size,
-                Rise = first.Rise,
-                Style = first.Style,
-                Index = first.Index,
-                BreakAfter = last.BreakAfter,
-            };
+            output[i] = NewLigature(output.GetRange(i, length), ligature, style);
             output.RemoveRange(i + 1, length - 1);
+            to -= length - 1;
         }
+        return to;
+    }
+
+    private static Shaped NewLigature(List<Shaped> parts, ushort ligature, RunStyle style)
+    {
+        var first = parts[0];
+        var natural = first.Font.Advance(ligature) * first.Size * style.HorizontalScale;
+        return new Shaped
+        {
+            Kind = GlyphKind.Normal,
+            Font = first.Font,
+            Glyph = ligature,
+            Text = string.Concat(parts.Select(glyph => glyph.Text)),
+            Advance = natural + (style.Tracking / 1000 * first.Size),
+            Natural = natural,
+            Size = first.Size,
+            Rise = first.Rise,
+            Style = first.Style,
+            Index = first.Index,
+            BreakAfter = parts[^1].BreakAfter,
+        };
     }
 
     /// <summary>Strings of the most common characters, made once: every glyph carries the text it stands for.</summary>
@@ -519,6 +631,18 @@ internal sealed class TextComposer
                 && lineStyles.LineStyle(columns.Count) is var wanted && wanted != lineStyle)
             {
                 var rest = Shape(lineStyles.ItemsFrom(source, glyphs[index].Index, wanted), format, flow.Frame);
+                // After a line that ends in a hyphen the rest of the word is not a word of its own: it keeps no hyphenation
+                // points (and no split ligatures) of its own.
+                if (index > 0 && glyphs[index - 1].Kind == GlyphKind.SoftHyphen)
+                {
+                    var wordEnd = 0;
+                    while (wordEnd < rest.Count && (rest[wordEnd].Kind == GlyphKind.SoftHyphen
+                        || (rest[wordEnd].Kind == GlyphKind.Normal && rest[wordEnd].Text.Length > 0 && char.IsLetter(rest[wordEnd].Text[0]))))
+                    {
+                        wordEnd++;
+                    }
+                    DropHyphenationPoints(rest, 0, wordEnd);
+                }
                 glyphs.RemoveRange(index, glyphs.Count - index);
                 glyphs.AddRange(rest);
                 lineStyle = wanted;
@@ -694,6 +818,35 @@ internal sealed class TextComposer
         return new LineMetrics(ascent, descent, leading, cap, xHeight, size);
     }
 
+    /// <summary>
+    /// Drops the hyphenation points in glyphs[from..to) (points the text does not break at); a ligature one of them
+    /// split is whole again. Returns the new end.
+    /// </summary>
+    private static int DropHyphenationPoints(List<Shaped> glyphs, int from, int to)
+    {
+        for (var i = to - 1; i >= from; i--)
+        {
+            var soft = glyphs[i];
+            if (soft.Kind != GlyphKind.SoftHyphen)
+            {
+                continue;
+            }
+            if (soft.Unbroken is { } unbroken && i - soft.UnbrokenBefore >= from && i + soft.UnbrokenAfter < to)
+            {
+                glyphs.RemoveRange(i - soft.UnbrokenBefore, soft.UnbrokenBefore + 1 + soft.UnbrokenAfter);
+                glyphs.Insert(i - soft.UnbrokenBefore, unbroken);
+                to -= soft.UnbrokenBefore + soft.UnbrokenAfter;
+                i -= soft.UnbrokenBefore;
+            }
+            else
+            {
+                glyphs.RemoveAt(i);
+                to--;
+            }
+        }
+        return to;
+    }
+
     private void EmitLine(List<Shaped> line, Flow flow, ParagraphFormatting format, double indent, double available, bool isLast, bool forced)
     {
         // Drop trailing spaces and the break itself; a soft hyphen at the end becomes a visible hyphen.
@@ -713,7 +866,7 @@ internal sealed class TextComposer
                 visible[^1] = hyphen[0];
             }
         }
-        visible.RemoveAll(glyph => glyph.Kind == GlyphKind.SoftHyphen);
+        DropHyphenationPoints(visible, 0, visible.Count);
 
         // Tab alignment (right/centre stops shift the text that follows them).
         ApplyTabAlignment(visible, format, indent, available);

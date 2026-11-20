@@ -31,6 +31,8 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
+    <!-- TeX hyphenation patterns, unchanged from hyph-utf8 (licence in THIRD-PARTY-NOTICES.md). -->
+    <EmbeddedResource Include="Layout\Hyphenation\*.tex" LogicalName="CoreIdml.Pdf.Hyphenation.%(Filename)%(Extension)" />
     <Using Include="CoreIdml.Xml" />
   </ItemGroup>
 

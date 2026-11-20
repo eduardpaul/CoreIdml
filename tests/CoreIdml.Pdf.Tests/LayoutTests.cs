@@ -330,6 +330,22 @@ public sealed class LayoutTests
         Assert.Equal(Width(hyphenation: false), Width(hyphenation: true), 6);
     }
 
+    [Theory]
+    [InlineData(300, "g|o|l|fi|n|g")]
+    [InlineData(28, "g|o|l|f|-", "i|n|g")]
+    public void A_ligature_across_a_hyphenation_point_splits_only_where_the_line_breaks(double width, params string[] expected)
+    {
+        // golf-ing: the English hyphenation point sits inside the fi ligature.
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Language = Languages.EnglishUs, Hyphenation = true });
+        var frame = page.AddText(new Rect(0, 0, width, 100), "golfing", style);
+        var options = new PdfExportOptions { Fonts = new PdfFontOptions { UseSystemFonts = false }.AddFont("LiberationSerif-Regular.ttf", SerifWithStandardLigatures()) };
+
+        var runs = new IdmlRenderer(document, options).LayoutStory(frame.Story).OpsByFrame[frame.Id].OfType<GlyphRunOp>()
+            .Where(run => run.Text.Trim().Length > 0);
+        Assert.Equal(expected, runs.Select(run => string.Join("|", run.Glyphs.Select(g => g.Text).Where(t => t.Trim().Length > 0))));
+    }
+
     [Fact]
     public void Pair_kerning_tightens_AV()
     {

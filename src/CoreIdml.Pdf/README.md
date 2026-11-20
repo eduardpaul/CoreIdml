@@ -41,7 +41,7 @@ pages as vector graphics; threaded frames, columns, leading, alignment and justi
 and decimal stops, leaders), tables (row heights,
 spans, header rows, cell insets and edges), vertical justification, keep options (keep with next, keep lines
 together, orphans and widows, start in the next column, frame or page), page numbers, bullets and numbering (bullet
-characters, number formats, list levels and restarts, hanging indents) and Spanish hyphenation. TrueType
+characters, number formats, list levels and restarts, hanging indents) and English and Spanish hyphenation. TrueType
 fonts are embedded as subsets, CFF fonts whole, and the fonts' embedding licence bits are honoured.
 
 ```csharp
@@ -60,9 +60,9 @@ var result = IdmlPdf.Export(doc, output, options);
 Writing to a path is atomic: a failed or cancelled export leaves no partial file behind.
 
 It approximates InDesign rather than reproducing it: the line breaker is greedy (InDesign's default is the paragraph
-composer), hyphenation is rule-based and Spanish only, kerning is the font's pair kerning, and there are no OpenType
-features, text wrap, gradients, effects or placed EPS/AI graphics. Missing fonts change line breaks, so give the export
-the document's fonts.
+composer), hyphenation covers English (TeX patterns) and Spanish (rules) only, kerning is the font's pair kerning,
+and there are no OpenType features, text wrap, gradients, effects or placed EPS/AI graphics. Missing fonts change line
+breaks, so give the export the document's fonts.
 
 ## PDF to IDML
 

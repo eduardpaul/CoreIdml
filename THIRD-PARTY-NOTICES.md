@@ -49,6 +49,24 @@ package parts are written back byte for byte, and documents can be summarized in
 `src/CoreIdml.Pdf` references the NuGet package PdfPig 0.1.16 (https://github.com/UglyToad/PdfPig) to read PDFs, and
 the native library and WebAssembly build include it. Apache License 2.0; the licence text ships in the package.
 
+## TeX hyphenation patterns for American English (CoreIdml.Pdf)
+
+`src/CoreIdml.Pdf/Layout/Hyphenation/hyph-en-us.tex`, embedded in CoreIdml.Pdf unchanged, is `hyph-en-us.tex` of the
+hyph-utf8 package (https://github.com/hyphenation/tex-hyphen, `hyph-utf8/tex/generic/hyph-utf8/patterns/tex/`):
+Gerard D.C. Kuiken's `ushyphmax.tex` patterns together with Donald E. Knuth's original patterns and exception list
+from `hyphen.tex` (Frank Liang's algorithm). The file carries this copyright and licence:
+
+```
+Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.
+```
+
+This is the FSF all-permissive licence, compatible with the MIT licence; the notice is preserved in the embedded file
+itself and here.
+
 ## PDFium (the coreidml command line only)
 
 `src/CoreIdml.Cli` references the NuGet packages bblanchon.PDFium.Linux, .Win32 and .macOS 152.0.7961

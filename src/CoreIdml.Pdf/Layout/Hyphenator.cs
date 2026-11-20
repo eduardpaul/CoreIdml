@@ -6,10 +6,33 @@ namespace CoreIdml.Pdf.Layout;
 /// <summary>Paragraph hyphenation settings (InDesign's Hyphenation panel).</summary>
 internal sealed record HyphenationSettings(bool Enabled, int AfterFirst, int BeforeLast, int WordsLongerThan, bool Capitalized, double Zone = 36);
 
+/// <summary>The hyphenation rules a language (InDesign's <c>AppliedLanguage</c>) gets.</summary>
+internal enum HyphenationLanguage
+{
+    /// <summary>Not hyphenated: no data for the language, or "[No Language]".</summary>
+    None,
+
+    /// <summary>Any "English: ..." variant: Liang's algorithm over the TeX hyph-en-us patterns.</summary>
+    English,
+
+    /// <summary>Spanish: syllabification rules.</summary>
+    Spanish,
+}
+
 /// <summary>
-/// Hyphenation points by Spanish syllabification rules (the language of the user's documents): consonant
-/// clusters (bl, br, cl, cr, dr, fl, fr, gl, gr, pl, pr, tr, ch, ll, rr) stay together, diphthongs stay together,
-/// hiatus splits. InDesign uses its Hunspell/Duden dictionaries, so a few words can still break differently.
+/// Hyphenation points, by language. InDesign hyphenates with its own dictionaries, which are not available; CoreIdml
+/// approximates them:
+/// <list type="bullet">
+/// <item>English (USA, UK and the other "English: ..." languages): Liang's algorithm with the TeX hyph-en-us patterns
+/// (<c>Hyphenation/hyph-en-us.tex</c>, Gerard Kuiken's ushyphmax with Knuth's patterns and exceptions). Of the
+/// hyphenated line ends in InDesign 20's reference PDFs of the doc-samples (re-turned, accom-plished,
+/// neighbour-hood, pos-ses-sion, immedi-ately, fami-lies, insuf-ficient, uncondi-tional...), the patterns allow all
+/// but two proper names: InDesign's En-gland and Neth-erfield, where the patterns give Eng-land and Nether-field. In
+/// 07-char-language-nobreak p1 InDesign breaks the same text at the same points for English: USA and English: UK,
+/// so every English variant uses these patterns.</item>
+/// <item>Spanish: syllabification rules. Consonant clusters (bl, br, cl, cr, dr, fl, fr, gl, gr, pl, pr, tr, ch, ll,
+/// rr) stay together, diphthongs stay together, hiatus splits.</item>
+/// </list>
 /// Other languages are not hyphenated.
 /// </summary>
 internal static class Hyphenator
@@ -22,14 +45,20 @@ internal static class Hyphenator
 
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> ClusterLookup = Clusters.GetAlternateLookup<ReadOnlySpan<char>>();
 
-    public static bool Supports(string? language) =>
-        language is not null && language.Contains("Spanish", StringComparison.OrdinalIgnoreCase);
+    /// <summary>The rules for an InDesign language name ("$ID/English: USA", "$ID/Spanish: Castilian").</summary>
+    public static HyphenationLanguage LanguageOf(string? language) => language switch
+    {
+        null => HyphenationLanguage.None,
+        _ when language.Contains("English", StringComparison.OrdinalIgnoreCase) => HyphenationLanguage.English,
+        _ when language.Contains("Spanish", StringComparison.OrdinalIgnoreCase) => HyphenationLanguage.Spanish,
+        _ => HyphenationLanguage.None,
+    };
 
     /// <summary>Indices i such that a hyphen may go after word[i].</summary>
-    public static IReadOnlyList<int> Points(string word, HyphenationSettings settings)
+    public static IReadOnlyList<int> Points(string word, string? language, HyphenationSettings settings)
     {
         var points = new List<int>();
-        AddPoints(word, settings, 0, points);
+        AddPoints(word, LanguageOf(language), settings, 0, points);
         return points;
     }
 
@@ -37,9 +66,10 @@ internal static class Hyphenator
     /// Adds <paramref name="offset"/> + i, ascending, for each index i such that a hyphen may go after word[i]
     /// (the composer passes words in place, without copying them out of their run).
     /// </summary>
-    public static void AddPoints(ReadOnlySpan<char> word, HyphenationSettings settings, int offset, List<int> output)
+    public static void AddPoints(ReadOnlySpan<char> word, HyphenationLanguage language, HyphenationSettings settings, int offset, List<int> output)
     {
-        if (!settings.Enabled || word.Length <= settings.WordsLongerThan || (!settings.Capitalized && char.IsUpper(word[0])))
+        if (language == HyphenationLanguage.None || !settings.Enabled || word.Length <= settings.WordsLongerThan
+            || (!settings.Capitalized && char.IsUpper(word[0])))
         {
             return;
         }
@@ -49,7 +79,31 @@ internal static class Hyphenator
         {
             word.ToLowerInvariant(buffer);
         }
-        ReadOnlySpan<char> lower = buffer;
+        if (language == HyphenationLanguage.English)
+        {
+            AddEnglishPoints(word, buffer, settings, offset, output);
+        }
+        else
+        {
+            AddSpanishPoints(word, buffer, settings, offset, output);
+        }
+    }
+
+    private static void AddEnglishPoints(ReadOnlySpan<char> word, ReadOnlySpan<char> lower, HyphenationSettings settings, int offset, List<int> output)
+    {
+        Span<bool> after = lower.Length <= 128 ? stackalloc bool[lower.Length] : new bool[lower.Length];
+        English.Patterns.Hyphenate(lower, after);
+        for (var i = 0; i < after.Length; i++)
+        {
+            if (after[i])
+            {
+                Add(word, i, settings, offset, output);
+            }
+        }
+    }
+
+    private static void AddSpanishPoints(ReadOnlySpan<char> word, ReadOnlySpan<char> lower, HyphenationSettings settings, int offset, List<int> output)
+    {
         var first = output.Count;
         var i = 0;
         // Walk vowel nuclei; between two nuclei decide where the consonants split.
@@ -120,6 +174,12 @@ internal static class Hyphenator
     }
 
     private static bool IsCluster(ReadOnlySpan<char> pair) => ClusterLookup.Contains(pair);
+
+    /// <summary>The English patterns, parsed on first use (a document without English text never loads them).</summary>
+    private static class English
+    {
+        public static readonly TexPatterns Patterns = TexPatterns.FromResource("CoreIdml.Pdf.Hyphenation.hyph-en-us.tex");
+    }
 
     /// <summary>The index of the last vowel of the vowel group starting at or after <paramref name="from"/>.</summary>
     private static int NucleusEnd(ReadOnlySpan<char> word, int from)
