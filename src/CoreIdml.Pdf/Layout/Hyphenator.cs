@@ -3,8 +3,11 @@ using System.Text;
 
 namespace CoreIdml.Pdf.Layout;
 
-/// <summary>Paragraph hyphenation settings (InDesign's Hyphenation panel).</summary>
-internal sealed record HyphenationSettings(bool Enabled, int AfterFirst, int BeforeLast, int WordsLongerThan, bool Capitalized, double Zone = 36);
+/// <summary>
+/// Paragraph hyphenation settings (InDesign's Hyphenation panel). <paramref name="LadderLimit"/> is the most consecutive
+/// lines that may end in a hyphen (0: no limit); the paragraph composer honours it.
+/// </summary>
+internal sealed record HyphenationSettings(bool Enabled, int AfterFirst, int BeforeLast, int WordsLongerThan, bool Capitalized, double Zone = 36, int LadderLimit = 3);
 
 /// <summary>The hyphenation rules a language (InDesign's <c>AppliedLanguage</c>) gets.</summary>
 internal enum HyphenationLanguage

@@ -32,7 +32,7 @@ public sealed class LayoutTests
     public void Lines_break_at_spaces_within_the_column_and_keep_every_word()
     {
         var (document, page) = NewDocument();
-        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Leading = 14 });
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12, Leading = 14, Hyphenation = false });
         var frame = page.AddText(new Rect(50, 50, 150, 300), Lorem, style);
         var layout = Layout(document, frame);
 

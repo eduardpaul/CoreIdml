@@ -37,7 +37,8 @@ them (`Arial`: `Regular`, `Italic`, `Bold`, `Bold Italic`), for choosing fonts t
 
 What is rendered: master items, groups, rotation, Bézier paths and rounded corners; CMYK, RGB and Lab swatches with
 tints and opacity; stroke alignment; JPEG and PNG images clipped to their frames, with EXIF orientation; placed PDF
-pages as vector graphics; threaded frames, columns, leading, alignment and justification, tabs (left, right, centre
+pages as vector graphics; threaded frames, columns, leading, alignment and justification (word and letter spacing,
+glyph scaling), tabs (left, right, centre
 and decimal stops, leaders), tables (row heights,
 spans, header rows, cell insets and edges), vertical justification, keep options (keep with next, keep lines
 together, orphans and widows, start in the next column, frame or page), page numbers, bullets and numbering (bullet
@@ -59,10 +60,11 @@ var result = IdmlPdf.Export(doc, output, options);
 
 Writing to a path is atomic: a failed or cancelled export leaves no partial file behind.
 
-It approximates InDesign rather than reproducing it: the line breaker is greedy (InDesign's default is the paragraph
-composer), hyphenation covers English (TeX patterns) and Spanish (rules) only, kerning is the font's pair kerning,
-and there are no OpenType features, text wrap, effects or placed EPS/AI graphics. Missing fonts change line
-breaks, so give the export the document's fonts.
+It approximates InDesign rather than reproducing it: line breaks follow InDesign's Paragraph Composer (the whole
+paragraph broken at once, with costs measured against InDesign's output rather than taken from its code),
+hyphenation covers English (TeX patterns) and Spanish (rules) only, kerning is the font's pair kerning, and there are
+no OpenType features, text wrap, effects or placed EPS/AI graphics. Missing fonts change line breaks, so give the
+export the document's fonts.
 
 ## PDF to IDML
 

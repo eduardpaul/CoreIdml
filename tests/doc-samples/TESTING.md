@@ -202,8 +202,8 @@ the outline (bookmarks), fonts embedded, `/Separation` and `/DeviceN` colour spa
 InDesign's Preflight found **no overset text in any sample except `10-table-cells`**, where an overset cell is the
 case (Preflight: 1 cell, 2 text frames). So `TextFit` / `idml_check_fit` must report exactly that and nothing else.
 Any other overset we report is composer drift (font metrics, leading, keeps, composer), and a cheap, strong
-regression test that needs no rasterizing. Today it fails both ways: the export reports 5 overset stories InDesign
-does not have (2 in `06-frame-autosize`, 3 in `06-frame-basics`), and does **not** report the overset cell of
+regression test that needs no rasterizing. Today it fails both ways: the export reports 2 overset stories InDesign
+does not have (one each in `06-frame-autosize` and `06-frame-basics`; with the paragraph composer the others fit), and does **not** report the overset cell of
 `10-table-cells`.
 
 ### G. Round trip
@@ -214,8 +214,9 @@ and attributes unchanged, `idml_validate` clean, and InDesign opens the file (ma
 ## 4. Gotchas
 
 **Text composition dominates the pixel diff.** Every sample uses the Adobe Paragraph Composer (except the
-single-line case in `08-para-hyphenation-justification` p5); CoreIdml has a greedy single-line composer and its own
-hyphenation patterns. Any justified or multi-line paragraph can break differently and push everything below it. Do not
+single-line case in `08-para-hyphenation-justification` p5); CoreIdml has a paragraph composer whose costs are fitted to
+these references, and its own hyphenation patterns. A paragraph can still break differently (narrow justified columns,
+proper names hyphenated differently) and push everything below it. Do not
 judge a non-composition feature by the page ratio of a text-heavy page: use check D for the lines that match and
 check C on the decoration's region.
 
@@ -375,7 +376,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `07-char-case-position` | D | All caps, small caps (real and synthesised), superscript/subscript (synthesised and OpenType) at the reference size and position. | |
 | `07-char-outlined-text` | C | Stroked glyphs (fill none), stroke over fill; live text next to outlines (the outlines are paths, a good control). | |
 | `07-char-opentype` | D, glyph check | Ligatures, figure styles, fractions, ordinals, stylistic sets and the variable instances give the reference's glyphs. | Compare glyph IDs or ToUnicode text: a fraction may extract as `½` or `1/2`. Variable instances fall back today (section 4). |
-| `07-char-language-nobreak` | D | Hyphenation points per language; No Break phrases unsplit; discretionary and non-breaking hyphens. | Our hyphenation patterns differ from InDesign's dictionaries; count matching break points, not pixels. |
+| `07-char-language-nobreak` | D | Hyphenation points per language; No Break phrases unsplit; discretionary and non-breaking hyphens. | Our hyphenation patterns differ from InDesign's dictionaries; count matching break points, not pixels. French and German are not hyphenated by CoreIdml, so p1's 90 pt justified columns break differently; p2 matches every line; p3: a discretionary hyphen is the only break point of its word, a missing non-breaking hyphen glyph prints as the hyphen. |
 | `07-char-special-characters` | D | Width of each fixed space, indent to here, right indent tab, forced line break, column and frame breaks, markers. | Flush space only in a justified last line. |
 
 ### 08 Paragraphs
@@ -384,13 +385,13 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | --- | --- | --- | --- |
 | `08-para-alignment-indents` | D | Line starts and ends per alignment and indent; balance ragged lines. | |
 | `08-para-tabs` | D | Tab positions within 0.5 pt; decimal and character alignment on `.`, `,`, `=`; leaders (`.`, `-`, `_`, `·`, `ab`) present between the right words. | Leaders extract as words: a missing leader is a set of unmatched words, and a leader glyph short or extra changes the word. Now drawn: every page 100% within 1 pt. |
-| `08-para-hyphenation-justification` | D | p5 single-line composer: same line breaks as InDesign (the fair page for our composer); p1–4: settings read (B), lines compared. | Paragraph Composer pages will not match until a paragraph composer exists. English hyphenation points match InDesign's (re-turned, accom-plished, neighbour-hoods); p5 single-line now breaks every line as InDesign (line 2 at 90% word spacing to take "all", line 3 hyphenated "ac-" at 91%); p4 word and letter spacing and glyph scaling follow the settings (Justification.cs: word and letter spacing in proportion, glyph scaling after them; spacing measured there). p3 zone 60 differs because the Paragraph Composer ignores the zone. |
-| `08-para-keeps-breaks` | D, F | Keep with next, keep together, keep first/last lines, start in next column, frame, page, odd page: the same paragraph starts each column and page. | p8 blank by design; p6 and p9 are continuations. Now honoured: every paragraph starts in the column and page InDesign puts it in, 100% of words within 1 pt on p2 and p4 to p9; p1 and p3 differ only where InDesign's Paragraph Composer breaks a line one word earlier. |
+| `08-para-hyphenation-justification` | D | p5 single-line composer: same line breaks as InDesign (the fair page for our composer); p1–4: settings read (B), lines compared. | English hyphenation points match InDesign's (re-turned, accom-plished, neighbour-hoods). p5: both columns break every line as InDesign (single-line: line 2 at 90% word spacing to take "all", line 3 "ac-" at 91%). p4: word and letter spacing and glyph scaling follow the settings (Justification.cs). The Paragraph Composer pages (p1 to p4) are the hardest case for it: 120 pt columns of long words, lines at 200–700% word spacing; p2 still breaks differently from InDesign (52% of words). |
+| `08-para-keeps-breaks` | D, F | Keep with next, keep together, keep first/last lines, start in next column, frame, page, odd page: the same paragraph starts each column and page. | p8 blank by design; p6 and p9 are continuations. Now honoured: every paragraph starts in the column and page InDesign puts it in, 100% of words within 1 pt on every page (p1 and p3 needed the paragraph composer: InDesign breaks a ragged line one word earlier to even the rag). |
 | `08-para-rules` | C (regions), D | Weights, offsets, width (column/text), indents, types, above and below together, 2-column frame. | |
 | `08-para-borders-shading` | C (regions) | Shading, borders, rounded corners, split across columns, merged consecutive borders. | |
 | `08-para-drop-caps` | D, C | Drop cap size and position (2–5 lines, 1–3 characters), character style, detail flags, indents, baseline grid. | |
 | `08-para-bullets-numbering` | D | Every marker word (`•`, `–`, `▪`, `►`, `○`, `■`, `1.`, `A`, `iii`, `01`, `(1)`, `Step 1:`, `Article 1.`, `1.1.1`) at the reference position; start at 5; list continued across frames; right-aligned two-digit numbers. | Markers are generated, not stored as text. Now drawn: 100% of words within 1 pt on all 7 pages. Right-aligned numbers in a hanging indent sit where left-aligned ones do (p2, p7); list A is two stories (p6). |
-| `08-para-nested-grep-styles` | D (font per word), C | Run-in heads, word sequences, line styles and GREP matches drawn in the right style. | Check the font and colour of matched words, not only their positions. Now drawn: every run has the reference's font and colour on all 5 pages (compared run by run with PdfPig); 100% of words within 1 pt except p4 (83%: in three paragraphs InDesign's Paragraph Composer moves "2" to the next line, our greedy breaker keeps it). The labels disagree with the XML in two places: p3 says "first 2 lines Strong" but `LineCount` is 1 (the reference follows the XML), and p5 promises "a local character style" that no story has, so the order of an applied character style against nested/GREP styles is not measured. |
+| `08-para-nested-grep-styles` | D (font per word), C | Run-in heads, word sequences, line styles and GREP matches drawn in the right style. | Check the font and colour of matched words, not only their positions. Now drawn: every run has the reference's font and colour on all 5 pages (compared run by run with PdfPig); 100% of words within 1 pt on every page (p4 needed the paragraph composer, which moves "2" to the next line as InDesign does). The labels disagree with the XML in two places: p3 says "first 2 lines Strong" but `LineCount` is 1 (the reference follows the XML), and p5 promises "a local character style" that no story has, so the order of an applied character style against nested/GREP styles is not measured. |
 | `08-para-optical-margin` | D | Hanging punctuation by size (8, 14, 24 pt). | |
 
 ### 09 Styles, 10 Tables
@@ -412,7 +413,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `11-long-links-bookmarks` | E | Link annotations with the URL or page/anchor destination over the right text; outline with the bookmarks of the reference. | Text already renders; this is structure only. |
 | `11-long-toc-index` | D | TOC and index stories render as stored. | Stored text; no regeneration expected. |
 | `11-long-conditional-text` | D | Hidden conditions absent with the double space; visible ones present; the "Web" condition set. | `reference-allvisible.pdf` is the reference after making every condition visible in a copy. |
-| `11-long-tracked-changes` | D | Inserted text present, deleted text absent, moved text at its new place; accepted/rejected changes. | Done: deleted text is skipped (in the preview, fit checks and story text), inserted and moved text drawn; accepted or rejected changes are plain text in the IDML. p1 to p3 and p5 match; p4 differs only where InDesign hyphenates `fami-lies.must` (allowed by the English patterns; the greedy composer keeps it whole inside the hyphenation zone, which the Paragraph Composer ignores). |
+| `11-long-tracked-changes` | D | Inserted text present, deleted text absent, moved text at its new place; accepted/rejected changes. | Done: deleted text is skipped (in the preview, fit checks and story text), inserted and moved text drawn; accepted or rejected changes are plain text in the IDML. Every page matches (p4: the paragraph composer hyphenates `fami-lies.must` as InDesign does, ignoring the hyphenation zone). |
 | `11-long-notes` | D | No note text in our page. | |
 | `11-long-xml-structure` | B | `idml_xml_structure` lists Root, Article, Title, Body (with nested Emphasis), Image and 4 attributes; `idml_export_xml` matches `source.xml` in elements and text. | |
 | `11-long-data-merge`, `-result` | B, D | Placeholders `<<Name>>`, `<<Residence>>`, `<<Remark>>` found (template); the result renders 3 records. | Placeholders are stored as text with `DataMerge` options; `data.csv` is in `links/`. |

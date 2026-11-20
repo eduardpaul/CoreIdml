@@ -7,16 +7,17 @@ using CoreIdml.Pdf.Fonts;
 namespace CoreIdml.Pdf.Layout;
 
 /// <summary>
-/// Lays out story text into threaded frames and columns, the way InDesign's single-line composer would:
-/// line breaking at spaces and hyphens, one line at a time (<see cref="FitLine"/>), leading (fixed or Auto = 120%),
-/// first-baseline offset, space before/after (no space before at the top of a column), indents, tabs, alignment and
-/// justification (word spacing, letter spacing and glyph scaling within the paragraph's limits, <see cref="Justifier"/>),
-/// vertical justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line,
-/// laying the text out again from there), and inline tables (rows flow across columns and frames, header rows repeat).
-/// Not done: the paragraph composer, optical kerning, text wrap, anchored objects.
+/// Lays out story text into threaded frames and columns, the way InDesign composes it: line breaking at spaces and
+/// hyphens, for the whole paragraph at once (the Paragraph Composer, <see cref="ComposeParagraph"/>) or one line at a
+/// time (the Single-line Composer, <see cref="FitLine"/>), leading (fixed or Auto = 120%), first-baseline offset,
+/// space before/after (no space before at the top of a column), indents, tabs, alignment and justification (word
+/// spacing, letter spacing and glyph scaling within the paragraph's limits, <see cref="Justifier"/>), vertical
+/// justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line, laying the text
+/// out again from there), and inline tables (rows flow across columns and frames, header rows repeat).
+/// Not done: optical kerning, text wrap, anchored objects.
 /// Deterministic: same input, same output.
 /// </summary>
-internal sealed class TextComposer
+internal sealed partial class TextComposer
 {
     private const double Epsilon = 0.01;
     private const double DefaultTabInterval = 36;
@@ -341,12 +342,19 @@ internal sealed class TextComposer
                     start++;
                     continue;
                 }
+                // A word with a discretionary hyphen breaks only there (07-char-language-nobreak p3: InDesign breaks
+                // "extra-ordinary" at its discretionary hyphen, not at "extraordi-").
                 var end = start;
-                while (end < text.Length && char.IsLetter(text[end]))
+                var discretionary = false;
+                while (end < text.Length && (char.IsLetter(text[end]) || text[end] == '\u00AD'))
                 {
+                    discretionary |= text[end] == '\u00AD';
                     end++;
                 }
-                Hyphenator.AddPoints(text.AsSpan(start, end - start), language, hyphenation, start, hyphens);
+                if (!discretionary)
+                {
+                    Hyphenator.AddPoints(text.AsSpan(start, end - start), language, hyphenation, start, hyphens);
+                }
                 start = end;
             }
         }
@@ -650,6 +658,15 @@ internal sealed class TextComposer
         // included); a paragraph laid out again after a keep restore starts over from its own items at line 0.
         var lineStyles = paragraph.LineStyles;
         var lineStyle = lineStyles?.LineStyle(0);
+        // The paragraph composer's line ends, from plannedStart at plannedWidth (see ComposeParagraph).
+        var paragraphComposer = format.ParagraphComposer;
+        List<(int End, bool Forced)>? plan = null;
+        var (planned, plannedStart, plannedWidth) = (0, -1, double.NaN);
+        // Line n's indent from the column's left edge: the first-line indent goes to line 0, unless the paragraph starts
+        // with a table; every line from steadyLines on is indented alike.
+        var indentedLine = 0;
+        var steadyLines = 1;
+        double LineIndent(int line) => format.LeftIndent + (line == indentedLine ? format.FirstLineIndent : 0);
         while (index < glyphs.Count || !emitted)
         {
             if (index < glyphs.Count && glyphs[index].Kind == GlyphKind.Table)
@@ -661,6 +678,7 @@ internal sealed class TextComposer
                 index++;
                 emitted = true;
                 firstLine = false;
+                indentedLine = columns.Count == 0 ? -1 : indentedLine;
                 continue;
             }
             if (columns.Count > 0 && forcedBreaks.Contains((number, columns.Count)) && !flow.AtColumnTop)
@@ -688,30 +706,58 @@ internal sealed class TextComposer
                 lineStyle = wanted;
             }
             var column = flow.Column;
-            var indent = format.LeftIndent + (firstLine ? format.FirstLineIndent : 0);
-            var available = column.Width - indent - format.RightIndent;
-            var (end, forced) = FitLine(glyphs, index, available, format, indent);
-            var line = glyphs.GetRange(index, end - index);
-            index = end;
-            emitted = true;
+            var indent = LineIndent(columns.Count);
+            var start = index;
+            var (end, forced, available) = BreakLine(column.Width);
             var snapToGrid = format.AlignToBaselineGrid && (firstLine || !format.GridAlignFirstLineOnly);
             firstLine = false;
-            var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
-            var metrics = Measure(line, paragraph.MarkStyle);
-            if (!flow.Place(metrics, snapToGrid))
+            emitted = true;
+            if (!flow.Place(Measure(glyphs.GetRange(start, end - start), paragraph.MarkStyle), snapToGrid))
             {
+                index = end;
                 columns.Add(int.MaxValue);
                 continue;
             }
+            if (flow.Column.Width != column.Width)
+            {
+                // The line went on to a column of another width: it is broken again at that width.
+                (end, forced, available) = BreakLine(flow.Column.Width);
+            }
+            var line = glyphs.GetRange(start, end - start);
+            index = end;
+            var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             columns.Add(flow.ColumnOrdinal);
             EmitLine(line, flow, format, indent, available, isLast, forced);
+
+            // The end of the line starting at `start` in a column `width` wide, and the line's width.
+            (int End, bool Forced, double Available) BreakLine(double width)
+            {
+                var lineWidth = width - indent - format.RightIndent;
+                if (!paragraphComposer || lineStyles is not null || start >= glyphs.Count)
+                {
+                    var (fitEnd, fitForced) = FitLine(glyphs, start, lineWidth, format, indent);
+                    return (fitEnd, fitForced, lineWidth);
+                }
+                // The paragraph composer plans the rest of the paragraph at this column's width; a line that starts
+                // in a column of another width (or after a table) plans again from there.
+                if (plan is null || planned >= plan.Count || plannedStart != start || plannedWidth != width)
+                {
+                    plan = ComposeParagraph(glyphs, start, columns.Count, LineIndent, steadyLines, width, format, paragraph.MarkStyle.Size);
+                    planned = 0;
+                    plannedWidth = width;
+                }
+                var (planEnd, planForced) = plan[planned++];
+                plannedStart = planEnd;
+                return (planEnd, planForced, lineWidth);
+            }
         }
         flow.PendingSpace = format.SpaceAfter;
         return columns;
     }
 
     /// <summary>
-    /// Single-line composition: the end index (exclusive) of the line starting at <paramref name="start"/>, and
+    /// Single-line composition (the Single-line Composer, and paragraphs with nested line styles, whose lines change
+    /// width as they are styled): the end index (exclusive) of the line starting at <paramref name="start"/>, and
     /// whether a forced line break ends it. Every break the line reaches within its spacing limits is a candidate.
     /// Justified text takes the cheapest by <see cref="LineCost"/> (the later one on a tie), so it may compress word
     /// spaces down to the minimum to take one more word, or hyphenate, when that sets the line closer to its desired
@@ -853,20 +899,20 @@ internal sealed class TextComposer
         public readonly LineSpace WithHyphen(double width) => new(content + width, wordSpace, letterSpace + lastBand);
 
         /// <summary>The tightest width <paramref name="space"/> can be set at: compressed only in justified text.</summary>
-        public readonly double Tightest(LineSpace space, ParagraphFormatting format, bool justified) =>
+        public readonly double Tightest(LineSpace space, ParagraphFormatting format, bool justified, bool pastMinimum = false) =>
             HasTab ? space.Width
-            : justified ? Justifier.TightestWidth(space, format.Spacing)
+            : justified ? Justifier.TightestWidth(space, format.Spacing, pastMinimum)
             : space.Width * format.Spacing.DesiredGlyphScaling;
 
         /// <summary>Whether <paramref name="glyph"/> no longer fits on the line, however tightly it is set.</summary>
-        public readonly bool Overflows(Shaped glyph, double available, ParagraphFormatting format, bool justified)
+        public readonly bool Overflows(Shaped glyph, double available, ParagraphFormatting format, bool justified, bool pastMinimum = false)
         {
             if (glyph.Kind is GlyphKind.Space or GlyphKind.SoftHyphen or GlyphKind.Break)
             {
                 return false;
             }
             var space = new LineSpace(X + glyph.Advance, wordSpace + pendingWord, letterSpace + pendingLetter + lastBand);
-            return (HasTab || glyph.Kind == GlyphKind.Tab ? space.Width : Tightest(space, format, justified)) > available + Epsilon;
+            return (HasTab || glyph.Kind == GlyphKind.Tab ? space.Width : Tightest(space, format, justified, pastMinimum)) > available + Epsilon;
         }
 
         public void Add(Shaped glyph)

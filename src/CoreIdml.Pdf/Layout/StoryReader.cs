@@ -593,7 +593,9 @@ internal sealed class StoryReader
                 (int)Values.Number(Get("HyphenateBeforeLast"), 2),
                 (int)Values.Number(Get("HyphenateWordsLongerThan"), 5),
                 Get("HyphenateCapitalizedWords") != "false",
-                Values.Number(Get("HyphenationZone"), 36)),
+                Values.Number(Get("HyphenationZone"), 36),
+                (int)Values.Number(Get("HyphenateLadderLimit"), 3)),
+            ParagraphComposer = !(Get("Composer") ?? "HL Composer").Contains("Single", StringComparison.Ordinal),
             Spacing = JustificationSettings.FromPercentages(
                 Values.Number(Get("MinimumWordSpacing"), 80), Values.Number(Get("DesiredWordSpacing"), 100), Values.Number(Get("MaximumWordSpacing"), 133),
                 Values.Number(Get("MinimumLetterSpacing"), 0), Values.Number(Get("DesiredLetterSpacing"), 0), Values.Number(Get("MaximumLetterSpacing"), 0),

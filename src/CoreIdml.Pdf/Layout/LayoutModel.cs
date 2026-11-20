@@ -87,6 +87,12 @@ internal sealed record ParagraphFormatting
 
     public HyphenationSettings Hyphenation { get; init; } = new(false, 2, 2, 5, true);
 
+    /// <summary>
+    /// <c>Composer</c>: the Adobe Paragraph Composer (<c>HL Composer</c>, InDesign's default) chooses the breaks of the
+    /// whole paragraph; the Single-line Composer (<c>HL Single</c>) breaks one line at a time.
+    /// </summary>
+    public bool ParagraphComposer { get; init; } = true;
+
     /// <summary>Word spacing, letter spacing, glyph scaling and single-word justification.</summary>
     public JustificationSettings Spacing { get; init; } = JustificationSettings.Default;
 

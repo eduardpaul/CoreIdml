@@ -77,9 +77,14 @@ internal static class Justifier
 {
     private const double Epsilon = 1e-9;
 
-    /// <summary>The tightest width <paramref name="line"/> can take within its limits when compressed.</summary>
-    public static double TightestWidth(LineSpace line, JustificationSettings settings) =>
-        (line.Width - Shrinkable(line, settings)) * settings.MinimumGlyphScaling;
+    /// <summary>
+    /// The tightest width <paramref name="line"/> can take when compressed: within its limits, or, with
+    /// <paramref name="pastMinimum"/>, with its word spaces gone.
+    /// </summary>
+    public static double TightestWidth(LineSpace line, JustificationSettings settings, bool pastMinimum = false) =>
+        (line.Width - (pastMinimum ? line.WordSpace * settings.DesiredWordSpacing
+            + (line.LetterSpace * (settings.DesiredLetterSpacing - settings.MinimumLetterSpacing)) : Shrinkable(line, settings)))
+        * settings.MinimumGlyphScaling;
 
     /// <summary>
     /// The spacing that sets <paramref name="line"/> to <paramref name="available"/>: stretched only when
