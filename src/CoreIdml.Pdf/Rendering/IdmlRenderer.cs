@@ -435,16 +435,19 @@ internal sealed partial class IdmlRenderer : IDisposable
         drawingPage = page;
         var size = page.Size;
         var origin = page.SpreadBounds;
+        var bleed = options.IncludeBleed ? Bleed(page) : default;
+        // The PDF page: the trim size, or with the bleed the trim plus the bleed on each side (MediaBox and BleedBox),
+        // the trim (TrimBox) inside it.
+        var pageRect = Outset(origin, bleed);
         var content = new ContentBuilder();
         // PDF space has y up from the bottom; draw everything in IDML spread coordinates (y down).
-        content.Transform(new CoreIdml.Matrix(1, 0, 0, -1, 0, size.Height));
-        content.Transform(CoreIdml.Matrix.Translation(-origin.X, -origin.Y));
+        content.Transform(new CoreIdml.Matrix(1, 0, 0, -1, 0, pageRect.Height));
+        content.Transform(CoreIdml.Matrix.Translation(-pageRect.X, -pageRect.Y));
 
         if (options.IncludeMasterItems && page.AppliedMaster is { } master)
         {
-            DrawMaster(page, master, content, origin, depth: 0);
+            DrawMaster(page, master, content, bleed, depth: 0);
         }
-        var pageRect = origin;
         foreach (var item in page.Spread.PageItems)
         {
             if (Intersects(item.SpreadBounds, pageRect))
@@ -452,10 +455,24 @@ internal sealed partial class IdmlRenderer : IDisposable
                 DrawItem(item, content, page.Name, null);
             }
         }
-        Pdf.AddPage(size.Width, size.Height, content);
+        Pdf.AddPage(pageRect.Width, pageRect.Height, new Rect(bleed.Left, bleed.Bottom, size.Width, size.Height), content);
     }
 
-    private void DrawMaster(Page page, MasterSpread master, ContentBuilder content, Rect pageOrigin, int depth)
+    /// <summary>
+    /// The document's bleed on each side of <paramref name="page"/> (File &gt; Document Setup, <c>DocumentBleed*Offset</c>
+    /// in the document preferences). In a facing-pages document the inside of a left page is its right edge.
+    /// 01-doc-bleed-slug exports 9 pt on every side as a 630 × 810 pt page with the 612 × 792 pt TrimBox at (9, 9)
+    /// (<c>reference-bleed.pdf</c>, Use Document Bleed Settings).
+    /// </summary>
+    private Spacing Bleed(Page page)
+    {
+        var preference = document.DocumentPreference;
+        double Offset(string name) => Math.Max(0, Values.Number(preference?.Attribute(name)?.Value, 0));
+        var (inside, outside) = (Offset("DocumentBleedInsideOrLeftOffset"), Offset("DocumentBleedOutsideOrRightOffset"));
+        return new Spacing(Offset("DocumentBleedTopOffset"), page.IsLeftPage ? inside : outside, Offset("DocumentBleedBottomOffset"), page.IsLeftPage ? outside : inside);
+    }
+
+    private void DrawMaster(Page page, MasterSpread master, ContentBuilder content, Spacing bleed, int depth)
     {
         var masterPages = master.Pages;
         if (masterPages.Count == 0 || depth > 4)
@@ -471,16 +488,16 @@ internal sealed partial class IdmlRenderer : IDisposable
         // A master based on another master paints the parent's items first.
         if (masterPage.AppliedMaster is { } parent && parent.Id != master.Id)
         {
-            DrawMaster(page, parent, content, pageOrigin, depth + 1);
+            DrawMaster(page, parent, content, bleed, depth + 1);
         }
-        var masterOrigin = masterPage.SpreadBounds;
+        var masterArea = Outset(masterPage.SpreadBounds, bleed);
         var overridden = (page.GetAttribute("OverrideList") ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
         content.Save();
         // Master spread → master page space → MasterPageTransform (page space, i.e. GeometricBounds coordinates) → page → spread.
         content.Transform(Invert(masterPage.Transform).Then(page.MasterPageTransform).Then(page.Transform));
         foreach (var item in master.PageItems)
         {
-            if (!overridden.Contains(item.Id) && Intersects(item.SpreadBounds, masterOrigin))
+            if (!overridden.Contains(item.Id) && Intersects(item.SpreadBounds, masterArea))
             {
                 DrawItem(item, content, page.Name, master);
             }
@@ -490,6 +507,8 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     private static bool Intersects(Rect a, Rect b) =>
         a.Left <= b.Right && a.Right >= b.Left && a.Top <= b.Bottom && a.Bottom >= b.Top;
+
+    private static Rect Outset(Rect rect, Spacing by) => Rect.FromEdges(rect.Left - by.Left, rect.Top - by.Top, rect.Right + by.Right, rect.Bottom + by.Bottom);
 
     // ---- page items ----------------------------------------------------------------------------------
 

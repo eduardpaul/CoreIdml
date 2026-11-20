@@ -78,6 +78,13 @@ public sealed class PdfExportOptions
     /// <summary>Paint master page items.</summary>
     public bool IncludeMasterItems { get; set; } = true;
 
+    /// <summary>
+    /// Include the document's bleed (InDesign's Use Document Bleed Settings): each page is the trim size plus the bleed
+    /// on every side (MediaBox and BleedBox), the trim size is the TrimBox, and items running off the page are drawn
+    /// into the bleed. Off (the default), pages are the trim size and items are cut at the trim.
+    /// </summary>
+    public bool IncludeBleed { get; set; }
+
     /// <summary>Compress page content streams (turn off to inspect the PDF by hand).</summary>
     public bool CompressContent { get; set; } = true;
 

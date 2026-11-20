@@ -50,6 +50,7 @@ var options = new PdfExportOptions
 {
     Pages = [1, 2],                       // numbered from 1; all pages when not set
     MaxImageDpi = 150,                    // downsample photos above 150 dpi at their placed size (off by default)
+    IncludeBleed = true,                  // pages with the document's bleed around the trim (TrimBox); off: trim size
     Progress = (done, total) => true,     // after each page; return false to cancel
     CancellationToken = cancellationToken,
 };

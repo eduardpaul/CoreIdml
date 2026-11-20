@@ -416,6 +416,8 @@ export interface PdfExportOptions extends ProgressOptions {
   markMissingImages?: boolean;
   /** Draws the items of master spreads. Default true. */
   includeMasterItems?: boolean;
+  /** Pages with the document's bleed around the trim size (TrimBox inside MediaBox and BleedBox). Default false: trim-size pages. */
+  includeBleed?: boolean;
   /** Title in the PDF's metadata. */
   title?: string;
   [option: string]: unknown;

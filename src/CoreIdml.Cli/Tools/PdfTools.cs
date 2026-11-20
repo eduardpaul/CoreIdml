@@ -37,6 +37,7 @@ internal static partial class PdfTools
                 """ "markMissingImages":{"type":"boolean","description":"Crossed box where an image is missing"},""" +
                 """ "maxImageDpi":{"type":"number","exclusiveMinimum":0,"description":"Downsample images above this placed resolution; default off"},""" +
                 """ "jpegQuality":{"type":"integer","minimum":1,"maximum":100,"description":"For maxImageDpi; default 85"},""" +
+                """ "includeBleed":{"type":"boolean","description":"Pages with the document's bleed around the trim size (TrimBox, BleedBox); default false: trim size"},""" +
                 """ "options":{"type":"object","description":"More options as in the C API's idml_export_pdf (1-based pages)"}"""),
             OutputSchema = ReportSchema,
             Access = ToolAccess.Write,
@@ -330,6 +331,10 @@ internal static partial class PdfTools
         if (args.OptionalInt("jpegQuality") is { } quality)
         {
             options.JpegQuality = quality is >= 1 and <= 100 ? quality : throw ToolException.Invalid("jpegQuality must be 1 to 100.");
+        }
+        if (args.OptionalBool("includeBleed") is { } bleed)
+        {
+            options.IncludeBleed = bleed;
         }
         return options;
     }

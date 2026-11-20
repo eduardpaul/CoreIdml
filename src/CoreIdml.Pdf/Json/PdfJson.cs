@@ -29,6 +29,9 @@ public sealed class PdfExportOptionsSpec
 
     public bool? IncludeMasterItems { get; set; }
 
+    /// <summary>Pages with the document's bleed around the trim (TrimBox); default false, trim-size pages.</summary>
+    public bool? IncludeBleed { get; set; }
+
     public string? Title { get; set; }
 
     /// <summary>Downsample placed images above this resolution (pixels per inch at their placed size); null keeps them.</summary>
@@ -145,6 +148,7 @@ public static class PdfJson
             DocumentPath = spec.DocumentPath,
             MarkMissingImages = spec.MarkMissingImages ?? false,
             IncludeMasterItems = spec.IncludeMasterItems ?? true,
+            IncludeBleed = spec.IncludeBleed ?? false,
             Title = spec.Title,
             MaxImageDpi = spec.MaxImageDpi is > 0 ? spec.MaxImageDpi : null,
             JpegQuality = Math.Clamp(spec.JpegQuality ?? 85, 1, 100),

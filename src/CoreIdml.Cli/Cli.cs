@@ -93,7 +93,7 @@ internal static class Cli
         new("to-pdf", "idml_to_pdf", "render to PDF; reports missing fonts, links and overset text", [File],
             [new("-o", "outPath", CliType.Path), new("--fonts", "fonts", CliType.Path, Repeatable: true), new("--links", "linkDirectories", CliType.Path, Repeatable: true),
                 new("--pages", "pages", CliType.IntList), new("--max-dpi", "maxImageDpi", CliType.Double), new("--jpeg-quality", "jpegQuality", CliType.Int),
-                new("--options", "options", CliType.JsonFile)]),
+                new("--bleed", "includeBleed", CliType.Flag), new("--options", "options", CliType.JsonFile)]),
         new("from-pdf", "idml_from_pdf", "rebuild an IDML from a PDF (images to <out>-links/)", [new("path", "file.pdf", CliType.Path)],
             [new("-o", "outPath", CliType.Path), new("--images", "imageDirectory", CliType.Path), new("--pages", "pages", CliType.IntList),
                 new("--fonts", "fonts", CliType.Path, Repeatable: true), new("--preserve-line-breaks", "preserveLineBreaks", CliType.Flag), new("--options", "options", CliType.JsonFile)]),

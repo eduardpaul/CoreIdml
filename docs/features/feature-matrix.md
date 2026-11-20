@@ -32,7 +32,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Page size, orientation | `DocumentPreference@PageWidth/Height` | 🟡 | ✅ | Set when creating (`page.size`, `width`, `height`, `landscape`); no tool resizes an existing document. |
 | Margins, margin columns | `MarginPreference` | ✅ | — | Guides only; nothing to draw. Per-page margins in the spec. |
 | Facing pages, spreads | `DocumentPreference@FacingPages` | 🟡 | ✅ | `facingPages` at creation. Left/right pages pick the master's left/right page. |
-| Bleed and slug | `DocumentBleed*`, `Slug*` | 🟡 | ❌ **[new]** | `bleed` is written, but the PDF page is the trim size ([PdfDocumentBuilder.cs:65](../../src/CoreIdml.Pdf/Writing/PdfDocumentBuilder.cs#L65)): items crossing the edge are cut, no BleedBox/TrimBox, no printer's marks. |
+| Bleed and slug | `DocumentBleed*`, `Slug*` | 🟡 | 🟡 | `bleed` is written. The PDF page is the trim size by default (MediaBox, BleedBox and TrimBox equal, items cut at the trim, as InDesign's `reference.pdf`); with `includeBleed` (`PdfExportOptions.IncludeBleed`, `idml_to_pdf`, `to-pdf --bleed`) it is the trim plus the document's bleed on each side (MediaBox and BleedBox), the trim the TrimBox, and items are drawn into the bleed; on facing pages the inside bleed is at the binding. `01-doc-bleed-slug` against `reference-bleed.pdf`: every box equal (630 × 810, TrimBox [9 9 621 801]) and every page within 0.003% of its pixels. Not done: the slug, printer's marks. |
 | Add, delete, move pages | `Spread/Page` | ✅ | ✅ | `idml_add_page`, `idml_delete_page`, `idml_move_page`; threads, masters and sections follow. |
 | Merge documents | — | ✅ | ✅ | `idml_merge` (styles and swatches merged; masters not copied). |
 | Sections and page numbering | `Section` in designmap | 🟡 | 🟡 | Kept consistent when pages move; not authorable. Page-number markers print the page's `Name`, which already includes the section's style and prefix. |
@@ -229,7 +229,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Fonts embedded as subsets | — | ✅ | |
 | Image downsampling | ✅ | ✅ | `maxImageDpi`, `jpegQuality`. |
 | Page range | ✅ | ✅ | |
-| Bleed, trim and crop marks | ❌ | ❌ | See bleed above. |
+| Bleed, trim and crop marks | 🟡 | 🟡 | Bleed and TrimBox with `includeBleed` (see bleed above); no crop or other printer's marks. |
 | PDF/X, output intents, colour management | ❌ | ❌ | CMYK and RGB written as device colours; CMYK previews use a naive conversion. |
 | Spreads as one PDF page | ❌ | ❌ | One PDF page per document page. |
 | Tagged PDF, accessibility **[plan]** | ❌ | ❌ | Untagged: no structure tree, `/Lang`, alt text or artifacts. The IDML's accessibility settings (alt text, export tags, Articles) are kept but not authorable. See [accessibility-plan.md](accessibility-plan.md). |
@@ -254,7 +254,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 11 | **Auto-size frames, span columns, balance columns** | Overset or one column | M | All in frame-area construction. Auto-size is now in [responsive-layout-plan.md](responsive-layout-plan.md). |
 | 12 | ~~**Above-line and custom anchored objects**~~ | Drawn | M | See the row under page items; `02-item-anchored` matches InDesign except the text wrap of p4. |
 | 13 | **Cell border types, ~~footer row repeat~~, cell rotation, diagonal lines** | Simplified | S each | Footer rows now repeat at every break (see the table rows). |
-| 14 | **Bleed in the PDF** | Cut at trim | S | MediaBox = trim + bleed, TrimBox and BleedBox. |
+| 14 | ~~**Bleed in the PDF**~~ | With `includeBleed` | S | See bleed and slug; `01-doc-bleed-slug` matches `reference-bleed.pdf`. Printer's marks remain. |
 | 15 | **Mixed inks, OpenType features, optical kerning** | Approximated or missing | M each | Lower priority. |
 
 ### Pages the paragraph composer made worse

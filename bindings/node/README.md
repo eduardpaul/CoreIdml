@@ -159,7 +159,8 @@ document opened from bytes, give `documentPath`. Images not found are listed in 
 (`markMissingImages: true` draws a box where they belong). `maxImageDpi` downsamples large images (re-encoded at
 `jpegQuality`).
 
-The other options: `pages` (1-based), `includeMasterItems` (default `true`), `title`. `PdfExportOptions` in the type
+The other options: `pages` (1-based), `includeMasterItems` (default `true`), `includeBleed` (pages with the
+document's bleed around the trim size; default `false`), `title`. `PdfExportOptions` in the type
 declarations lists them all.
 
 ### Progress and cancellation

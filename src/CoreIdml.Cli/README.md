@@ -20,7 +20,7 @@ coreidml find brochure.idml --tag headline
 coreidml set-text brochure.idml u188 0 "New headline" -o edited.idml
 coreidml check-fit edited.idml --fonts ./fonts                  # exact overset: lines and points per story
 coreidml render edited.idml --page 0 --dpi 100 -o page1.png     # page preview
-coreidml to-pdf edited.idml -o edited.pdf --fonts ./fonts --max-dpi 150
+coreidml to-pdf edited.idml -o edited.pdf --fonts ./fonts --max-dpi 150 --bleed   # --bleed: pages with the bleed
 coreidml batch brochure.idml ops.json -o edited.idml --dry-run  # several edits, all or nothing
 coreidml merge cover.idml sheet.idml sheet-2.idml@0,2 -o book.idml
 cat brochure.idml | coreidml set-text - u188 0 "Hello" -o - > edited.idml   # '-' is stdin or stdout

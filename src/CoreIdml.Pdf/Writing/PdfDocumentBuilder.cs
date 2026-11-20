@@ -66,12 +66,19 @@ internal sealed class PdfDocumentBuilder : IDisposable
 
     public int PageCount => pageObjects.Count;
 
-    public void AddPage(double width, double height, ContentBuilder content)
+    /// <summary>
+    /// Adds a page <paramref name="width"/> by <paramref name="height"/> points (MediaBox and BleedBox) with the
+    /// finished page at <paramref name="trim"/> (TrimBox, in PDF space: x from the left, y from the bottom). InDesign
+    /// writes the boxes this way: all equal at the trim size, or the trim inside the bleed (01-doc-bleed-slug).
+    /// </summary>
+    public void AddPage(double width, double height, CoreIdml.Rect trim, ContentBuilder content)
     {
         var page = writer.Reserve();
         var contents = writer.Reserve();
         writer.WriteStream(contents, string.Empty, content.ToBytes(), compress);
-        writer.WriteObject(page, $"<</Type /Page /Parent {Ref(pagesObject)} /MediaBox [0 0 {Number(width)} {Number(height)}] /Resources {Ref(resourcesObject)} /Contents {Ref(contents)}>>");
+        var media = $"[0 0 {Number(width)} {Number(height)}]";
+        var trimBox = $"[{Number(trim.X)} {Number(trim.Y)} {Number(trim.X + trim.Width)} {Number(trim.Y + trim.Height)}]";
+        writer.WriteObject(page, $"<</Type /Page /Parent {Ref(pagesObject)} /MediaBox {media} /BleedBox {media} /TrimBox {trimBox} /Resources {Ref(resourcesObject)} /Contents {Ref(contents)}>>");
         pageObjects.Add(page);
     }
 

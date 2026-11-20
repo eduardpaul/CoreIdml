@@ -72,7 +72,8 @@ Common mistakes:
   alone; `"startParagraph": "nextPage"` starts chapters on a new page.
 
 For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds into it (`x: -3`, `y: -3` in mm, 6 mm
-wider and taller than the page); use `cmyk` colours; keep text inside the margins.
+wider and taller than the page); use `cmyk` colours; keep text inside the margins. `idml_to_pdf` with
+`includeBleed: true` exports pages with that bleed around the trim (TrimBox), as InDesign's Use Document Bleed Settings.
 
 The preview and PDF engine does not draw effects other than opacity or text wrap; the spec has no gradients, master
 pages, paragraph rules, drop caps or free paths. Design without them. When an existing document uses effects or text

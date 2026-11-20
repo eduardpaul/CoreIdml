@@ -179,6 +179,7 @@ report['missingFonts'];
 | `linkRemap` | Link URI or file name to local file, checked first. |
 | `documentPath` | Where the .idml is, so that relative links and its `Links` folder resolve. |
 | `maxImageDpi`, `jpegQuality` | Downsampling and compression of images. |
+| `includeBleed` | Pages with the document's bleed around the trim size (TrimBox inside the MediaBox); default false. |
 
 The report lists `pageCount`, `missingFonts` (each with the font that replaced it), `missingImages`,
 `oversetStories` and `warnings`. Without any font for a family, a standard PDF font is used and reported.
