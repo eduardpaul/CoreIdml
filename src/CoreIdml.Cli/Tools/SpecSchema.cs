@@ -44,7 +44,7 @@ internal static class SpecSchema
             "items":{"type":"array","items":{"$ref":"#/$defs/item"}}}}}}},
         "spacing":{"type":"object","description":"Sides fall back to all, then 0","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},
         "style":{"allOf":[{"$ref":"#/$defs/format"}],"type":"object","required":["name"],"properties":{"name":{"type":"string"},"basedOn":{"type":"string","description":"Declared before this one"}},"description":"Updated when the name exists"},
-        "format":{"type":"object","description":"Runs and character styles take only font, fontStyle, size, color, tint, underline, strikeThrough, tracking, caps, position. For lists, prefer a paragraph style with list set.","properties":{
+        "format":{"type":"object","description":"Runs and character styles take only the character fields: font, fontStyle, size, color, tint, underline, strikeThrough, tracking, caps, position, stroke, strokeWeight, strokeTint, skew and the underline and strikeThrough options. For lists, prefer a paragraph style with list set.","properties":{
           "font":{"type":"string","description":"Installed family (idml_list_fonts), e.g. Arial"},
           "fontStyle":{"type":"string","description":"e.g. Regular, Bold, Bold Italic"},
           "size":{"type":"number"},"leading":{"type":"number"},
@@ -56,6 +56,14 @@ internal static class SpecSchema
           "tracking":{"type":"number","description":"1/1000 em"},
           "caps":{"type":"string","enum":["normal","allCaps","smallCaps","capToSmallCap"]},
           "position":{"type":"string","enum":["normal","superscript","subscript"]},
+          "stroke":{"type":"string","description":"Text outline swatch; None removes"},"strokeWeight":{"type":"number","minimum":0,"description":"Text outline pt"},"strokeTint":{"type":"number","minimum":0,"maximum":100},
+          "skew":{"type":"number","minimum":-85,"maximum":85,"description":"False italic, degrees; positive leans right"},
+          "underlineWeight":{"type":"number","minimum":0,"description":"pt, with underline true"},"underlineOffset":{"type":"number","description":"pt below the baseline"},
+          "underlineColor":{"type":"string","description":"Swatch; default the text colour"},"underlineTint":{"type":"number","minimum":0,"maximum":100},
+          "underlineType":{"type":"string","enum":["solid","dashed","dotted","wavy","thickThin"]},
+          "strikeThroughWeight":{"type":"number","minimum":0,"description":"pt, with strikeThrough true"},"strikeThroughOffset":{"type":"number","description":"pt above the baseline"},
+          "strikeThroughColor":{"type":"string","description":"Swatch; default the text colour"},"strikeThroughTint":{"type":"number","minimum":0,"maximum":100},
+          "strikeThroughType":{"type":"string","enum":["solid","dashed","dotted","wavy","thickThin"]},
           "list":{"type":"string","enum":["bullet","numbered","none"],"description":"Paragraphs and paragraph styles. InDesign draws the bullet or number: do not type it in the text. Hanging list: leftIndent 18, firstLineIndent -18 (the tab after the marker stops at the left indent)."},
           "bullet":{"type":"string","description":"One character; default •"},
           "bulletAfter":{"type":"string","description":"After the bullet; default a tab. ^m em space, ^> en space"},

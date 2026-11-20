@@ -481,6 +481,49 @@ public class DocumentSpecTests
             Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument("""{ "page": { "baselineGrid": { "start": 10 } } }""")).Message);
     }
 
+    [Fact]
+    public void Text_stroke_skew_and_line_options_are_written_as_InDesign_stores_them()
+    {
+        var spec = """
+        {
+          "colors": [ { "name": "Red", "cmyk": [0, 100, 100, 0] } ],
+          "characterStyles": [ { "name": "Outline", "stroke": "Black", "strokeWeight": 2, "strokeTint": 80, "skew": -15 } ],
+          "pages": [ { "items": [ { "type": "text", "name": "t", "paragraphs": [ { "runs": [ { "text": "x", "underline": true,
+            "underlineWeight": 3, "underlineOffset": 6, "underlineColor": "Red", "underlineTint": 50, "underlineType": "dashed",
+            "strikeThrough": true, "strikeThroughWeight": 1, "strikeThroughOffset": -4, "strikeThroughColor": "Black", "strikeThroughType": "thickThin" } ] } ] } ] } ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        // 07-char-outlined-text and 07-char-basics: stroke and skew are attributes of the text.
+        var outline = document.Styles.FindCharacterStyle("Outline")!.Element;
+        Assert.Equal(["Color/Black", "2", "80", "-15"], ((string[])["StrokeColor", "StrokeWeight", "StrokeTint", "Skew"]).Select(name => outline.Attribute(name)!.Value));
+        // 07-char-underline-strike: weights, offsets and tints are attributes; colours and types object properties.
+        var run = ((TextFrame)document.AllPageItems.Single(item => item.Name == "t")).Story.Element.Descendants("CharacterStyleRange").Single();
+        Assert.Equal(["3", "6", "50", "1", "-4"], ((string[])["UnderlineWeight", "UnderlineOffset", "UnderlineTint", "StrikeThroughWeight", "StrikeThroughOffset"]).Select(name => run.Attribute(name)!.Value));
+        string Property(string name) => $"{run.Element("Properties")!.Element(name)!.Attribute("type")!.Value}:{run.Element("Properties")!.Element(name)!.Value}";
+        Assert.Equal("object:Color/Red", Property("UnderlineColor"));
+        Assert.Equal("object:StrokeStyle/$ID/Dashed", Property("UnderlineType"));
+        Assert.Equal("object:Color/Black", Property("StrikeThroughColor"));
+        Assert.Equal("object:StrokeStyle/$ID/ThickThin", Property("StrikeThroughType"));
+    }
+
+    [Theory]
+    [InlineData("""{ "skew": 90 }""", "skew 90 is out of range. Use -85 to 85 degrees.")]
+    [InlineData("""{ "underlineType": "double" }""", "Unknown underlineType 'double'. Use solid, dashed, dotted, wavy, thickThin.")]
+    [InlineData("""{ "strokeWeight": -1 }""", "strokeWeight -1 is out of range. Use 0 to 800 pt.")]
+    [InlineData("""{ "strikeThroughTint": 120 }""", "strikeThroughTint 120 is out of range. Use 0 to 100.")]
+    [InlineData("""{ "stroke": "Teal" }""", "Unknown swatch 'Teal'. Declare it in colors first.")]
+    public void Character_values_name_the_ones_allowed(string fields, string message)
+    {
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument($$"""{ "characterStyles": [ { "name": "C", {{fields[1..^1]}} } ] }"""));
+
+        Assert.Equal(message, exception.Message);
+        Assert.Contains("characterStyles[0]: unknown field 'slant', ignored (did you mean 'skew'?).",
+            IdmlJson.CheckSpec("""{ "characterStyles": [ { "name": "C", "slant": 10 } ] }"""));
+    }
+
     private static XElement Item(IdmlDocument document, string name) =>
         document.AllPageItems.Single(item => item.Name == name).Element;
 }

@@ -52,6 +52,18 @@ public enum StartParagraph
     NextEvenPage,
 }
 
+/// <summary>The line of an underline or strikethrough (Underline Options &gt; Type).</summary>
+public enum TextLineType
+{
+    Solid,
+    Dashed,
+    Dotted,
+    Wavy,
+
+    /// <summary>A thick line over a thin one.</summary>
+    ThickThin,
+}
+
 /// <summary>Where a paragraph sits across its frame's columns (Paragraph &gt; Span Columns, <c>SpanColumnType</c>).</summary>
 public enum ColumnSpan
 {
@@ -205,6 +217,44 @@ public class CharacterFormat
     /// <summary>Language for hyphenation and spelling, as InDesign names it, e.g. <see cref="Languages.Spanish"/>.</summary>
     public string? Language { get; init; }
 
+    /// <summary>Text stroke (outlined text) colour; <see cref="Swatch.None"/> removes it.</summary>
+    public Swatch? StrokeColor { get; init; }
+
+    /// <summary>Text stroke weight in points.</summary>
+    public double? StrokeWeight { get; init; }
+
+    /// <summary>Text stroke tint in percent.</summary>
+    public double? StrokeTint { get; init; }
+
+    /// <summary>Skew (false italic) in degrees, positive leaning right.</summary>
+    public double? Skew { get; init; }
+
+    /// <summary>Underline weight in points (InDesign's automatic weight when unset).</summary>
+    public double? UnderlineWeight { get; init; }
+
+    /// <summary>Underline offset in points below the baseline (automatic when unset).</summary>
+    public double? UnderlineOffset { get; init; }
+
+    /// <summary>Underline colour (the text colour when unset).</summary>
+    public Swatch? UnderlineColor { get; init; }
+
+    public double? UnderlineTint { get; init; }
+
+    public TextLineType? UnderlineType { get; init; }
+
+    /// <summary>Strikethrough weight in points (automatic when unset).</summary>
+    public double? StrikeThroughWeight { get; init; }
+
+    /// <summary>Strikethrough offset in points above the baseline (automatic when unset).</summary>
+    public double? StrikeThroughOffset { get; init; }
+
+    /// <summary>Strikethrough colour (the text colour when unset).</summary>
+    public Swatch? StrikeThroughColor { get; init; }
+
+    public double? StrikeThroughTint { get; init; }
+
+    public TextLineType? StrikeThroughType { get; init; }
+
     internal virtual void ApplyTo(XElement element)
     {
         if (Language is not null)
@@ -226,7 +276,45 @@ public class CharacterFormat
         Set(element, "Position", Position?.ToString());
         Set(element, "BaselineShift", BaselineShift);
         Set(element, "HorizontalScale", HorizontalScale);
+        // As 07-char-outlined-text, 07-char-basics and 07-char-underline-strike: the stroke, skew, weights, offsets and
+        // tints are attributes; the underline and strikethrough colours and types object references in Properties.
+        Set(element, "StrokeColor", StrokeColor?.Reference);
+        Set(element, "StrokeWeight", StrokeWeight);
+        Set(element, "StrokeTint", StrokeTint);
+        Set(element, "Skew", Skew);
+        Set(element, "UnderlineWeight", UnderlineWeight);
+        Set(element, "UnderlineOffset", UnderlineOffset);
+        Set(element, "UnderlineTint", UnderlineTint);
+        Set(element, "StrikeThroughWeight", StrikeThroughWeight);
+        Set(element, "StrikeThroughOffset", StrikeThroughOffset);
+        Set(element, "StrikeThroughTint", StrikeThroughTint);
+        if (UnderlineColor is { } underlineColor)
+        {
+            IdmlXml.SetProperty(element, "UnderlineColor", "object", underlineColor.Reference);
+        }
+        if (UnderlineType is { } underlineType)
+        {
+            IdmlXml.SetProperty(element, "UnderlineType", "object", StrokeStyleReference(underlineType));
+        }
+        if (StrikeThroughColor is { } strikeThroughColor)
+        {
+            IdmlXml.SetProperty(element, "StrikeThroughColor", "object", strikeThroughColor.Reference);
+        }
+        if (StrikeThroughType is { } strikeThroughType)
+        {
+            IdmlXml.SetProperty(element, "StrikeThroughType", "object", StrokeStyleReference(strikeThroughType));
+        }
     }
+
+    /// <summary>The stroke style InDesign's Underline and Strikethrough Options pick for a line type.</summary>
+    private static string StrokeStyleReference(TextLineType type) => type switch
+    {
+        TextLineType.Dashed => "StrokeStyle/$ID/Dashed",
+        TextLineType.Dotted => "StrokeStyle/$ID/Canned Dotted",
+        TextLineType.Wavy => "StrokeStyle/$ID/Wavy",
+        TextLineType.ThickThin => "StrokeStyle/$ID/ThickThin",
+        _ => "StrokeStyle/$ID/Solid",
+    };
 
     private protected static void Set(XElement element, string name, string? value)
     {

@@ -125,6 +125,45 @@ public class TextFormatSpec
     /// <summary>normal, superscript, subscript.</summary>
     public string? Position { get; set; }
 
+    /// <summary>Text stroke (outlined text): a swatch; "None" removes it.</summary>
+    public string? Stroke { get; set; }
+
+    /// <summary>Text stroke weight in points.</summary>
+    public double? StrokeWeight { get; set; }
+
+    public double? StrokeTint { get; set; }
+
+    /// <summary>Skew (false italic) in degrees, -85 to 85; positive leans right.</summary>
+    public double? Skew { get; set; }
+
+    /// <summary>Underline weight in points (with underline: true).</summary>
+    public double? UnderlineWeight { get; set; }
+
+    /// <summary>Underline offset in points below the baseline.</summary>
+    public double? UnderlineOffset { get; set; }
+
+    /// <summary>Underline swatch (default the text colour).</summary>
+    public string? UnderlineColor { get; set; }
+
+    public double? UnderlineTint { get; set; }
+
+    /// <summary>solid, dashed, dotted, wavy or thickThin.</summary>
+    public string? UnderlineType { get; set; }
+
+    /// <summary>Strikethrough weight in points (with strikeThrough: true).</summary>
+    public double? StrikeThroughWeight { get; set; }
+
+    /// <summary>Strikethrough offset in points above the baseline.</summary>
+    public double? StrikeThroughOffset { get; set; }
+
+    /// <summary>Strikethrough swatch (default the text colour).</summary>
+    public string? StrikeThroughColor { get; set; }
+
+    public double? StrikeThroughTint { get; set; }
+
+    /// <summary>solid, dashed, dotted, wavy or thickThin.</summary>
+    public string? StrikeThroughType { get; set; }
+
     // ---- bullets and numbering (paragraphs and paragraph styles) ----
 
     /// <summary>bullet, numbered or none. InDesign draws the bullet or number; it is not part of the text.</summary>

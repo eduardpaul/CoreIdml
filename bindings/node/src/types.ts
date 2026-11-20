@@ -37,6 +37,31 @@ export interface TextFormat {
   tracking?: number;
   caps?: string;
   position?: string;
+  /** Text outline: a swatch (`None` removes it). With `color: "None"` the letters are hollow. */
+  stroke?: string;
+  /** Text outline weight in points. */
+  strokeWeight?: number;
+  strokeTint?: number;
+  /** False italic in degrees, -85 to 85; positive leans right. */
+  skew?: number;
+  /** With `underline`: weight in points. */
+  underlineWeight?: number;
+  /** Points below the baseline. */
+  underlineOffset?: number;
+  /** Swatch; default the text colour. */
+  underlineColor?: string;
+  underlineTint?: number;
+  /** `solid`, `dashed`, `dotted`, `wavy` or `thickThin`. */
+  underlineType?: string;
+  /** With `strikeThrough`: weight in points. */
+  strikeThroughWeight?: number;
+  /** Points above the baseline. */
+  strikeThroughOffset?: number;
+  /** Swatch; default the text colour. */
+  strikeThroughColor?: string;
+  strikeThroughTint?: number;
+  /** `solid`, `dashed`, `dotted`, `wavy` or `thickThin`. */
+  strikeThroughType?: string;
   /** Paragraphs and paragraph styles: `bullet`, `numbered` or `none`. InDesign draws the bullet or number; leave it out of the text. */
   list?: string;
   /** The bullet character; default `•`. */

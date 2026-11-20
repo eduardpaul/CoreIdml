@@ -56,8 +56,9 @@ exactly one. `Black`, `Paper`, `Registration` and `None` always exist.
 ## `paragraphStyles` and `characterStyles`
 
 `{ "name": "Body", "basedOn": "Base", ...format }`. Paragraph styles take every format field below; character
-styles (and runs) only `font`, `fontStyle`, `size`, `color`, `tint`, `underline`, `strikeThrough`, `tracking`,
-`caps`, `position`. An existing style name is updated.
+styles (and runs) only the character fields: `font`, `fontStyle`, `size`, `color`, `tint`, `underline`,
+`strikeThrough`, `tracking`, `caps`, `position`, `stroke`, `strokeWeight`, `strokeTint`, `skew` and the underline
+and strikethrough options. An existing style name is updated.
 
 Format fields:
 
@@ -73,6 +74,10 @@ Format fields:
 | `tracking` | Thousandths of an em. |
 | `caps` | `normal`, `allCaps`, `smallCaps` or `capToSmallCap`. |
 | `position` | `normal`, `superscript` or `subscript`. |
+| `stroke`, `strokeWeight`, `strokeTint` | An outline around the letters (swatch, points, percent). With `"color": "None"` the letters are hollow; under a fill the outline sits outside the letters. `"stroke": "None"` removes it. |
+| `skew` | False italic in degrees (-85 to 85), positive leaning right. Prefer a real italic `fontStyle`. |
+| `underlineWeight`, `underlineOffset`, `underlineColor`, `underlineTint`, `underlineType` | With `underline: true`: the line's weight (points), its distance below the baseline (points), swatch, tint, and `solid`, `dashed`, `dotted`, `wavy` or `thickThin`. Unset: InDesign's automatic weight and offset in the text colour. A thick, tinted underline raised behind the letters (a negative offset) works as a highlighter: underlines are painted under the text. |
+| `strikeThroughWeight`, `strikeThroughOffset`, `strikeThroughColor`, `strikeThroughTint`, `strikeThroughType` | The same for `strikeThrough: true`; the offset is above the baseline. |
 | `list` | `bullet`, `numbered` or `none`. Paragraphs and paragraph styles only; see [Lists](#lists). |
 | `bullet`, `bulletAfter` | The bullet (one character, default `•`) and the text after it (default a tab; `^m` em space, `^>` en space). |
 | `numberFormat` | `1` (default), `01`, `001`, `0001`, `a`, `A`, `i` or `I`. |

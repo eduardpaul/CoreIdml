@@ -445,6 +445,20 @@ public static partial class IdmlJson
         Tracking = spec.Tracking,
         Capitalization = ParseCaps(spec.Caps),
         Position = ParsePosition(spec.Position),
+        StrokeColor = spec.Stroke is { } textStroke ? RequireSwatch(document, textStroke) : null,
+        StrokeWeight = spec.StrokeWeight,
+        StrokeTint = spec.StrokeTint,
+        Skew = spec.Skew,
+        UnderlineWeight = spec.UnderlineWeight,
+        UnderlineOffset = spec.UnderlineOffset,
+        UnderlineColor = spec.UnderlineColor is { } underlineColor ? RequireSwatch(document, underlineColor) : null,
+        UnderlineTint = spec.UnderlineTint,
+        UnderlineType = spec.UnderlineType is { } underlineType ? ParseChoice<TextLineType>(underlineType, "underlineType") : null,
+        StrikeThroughWeight = spec.StrikeThroughWeight,
+        StrikeThroughOffset = spec.StrikeThroughOffset,
+        StrikeThroughColor = spec.StrikeThroughColor is { } strikeThroughColor ? RequireSwatch(document, strikeThroughColor) : null,
+        StrikeThroughTint = spec.StrikeThroughTint,
+        StrikeThroughType = spec.StrikeThroughType is { } strikeThroughType ? ParseChoice<TextLineType>(strikeThroughType, "strikeThroughType") : null,
         ListType = spec.List is { } list ? TryListType(list) ?? throw new IdmlException(ParagraphValueError(spec)!) : null,
         BulletCharacter = spec.Bullet is { } bullet ? IsOneCharacter(bullet) ? bullet : throw new IdmlException(ParagraphValueError(spec)!) : null,
         BulletTextAfter = spec.BulletAfter,
@@ -577,6 +591,20 @@ public static partial class IdmlJson
         Tracking = spec.Tracking,
         Capitalization = ParseCaps(spec.Caps),
         Position = ParsePosition(spec.Position),
+        StrokeColor = spec.Stroke is { } textStroke ? RequireSwatch(document, textStroke) : null,
+        StrokeWeight = spec.StrokeWeight,
+        StrokeTint = spec.StrokeTint,
+        Skew = spec.Skew,
+        UnderlineWeight = spec.UnderlineWeight,
+        UnderlineOffset = spec.UnderlineOffset,
+        UnderlineColor = spec.UnderlineColor is { } underlineColor ? RequireSwatch(document, underlineColor) : null,
+        UnderlineTint = spec.UnderlineTint,
+        UnderlineType = spec.UnderlineType is { } underlineType ? ParseChoice<TextLineType>(underlineType, "underlineType") : null,
+        StrikeThroughWeight = spec.StrikeThroughWeight,
+        StrikeThroughOffset = spec.StrikeThroughOffset,
+        StrikeThroughColor = spec.StrikeThroughColor is { } strikeThroughColor ? RequireSwatch(document, strikeThroughColor) : null,
+        StrikeThroughTint = spec.StrikeThroughTint,
+        StrikeThroughType = spec.StrikeThroughType is { } strikeThroughType ? ParseChoice<TextLineType>(strikeThroughType, "strikeThroughType") : null,
     };
 
     private static ParagraphFormat? ToParagraphFormatOrNull(IdmlDocument document, TextFormatSpec spec) =>
@@ -595,7 +623,11 @@ public static partial class IdmlJson
         || spec.KeepWithNext is not null || spec.KeepTogether is not null || spec.KeepFirstLines is not null || spec.KeepLastLines is not null
         || spec.StartParagraph is not null || spec.DropCapLines is not null || spec.DropCapCharacters is not null || spec.DropCapStyle is not null
         || spec.NestedStyles is not null || spec.GrepStyles is not null || spec.AlignToBaselineGrid is not null || spec.GridFirstLineOnly is not null
-        || spec.SpanColumns is not null || spec.SplitColumns is not null || spec.SplitGutter is not null;
+        || spec.SpanColumns is not null || spec.SplitColumns is not null || spec.SplitGutter is not null || spec.Stroke is not null
+        || spec.StrokeWeight is not null || spec.StrokeTint is not null || spec.Skew is not null || spec.UnderlineWeight is not null
+        || spec.UnderlineOffset is not null || spec.UnderlineColor is not null || spec.UnderlineTint is not null || spec.UnderlineType is not null
+        || spec.StrikeThroughWeight is not null || spec.StrikeThroughOffset is not null || spec.StrikeThroughColor is not null
+        || spec.StrikeThroughTint is not null || spec.StrikeThroughType is not null;
 
     private static Justification? ParseJustification(string? align) =>
         align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));

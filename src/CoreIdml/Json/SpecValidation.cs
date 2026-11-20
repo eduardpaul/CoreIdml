@@ -70,6 +70,15 @@ public static partial class IdmlJson
             }
             Choice<Capitalization>(format.Caps, "caps", path);
             Choice<TextPosition>(format.Position, "position", path);
+            Swatch(format.Stroke, path);
+            Swatch(format.UnderlineColor, path);
+            Swatch(format.StrikeThroughColor, path);
+            Choice<TextLineType>(format.UnderlineType, "underlineType", path);
+            Choice<TextLineType>(format.StrikeThroughType, "strikeThroughType", path);
+            if (CharacterValueError(format) is { } characterError)
+            {
+                Add(path, characterError);
+            }
             if (paragraph && ParagraphValueError(format) is { } valueError)
             {
                 Add(path, valueError);
@@ -228,6 +237,30 @@ public static partial class IdmlJson
     {
         var value = hex.TrimStart('#');
         return value.Length == 6 && value.All(Uri.IsHexDigit);
+    }
+
+    /// <summary>What is wrong with a format's text stroke, skew, underline or strikethrough values, or null.</summary>
+    private static string? CharacterValueError(TextFormatSpec format)
+    {
+        if (format.Skew is { } skew && skew is < -85 or > 85)
+        {
+            return $"skew {skew} is out of range. Use -85 to 85 degrees.";
+        }
+        foreach (var (name, weight) in (ReadOnlySpan<(string, double?)>)[("strokeWeight", format.StrokeWeight), ("underlineWeight", format.UnderlineWeight), ("strikeThroughWeight", format.StrikeThroughWeight)])
+        {
+            if (weight is < 0 or > 800)
+            {
+                return $"{name} {weight} is out of range. Use 0 to 800 pt.";
+            }
+        }
+        foreach (var (name, tint) in (ReadOnlySpan<(string, double?)>)[("strokeTint", format.StrokeTint), ("underlineTint", format.UnderlineTint), ("strikeThroughTint", format.StrikeThroughTint)])
+        {
+            if (tint is < 0 or > 100)
+            {
+                return $"{name} {tint} is out of range. Use 0 to 100.";
+            }
+        }
+        return null;
     }
 
     /// <summary>What is wrong with a format's bullets and numbering, tab stop or keep option values, or null.</summary>

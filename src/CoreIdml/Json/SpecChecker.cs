@@ -9,7 +9,12 @@ public static partial class IdmlJson
     private static readonly string[] BaselineGridFields = ["start", "increment", "relativeTo"];
     private static readonly string[] SpacingFields = ["all", "top", "right", "bottom", "left"];
     private static readonly string[] ColorFields = ["name", "cmyk", "rgb", "hex"];
-    private static readonly string[] CharacterFormatFields = ["font", "fontStyle", "size", "color", "tint", "underline", "strikeThrough", "tracking", "caps", "position"];
+    private static readonly string[] CharacterFormatFields =
+    [
+        "font", "fontStyle", "size", "color", "tint", "underline", "strikeThrough", "tracking", "caps", "position", "stroke", "strokeWeight",
+        "strokeTint", "skew", "underlineWeight", "underlineOffset", "underlineColor", "underlineTint", "underlineType", "strikeThroughWeight",
+        "strikeThroughOffset", "strikeThroughColor", "strikeThroughTint", "strikeThroughType",
+    ];
     private static readonly string[] ParagraphOnlyFields =
     [
         "leading", "align", "spaceBefore", "spaceAfter", "firstLineIndent", "leftIndent", "rightIndent",
@@ -62,6 +67,9 @@ public static partial class IdmlJson
         ["splitColumnGutter"] = "splitGutter", ["delimiter"] = "through", ["until"] = "upTo", ["repetition"] = "count",
         ["times"] = "count", ["baselineStart"] = "start", ["offset"] = "start", ["baselineDivision"] = "increment", ["division"] = "increment",
         ["gridIncrement"] = "increment", ["relativeOption"] = "relativeTo", ["baseline"] = "baselineGrid",
+        ["textStroke"] = "stroke", ["slant"] = "skew", ["oblique"] = "skew", ["italicAngle"] = "skew", ["underlineThickness"] = "underlineWeight",
+        ["underlinePosition"] = "underlineOffset", ["underlineStyle"] = "underlineType", ["strikeWeight"] = "strikeThroughWeight",
+        ["strikeColor"] = "strikeThroughColor", ["strikeThroughStyle"] = "strikeThroughType", ["strikeThruWeight"] = "strikeThroughWeight",
     };
 
     /// <summary>

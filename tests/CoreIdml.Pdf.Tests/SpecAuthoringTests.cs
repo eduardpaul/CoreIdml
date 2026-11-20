@@ -51,6 +51,39 @@ public sealed class SpecAuthoringTests
     }
 
     [Fact]
+    public void Text_stroke_skew_and_underline_options_from_the_spec_are_drawn()
+    {
+        using var document = IdmlJson.CreateDocument("""
+        {
+          "colors": [ { "name": "Red", "cmyk": [0, 100, 100, 0] } ],
+          "characterStyles": [ { "name": "Outline", "color": "None", "stroke": "Black", "strokeWeight": 1.5 } ],
+          "pages": [ { "items": [ { "type": "text", "name": "story", "x": 36, "y": 36, "width": 400, "height": 200, "paragraphs": [ { "runs": [
+            { "text": "Hollow ", "style": "Outline", "size": 30 },
+            { "text": "leaning ", "skew": 15 },
+            { "text": "marked", "underline": true, "underlineWeight": 3, "underlineOffset": 4, "underlineColor": "Red", "underlineType": "wavy" },
+            { "text": " gone", "strikeThrough": true, "strikeThroughWeight": 2, "strikeThroughColor": "Red" }
+          ] } ] } ] } ]
+        }
+        """);
+
+        var ops = Layout(document, "story").OpsByFrame.Values.Single();
+        var runs = ops.OfType<GlyphRunOp>().ToList();
+
+        var hollow = runs.Single(run => run.Text.StartsWith("Hollow", StringComparison.Ordinal));
+        Assert.Null(hollow.Color);
+        Assert.Equal(1.5, hollow.Stroke!.Weight);
+        Assert.Equal(15, runs.Single(run => run.Text.StartsWith("leaning", StringComparison.Ordinal)).Skew);
+        var rules = ops.OfType<TextRuleOp>().ToList();
+        var underline = rules.Single(rule => rule.Type == "StrokeStyle/$ID/Wavy");
+        Assert.Equal(3, underline.Weight);
+        Assert.Equal(4, underline.From.Y - runs.Single(run => run.Text.StartsWith("marked", StringComparison.Ordinal)).Y, 6);
+        Assert.Equal([0, 1, 1, 0], underline.Color.Components);
+        var strike = rules.Single(rule => rule != underline);
+        Assert.Equal(2, strike.Weight);
+        Assert.Equal([0, 1, 1, 0], strike.Color.Components);
+    }
+
+    [Fact]
     public void Paragraphs_aligned_to_the_spec_baseline_grid_sit_on_its_lines()
     {
         using var document = IdmlJson.CreateDocument($$"""
