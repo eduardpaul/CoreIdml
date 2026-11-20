@@ -202,8 +202,8 @@ the outline (bookmarks), fonts embedded, `/Separation` and `/DeviceN` colour spa
 InDesign's Preflight found **no overset text in any sample except `10-table-cells`**, where an overset cell is the
 case (Preflight: 1 cell, 2 text frames). So `TextFit` / `idml_check_fit` must report exactly that and nothing else.
 Any other overset we report is composer drift (font metrics, leading, keeps, composer), and a cheap, strong
-regression test that needs no rasterizing. Today it fails both ways: the export reports 2 overset stories InDesign
-does not have (one each in `06-frame-autosize` and `06-frame-basics`; with the paragraph composer the others fit), and does **not** report the overset cell of
+regression test that needs no rasterizing. Today it fails both ways: the export reports 1 overset story InDesign
+does not have (in `06-frame-basics`; with the paragraph composer the others fit, and auto-sizing frames grow to their text), and does **not** report the overset cell of
 `10-table-cells`.
 
 ### G. Round trip
@@ -361,8 +361,8 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | Sample | Checks | Pass when | Watch out |
 | --- | --- | --- | --- |
 | `06-frame-basics` | D | Columns, insets, vertical justification, every first-baseline option, fixed column width, ignore text wrap, rotated and sheared frames. | Fixed column width changes the frame width. |
-| `06-frame-autosize` | D, C | Frame edges (fill or stroke) and line positions match for every auto-size type and reference point. | InDesign stored the grown size, so the stored bounds already match: the test is that we do not overset or re-grow them wrongly, and the resize logic matches on a text edit. |
-| `06-frame-span-balance` | D | Headlines span all or 2 columns; split columns; balanced columns end at the same height. | |
+| `06-frame-autosize` | D, C | Frame edges (fill or stroke) and line positions match for every auto-size type and reference point. | InDesign stored the grown size, so the stored bounds already match: the test is that we do not overset or re-grow them wrongly, and the resize logic matches on a text edit. Every auto-size frame of the 74 samples gets InDesign's stored size back from our composer within 0.05 pt (proportional within 0.3 pt, kept), except p6's 2-column frame, which grows a line because "Neth-erfield" breaks differently (`FrameColumnTests` for edits). |
+| `06-frame-span-balance` | D | Headlines span all or 2 columns; split columns; balanced columns end at the same height. | p1 to p4: every line where InDesign puts it but for a paragraph that the paragraph composer breaks differently ("lady to / him … Neth-"; p4's second sub-column); p5, p6 match. |
 | `06-frame-shapes` | D | Lines stay inside ovals, hexagons, stars, triangles and curved frames, with insets. | Today lines are composed in the bounding box. |
 | `06-frame-text-on-path` | D, C | Glyph positions along the path for each effect, alignment, flip. | PdfPig words on curved text may split; match by glyph. |
 | `06-frame-baseline-grid` | D | Baselines on the grid (14 pt) where aligned; first-line-only; custom frame grid. | The cyan hairlines are drawn items. InDesign starts text in a stroked frame half the stroke weight in (0.125 pt here), frame grids too, so our baselines read 0.12 pt high outside the document grid. |

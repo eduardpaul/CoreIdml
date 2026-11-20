@@ -63,7 +63,7 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     /// <summary>Lays out one story into its frames (for tests and diagnostics).</summary>
     internal StoryLayout LayoutStory(Story story) =>
-        composer.Compose(story.Element, story.Frames.Select(frame => FrameArea(frame, frame.Page?.Name ?? "1")).ToList());
+        ComposeFitted(story, story.Frames, story.Frames.Select(frame => FrameArea(frame, frame.Page?.Name ?? "1")).ToList()).Layout;
 
     /// <summary>Lays out a story into the given frame areas (see <see cref="TextMeasurer.CheckFit(Story)"/>).</summary>
     internal StoryLayout Compose(Story story, IReadOnlyList<FrameArea> areas) => composer.Compose(story.Element, areas);
@@ -78,7 +78,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             return default;
         }
-        var layout = composer.Compose(frame.Story.Element, [area with { Columns = columns, VerticalJustification = "TopAlign" }]);
+        var layout = composer.Compose(frame.Story.Element, [area with { Columns = columns, VerticalJustification = "TopAlign", BalanceColumns = false }]);
         if (layout.Lines.Count == 0)
         {
             return default;
@@ -209,7 +209,7 @@ internal sealed partial class IdmlRenderer : IDisposable
             frameOps.Remove(frame.Id);
         }
         var areas = ordered.Select(frame => FrameArea(frame, frame.Page?.Name ?? "1") with { Markers = Markers(frame, frame.Page) }).ToList();
-        var layout = composer.Compose(story.Element, areas);
+        var layout = ComposeFitted(story, ordered, areas).Layout;
         storyLayouts[story.Id] = layout;
         foreach (var (frameId, ops) in layout.OpsByFrame)
         {
@@ -238,7 +238,8 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         var chain = master.AllPageItems.OfType<TextFrame>().Where(f => f.StoryId == frame.StoryId).ToList();
         var ordered = Story.ThreadOrder(chain);
-        var layout = composer.Compose(story.Element, ordered.Select(f => FrameArea(f, pageName) with { Markers = Markers(f, drawingPage) }).ToList());
+        var areas = ordered.Select(f => FrameArea(f, pageName) with { Markers = Markers(f, drawingPage) }).ToList();
+        var layout = ComposeFitted(story, ordered, areas, ordered.Count > 0 ? ordered[^1].Id + pageKey : null).Layout;
         // Reported like a page story; overset on any page it is drawn on counts.
         if (layout.Overset || !storyLayouts.ContainsKey(story.Id))
         {
@@ -251,10 +252,10 @@ internal sealed partial class IdmlRenderer : IDisposable
         return frameOps.TryGetValue(key, out var result) ? result : [];
     }
 
-    internal FrameArea FrameArea(TextFrame frame, string pageName)
+    internal FrameArea FrameArea(TextFrame frame, string pageName, Rect? bounds = null)
     {
         var element = frame.Element;
-        var inner = frame.InnerBounds;
+        var inner = bounds ?? frame.InnerBounds;
         var chain = resolver.ObjectChain(element);
         string? Preference(string name) => AttributeResolver.FramePreference(chain, name);
         var inset = TextInset(chain);
@@ -289,6 +290,7 @@ internal sealed partial class IdmlRenderer : IDisposable
             OddPage = page is null || IsOddPage(page),
             Bounds = inner,
             Page = page is null ? null : PageArea(frame, page),
+            BalanceColumns = Preference("VerticalBalanceColumns") == "true",
         };
     }
 
@@ -543,15 +545,22 @@ internal sealed partial class IdmlRenderer : IDisposable
         content.Save();
         ApplyOpacity(element, content);
         content.Transform(item.SpreadTransform);
-        var contours = item.Contours;
+        // A text frame's text first: an auto-sizing frame is drawn at the size it gives it (see AutoSize).
+        var ops = item is not TextFrame textFrame ? null
+            : IsInStory(textFrame.Element) ? AnchoredFrameOps(textFrame, pageName)
+            : master is null ? frameOps.GetValueOrDefault(textFrame.Id) ?? []
+            : MasterFrameOps(textFrame, master, pageName);
+        var sizeKey = master is null ? item.Id : item.Id + "@" + (drawingPage?.Id ?? pageName);
+        var contours = FrameContours(item, sizeKey);
+        var bounds = FrameBounds(item, sizeKey);
         var closed = contours.Count > 0 && contours.All(contour => !contour.IsOpen);
 
         // Fill.
-        if (closed && Gradient(item, "Fill") is { } gradientFill)
+        if (closed && Gradient(item, "Fill", bounds) is { } gradientFill)
         {
             // Clipped to the path, the shading painted in the gradient's space (InDesign writes the same).
             content.Save();
-            AppendPath(item, contours, content);
+            AppendPath(item, contours, content, bounds);
             content.Clip(evenOdd: contours.Count > 1);
             content.Transform(gradientFill.Space);
             content.PaintShading(Pdf.Shading(gradientFill.Shading));
@@ -559,24 +568,18 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         else if (closed && ResolveColor(element, "FillColor", "FillTint") is { } fill)
         {
-            AppendPath(item, contours, content);
+            AppendPath(item, contours, content, bounds);
             content.FillColor(fill).Fill(evenOdd: contours.Count > 1);
         }
 
         // Content: image, nested items, text.
-        switch (item)
+        if (item is GraphicFrame frame)
         {
-            case GraphicFrame frame:
-                DrawGraphic(frame, contours, content);
-                break;
-            case TextFrame textFrame:
-                var ops = IsInStory(textFrame.Element)
-                    ? AnchoredFrameOps(textFrame, pageName)
-                    : master is null
-                        ? frameOps.GetValueOrDefault(textFrame.Id) ?? []
-                        : MasterFrameOps(textFrame, master, pageName);
-                DrawOps(ops, content, item, pageName, master);
-                break;
+            DrawGraphic(frame, contours, content);
+        }
+        else if (ops is not null)
+        {
+            DrawOps(ops, content, item, bounds, pageName, master);
         }
         // Items pasted inside the frame, clipped to it. Their SpreadTransform already includes this frame's.
         var nested = item is GraphicFrame or TextFrame
@@ -587,7 +590,7 @@ internal sealed partial class IdmlRenderer : IDisposable
             content.Save();
             if (closed)
             {
-                AppendPath(item, contours, content);
+                AppendPath(item, contours, content, bounds);
                 content.Clip(contours.Count > 1);
             }
             content.Transform(Invert(item.SpreadTransform));
@@ -599,7 +602,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
 
         // Stroke on top.
-        DrawStroke(item, contours, closed, content);
+        DrawStroke(item, contours, closed, content, bounds);
         content.Restore();
     }
 
@@ -652,7 +655,7 @@ internal sealed partial class IdmlRenderer : IDisposable
     /// The gradient an item's fill or stroke (<paramref name="part"/> "Fill" or "Stroke") paints with, as a shading
     /// and the matrix from its unit space to the item's inner coordinates; null when the colour is not a gradient.
     /// </summary>
-    private (GradientShading Shading, CoreIdml.Matrix Space)? Gradient(PageItem item, string part)
+    private (GradientShading Shading, CoreIdml.Matrix Space)? Gradient(PageItem item, string part, Rect bounds)
     {
         var element = item.Element;
         var reference = resolver.Item(element, part + "Color");
@@ -671,7 +674,7 @@ internal sealed partial class IdmlRenderer : IDisposable
             start.Length == 2 ? new Point(start[0], start[1]) : default,
             Values.Number(resolver.Item(element, "Gradient" + part + "Length"), -1),
             Values.Number(resolver.Item(element, "Gradient" + part + "Angle"), 0),
-            item.InnerBounds);
+            bounds);
         return (GradientShading.From(gradient), space);
     }
 
@@ -716,11 +719,11 @@ internal sealed partial class IdmlRenderer : IDisposable
         return new CoreIdml.Matrix(length * dx, length * dy, -length * dy, length * dx, start.X, start.Y);
     }
 
-    private void AppendPath(PageItem item, IReadOnlyList<PathContour> contours, ContentBuilder content)
+    private void AppendPath(PageItem item, IReadOnlyList<PathContour> contours, ContentBuilder content, Rect bounds)
     {
         if (RoundedCorners(item, contours) is { } corners)
         {
-            AppendCornerRectangle(item.InnerBounds, corners, content);
+            AppendCornerRectangle(bounds, corners, content);
             return;
         }
         foreach (var contour in contours)
@@ -804,7 +807,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         content.ClosePath();
     }
 
-    private void DrawStroke(PageItem item, IReadOnlyList<PathContour> contours, bool closed, ContentBuilder content)
+    private void DrawStroke(PageItem item, IReadOnlyList<PathContour> contours, bool closed, ContentBuilder content, Rect bounds)
     {
         var element = item.Element;
         var weight = Values.Number(resolver.Item(element, "StrokeWeight"), 0);
@@ -812,7 +815,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             return;
         }
-        var gradient = Gradient(item, "Stroke");
+        var gradient = Gradient(item, "Stroke", bounds);
         var color = gradient is null ? ResolveColor(element, "StrokeColor", "StrokeTint") : null;
         if (gradient is null && color is null)
         {
@@ -846,10 +849,10 @@ internal sealed partial class IdmlRenderer : IDisposable
             // Stroke twice as wide, clipped to the inside (or outside) of the path.
             if (alignment == "OutsideAlignment")
             {
-                var bounds = item.InnerBounds.Inflate((weight * 2) + 10);
-                content.Rectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                var outside = bounds.Inflate((weight * 2) + 10);
+                content.Rectangle(outside.X, outside.Y, outside.Width, outside.Height);
             }
-            AppendPath(item, contours, content);
+            AppendPath(item, contours, content, bounds);
             content.Clip(evenOdd: alignment == "OutsideAlignment" || contours.Count > 1);
             content.LineWidth(weight * 2);
         }
@@ -857,7 +860,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             content.LineWidth(weight);
         }
-        AppendPath(item, contours, content);
+        AppendPath(item, contours, content, bounds);
         content.Stroke();
         content.Restore();
     }
@@ -919,7 +922,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         content.Save();
         if (contours.Count > 0 && contours.All(c => !c.IsOpen))
         {
-            AppendPath(frame, contours, content);
+            AppendPath(frame, contours, content, frame.InnerBounds);
             content.Clip(contours.Count > 1);
         }
         content.Transform(CoreIdml.Matrix.Parse(graphic.Attribute("ItemTransform")?.Value));
@@ -1031,7 +1034,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         content.Save();
         if (contours.Count > 0 && contours.All(c => !c.IsOpen))
         {
-            AppendPath(frame, contours, content);
+            AppendPath(frame, contours, content, frame.InnerBounds);
             content.Clip(contours.Count > 1);
         }
         content.Transform(CoreIdml.Matrix.Parse(graphic.Attribute("ItemTransform")?.Value));
@@ -1135,7 +1138,7 @@ internal sealed partial class IdmlRenderer : IDisposable
     }
 
     // Ops of the frame they were laid out in; items anchored in its text are wrapped on that frame's spread.
-    private void DrawOps(IReadOnlyList<DrawOp> ops, ContentBuilder content, PageItem frame, string pageName, MasterSpread? master)
+    private void DrawOps(IReadOnlyList<DrawOp> ops, ContentBuilder content, PageItem frame, Rect bounds, string pageName, MasterSpread? master)
     {
         foreach (var op in ops)
         {
@@ -1156,7 +1159,7 @@ internal sealed partial class IdmlRenderer : IDisposable
                     content.Restore();
                     break;
                 case GlyphRunOp run:
-                    DrawGlyphs(run, content, frame.InnerBounds);
+                    DrawGlyphs(run, content, bounds);
                     break;
                 case TextRuleOp rule:
                     DrawTextRule(rule, content);

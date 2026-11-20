@@ -159,7 +159,7 @@ judgement and the agent's help.
 | Page size | `Page.Size` read only; document size at creation | none | follows `GeometricBounds` |
 | Liquid rules, constraints, guides, snapshots | none (kept byte for byte) | none | — |
 | Alternate layouts | `Section` written only when pages are added | none | all pages drawn |
-| Auto-size | none | none | **ignored**: frames never grow, so `idml_check_fit` reports overset that InDesign would absorb |
+| Auto-size | none | none | the PDF export and `idml_check_fit` size the last frame of a story to its text (phase 1); the model and spec cannot set it yet |
 | Flexible columns, frame fitting | `ImageFit` when placing an image | `idml_relink_image` refit | columns fixed |
 | Flex Layout | **unknown elements are not page items**: children invisible | — | children not drawn |
 | Conditions | none | none | **`AppliedConditions` ignored: hidden text is drawn, measured and filled** |
@@ -204,8 +204,9 @@ Record the exact XML, especially for Flex, snapshots and linked stories, in this
    subclass `FlexContainer`), so its children are found, filled and drawn at their stored positions. Until then,
    `IdmlValidator` warns on any unknown element under a spread that contains page items, so a user learns about the
    problem instead of getting silently wrong content.
-3. **Auto-size in the composer:** frames with `AutoSizingType` grow or shrink (around the reference point, within
-   the minimums) in `CoreIdml.Pdf` before overset is computed, so `idml_check_fit` agrees with InDesign.
+3. ~~**Auto-size in the composer:**~~ done: the last frame of a story with `AutoSizingType` grows or shrinks (around
+   the reference point, within the minimum height) in `CoreIdml.Pdf` before it is drawn and before overset is computed,
+   so `idml_check_fit` agrees with InDesign (`IdmlRenderer.AutoSize.cs`; see the feature matrix row).
 
 ### Phase 2: model (CoreIdml), size M
 

@@ -13,7 +13,8 @@ namespace CoreIdml.Pdf.Layout;
 /// space before/after (no space before at the top of a column), indents, tabs, alignment and justification (word
 /// spacing, letter spacing and glyph scaling within the paragraph's limits, <see cref="Justifier"/>), vertical
 /// justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line, laying the text
-/// out again from there), inline tables (rows flow across columns and frames, header rows repeat), and anchored objects
+/// out again from there), paragraphs that span or split columns and balanced columns (the text laid out again with a
+/// lower column bottom), inline tables (rows flow across columns and frames, header rows repeat), and anchored objects
 /// (inline, above the line, custom-positioned: <see cref="PlaceCustom"/>).
 /// Not done: optical kerning, text wrap.
 /// Deterministic: same input, same output.
@@ -60,27 +61,15 @@ internal sealed partial class TextComposer
         var forcedBreaks = new HashSet<(int Paragraph, int Line)>();
         // Every move is to an earlier break than any forced after it, so this ends; the budget bounds pathological input.
         var budget = (paragraphs.Count * 4) + 16;
-        var index = 0;
-        for (; index < paragraphs.Count; index++)
+        // The split paragraphs being balanced (by SplitColumns id), which their own layout must not balance again.
+        var balancing = new HashSet<int>();
+        var index = Run(0, paragraphs.Count);
+        // Balance Columns: the story ends in a frame that balances its columns (06-frame-span-balance p5: 18 lines
+        // go 6, 6 and 6 into three columns; p6: 10 lines below a headline go 4, 4 and 2).
+        if (!flow.Exhausted && flow.Frame.BalanceColumns && flow.Frame.Columns.Count > 1 && flow.BandHasText)
         {
-            states[index] = flow.Save();
-            var linesBefore = layout.Lines.Count;
-            var lines = LayoutParagraph(paragraphs[index], flow, isFirst: index == 0, index, forcedBreaks);
-            paragraphFrames[index] = layout.Lines.Count > linesBefore ? layout.Lines[linesBefore].FrameIndex : -1;
-            columns[index] = paragraphs[index].Items.Any(item => item is TableItem) ? null : lines;
-            if (budget > 0 && EarlierBreak(paragraphs, columns, index, forcedBreaks) is { } moved)
-            {
-                budget--;
-                flow.Restore(states[moved.Paragraph]);
-                forcedBreaks.RemoveWhere(at => at.Paragraph > moved.Paragraph || (at.Paragraph == moved.Paragraph && at.Line > moved.Line));
-                forcedBreaks.Add(moved);
-                index = moved.Paragraph - 1;
-                continue;
-            }
-            if (flow.Exhausted)
-            {
-                break;
-            }
+            var band = flow.BandId;
+            Balance(BandStart(paragraphs.Count, band), paragraphs.Count, band, () => !flow.Exhausted && flow.BandId == band);
         }
         // Paragraphs after the one that ran out of room were not laid out.
         layout.ParagraphFrames.AddRange(paragraphFrames.Take(Math.Min(index + 1, paragraphs.Count)));
@@ -92,6 +81,97 @@ internal sealed partial class TextComposer
         layout.LastDescent = flow.LastDescent;
         flow.Finish();
         return layout;
+
+        // Lays out paragraphs `from` up to `to`, honouring keep options; returns where it stopped (`to`, or the
+        // paragraph that ran out of room).
+        int Run(int from, int to)
+        {
+            var next = from;
+            for (; next < to; next++)
+            {
+                var paragraph = paragraphs[next];
+                // A paragraph spanning the columns starts below the text above it in the frame, which is balanced
+                // first (06-frame-span-balance p2: 13 lines above the headline go 5, 5 and 3 into three columns).
+                if (paragraph.Format.ColumnSpan is { Split: false } && paragraph.Format.Keeps.Start == "Anywhere"
+                    && !flow.Exhausted && flow.Frame.Columns.Count > 1 && flow.BandHasText)
+                {
+                    var band = flow.BandId;
+                    Balance(BandStart(next, band), next, band, () => !flow.Exhausted && flow.BandId == band);
+                }
+                states[next] = flow.Save();
+                var linesBefore = layout.Lines.Count;
+                var lines = LayoutParagraph(paragraph, flow, isFirst: next == 0, next, forcedBreaks);
+                paragraphFrames[next] = layout.Lines.Count > linesBefore ? layout.Lines[linesBefore].FrameIndex : -1;
+                columns[next] = paragraph.Items.Any(item => item is TableItem) ? null : lines;
+                if (budget > 0 && EarlierBreak(paragraphs, columns, next, forcedBreaks) is { } moved)
+                {
+                    budget--;
+                    flow.Restore(states[moved.Paragraph]);
+                    forcedBreaks.RemoveWhere(at => at.Paragraph > moved.Paragraph || (at.Paragraph == moved.Paragraph && at.Line > moved.Line));
+                    forcedBreaks.Add(moved);
+                    next = moved.Paragraph - 1;
+                    continue;
+                }
+                // A split paragraph's lines are balanced across its sub-columns when it stays in one column
+                // (06-frame-span-balance p4: 7 lines go 4 and 3).
+                if (paragraph.Format.ColumnSpan is { Split: true } && !flow.Exhausted
+                    && flow.LastSplit is { OneColumn: true } split && balancing.Add(split.Id))
+                {
+                    Balance(next, next + 1, split.Id, () => flow.LastSplit is { OneColumn: true } again && again.Id == split.Id);
+                    balancing.Remove(split.Id);
+                }
+                if (flow.Exhausted)
+                {
+                    break;
+                }
+            }
+            return next;
+        }
+
+        // The first paragraph with lines in band `band` once the paragraphs before `to` are laid out: the first to
+        // start in it, or the one before when that one already put lines in it.
+        int BandStart(int to, int band)
+        {
+            var current = flow.Save();
+            Flow.State At(int p) => p == to ? current : states[p];
+            var from = to;
+            while (from > 0 && At(from - 1).Bands.Id == band)
+            {
+                from--;
+            }
+            return from > 0 && !double.IsNaN(At(from).BandBottom) ? from - 1 : from;
+        }
+
+        // Lays paragraphs `from` to `to` out again with the lines of band (or split paragraph) `id` kept above the
+        // highest bottom at which `holds` (they all stay in it), found by bisection: the columns end at about the
+        // same height, the first ones taking the extra line.
+        void Balance(int from, int to, int id, Func<bool> holds)
+        {
+            const double Precision = 0.05;
+            var (low, high) = flow.FrameExtent;
+            var start = states[from];
+            bool LayOut(double bottom)
+            {
+                flow.Restore(start);
+                flow.SetLimit(id, bottom);
+                Run(from, to);
+                return holds();
+            }
+            var fitted = false;
+            while (high - low > Precision)
+            {
+                var middle = (low + high) / 2;
+                fitted = LayOut(middle);
+                (low, high) = fitted ? (low, middle) : (middle, high);
+            }
+            if (!fitted && !LayOut(high))
+            {
+                // Keep options move the text on even at the full height: as it was laid out.
+                flow.ClearLimit(id);
+                flow.Restore(start);
+                Run(from, to);
+            }
+        }
     }
 
     // ---- keep options ----------------------------------------------------------------------------------
@@ -660,6 +740,9 @@ internal sealed partial class TextComposer
         var glyphs = Shape(paragraph, flow.Frame);
         var dropCap = TakeDropCap(glyphs, format, flow.Frame);
         flow.PendingSpace += isFirst ? 0 : format.SpaceBefore;
+        // Span Columns: the lines are as wide as the columns spanned, or as a sub-column of a split paragraph.
+        var spans = format.ColumnSpan is { Split: false } span && flow.BeginSpan(span.Count, span.SpaceBefore);
+        var splits = format.ColumnSpan is { Split: true } split && flow.BeginSplit(split.Count, split.InsideGutter, split.OutsideGutter);
         var columns = new List<int>();
         var index = 0;
         var firstLine = true;
@@ -769,6 +852,14 @@ internal sealed partial class TextComposer
             }
         }
         flow.PendingSpace = format.SpaceAfter;
+        if (spans)
+        {
+            flow.EndSpan(format.ColumnSpan!.SpaceAfter);
+        }
+        if (splits)
+        {
+            flow.EndSplit();
+        }
         return columns;
     }
 
@@ -1769,24 +1860,53 @@ internal sealed partial class TextComposer
     /// <summary>
     /// The position in the frame/column sequence and the ops of the columns filled so far. Columns are moved into
     /// their frames only at the end (<see cref="Finish"/>), so that keep options can return to a saved
-    /// <see cref="State"/> and lay the text out again.
+    /// <see cref="State"/> and lay the text out again. Paragraphs that span columns divide a frame into bands: the
+    /// columns below a span start under it (<see cref="BeginSpan"/>, <see cref="EndSpan"/>); a split paragraph flows
+    /// through sub-columns of its column (<see cref="BeginSplit"/>). A band can be given a lowest baseline
+    /// (<see cref="SetLimit"/>), which is how <see cref="Compose"/> balances columns.
     /// </summary>
     private sealed class Flow
     {
         private readonly IReadOnlyList<FrameArea> frames;
         private readonly List<FilledColumn> filled = [];
+        // The lowest baseline of the balanced bands and split paragraphs, by Bands.Id and SplitColumns.Id.
+        private readonly Dictionary<int, double> limits = [];
         private List<DrawOp> columnOps = [];
+        // Layout.Lines.Count when the current column's ops began.
+        private int columnLines;
         private double usedBottom;
         // The page (FrameArea.PageIndex) of the last line or table placed: a page the story has not used yet is
         // where "start on next page" can begin without moving.
         private int contentPage = int.MinValue;
+        private Bands bands;
+        // The lowest baseline placed in the current band, and in the current split paragraph's column; NaN for none yet.
+        private double bandBottom = double.NaN;
+        private double splitBottom = double.NaN;
+        // The last band or split id handed out: the same layout gives the same ids, so a limit finds its band again.
+        private int ids;
 
-        private sealed record FilledColumn(int FrameIndex, int ColumnIndex, List<DrawOp> Ops, double UsedBottom);
+        private sealed record FilledColumn(int FrameIndex, int ColumnIndex, List<DrawOp> Ops, double UsedBottom, int FirstLine);
+
+        /// <summary>
+        /// How the current frame's columns are divided (immutable, so that a <see cref="State"/> can hold it): where
+        /// each column of the current band starts (<paramref name="Tops"/>) and whether that is below a paragraph that
+        /// spans columns, where the first line is a leading below it, not at the first-baseline offset
+        /// (<paramref name="LeadingTops"/>); the columns the current paragraph spans (<paramref name="Span"/>, 0 for
+        /// none) and where it starts; the sub-columns of the current split paragraph (<paramref name="Split"/>).
+        /// </summary>
+        public sealed record Bands(int Id, double[] Tops, bool[] LeadingTops, int Span, double SpanTop, bool SpanLeadingTop, SplitColumns? Split);
+
+        /// <summary>
+        /// A split paragraph's <paramref name="Count"/> sub-columns, the one in use (<paramref name="Index"/>), their
+        /// top, and the column (<see cref="ColumnOrdinal"/>) the paragraph started in.
+        /// </summary>
+        public sealed record SplitColumns(int Id, int Count, double Inside, double Outside, int Index, double Top, bool LeadingTop, int StartOrdinal);
 
         /// <summary>Everything needed to go back to a point of the layout.</summary>
         public readonly record struct State(
             int FrameIndex, int ColumnIndex, int ColumnOrdinal, bool Exhausted, bool AtColumnTop, double Baseline, double LastDescent,
-            double PendingSpace, double UsedBottom, int ContentPage, int FilledColumns, int ColumnOps, int Lines, bool Overset);
+            double PendingSpace, double UsedBottom, int ContentPage, int FilledColumns, int ColumnOps, int Lines, bool Overset,
+            int ColumnLines, Bands Bands, double BandBottom, double SplitBottom, int Ids, (int Id, bool OneColumn)? LastSplit);
 
         public Flow(IReadOnlyList<FrameArea> frames, StoryLayout layout)
         {
@@ -1796,6 +1916,7 @@ internal sealed partial class TextComposer
             {
                 layout.OpsByFrame.TryAdd(frame.FrameId, []);
             }
+            bands = FrameBands();
             AtColumnTop = true;
             Baseline = Column.Y;
         }
@@ -1819,11 +1940,60 @@ internal sealed partial class TextComposer
 
         public double PendingSpace { get; set; }
 
+        /// <summary>The current band of the frame's columns: a new frame and the end of a spanning paragraph start one.</summary>
+        public int BandId => bands.Id;
+
+        /// <summary>Text has been placed in the current band.</summary>
+        public bool BandHasText => !double.IsNaN(bandBottom);
+
+        /// <summary>The last split paragraph ended: its id, and whether all of it stayed in the column it began in.</summary>
+        public (int Id, bool OneColumn)? LastSplit { get; private set; }
+
         public FrameArea Frame => frames[Math.Min(FrameIndex, frames.Count - 1)];
 
-        public Rect Column => Frame.Columns.Count == 0 ? default : Frame.Columns[Math.Min(ColumnIndex, Frame.Columns.Count - 1)];
+        /// <summary>
+        /// Where the next line goes: the frame's column below the band's top, the columns a paragraph spans, or a
+        /// split paragraph's sub-column (its column less the outside gutters and the inside gutters between them,
+        /// shared equally: 06-frame-span-balance p4 splits a 527.5 pt column into two of 251.75 pt, 6 pt in from each
+        /// side and 12 pt apart).
+        /// </summary>
+        public Rect Column
+        {
+            get
+            {
+                var columns = Frame.Columns;
+                if (columns.Count == 0)
+                {
+                    return default;
+                }
+                var index = Math.Min(ColumnIndex, columns.Count - 1);
+                var column = columns[index];
+                if (bands.Span > 0)
+                {
+                    var last = columns[Math.Min(bands.Span, columns.Count) - 1];
+                    return new Rect(columns[0].X, bands.SpanTop, last.Right - columns[0].X, columns[0].Bottom - bands.SpanTop);
+                }
+                if (bands.Split is { } split)
+                {
+                    var width = (column.Width - (2 * split.Outside) - ((split.Count - 1) * split.Inside)) / split.Count;
+                    return new Rect(column.X + split.Outside + (split.Index * (width + split.Inside)), split.Top, width, column.Bottom - split.Top);
+                }
+                var top = bands.Tops[index];
+                return new Rect(column.X, top, column.Width, column.Bottom - top);
+            }
+        }
+
+        /// <summary>The top and bottom of the current frame's columns, between which a balanced band ends.</summary>
+        public (double Top, double Bottom) FrameExtent =>
+            Frame.Columns.Count == 0 ? (0, 0) : (Frame.Columns.Min(column => column.Y), Frame.Columns.Max(column => column.Bottom));
 
         public string PageName => Frame.PageName;
+
+        // The first line of the current column is a leading below its top (below a span, or a split paragraph that
+        // starts below other text), not at the frame's first-baseline offset.
+        private bool LeadingTop =>
+            bands.Split?.LeadingTop
+            ?? (bands.Span > 0 ? bands.SpanLeadingTop : bands.LeadingTops.Length > 0 && bands.LeadingTops[Math.Min(ColumnIndex, bands.LeadingTops.Length - 1)]);
 
         public void Add(DrawOp op) => columnOps.Add(op);
 
@@ -1833,13 +2003,20 @@ internal sealed partial class TextComposer
         /// <summary>Puts <paramref name="op"/> under the ops from <paramref name="index"/> on (painted before them).</summary>
         public void Insert(int index, DrawOp op) => columnOps.Insert(index, op);
 
+        /// <summary>Lines of band (or split paragraph) <paramref name="id"/> keep their baselines above <paramref name="bottom"/>.</summary>
+        public void SetLimit(int id, double bottom) => limits[id] = bottom;
+
+        public void ClearLimit(int id) => limits.Remove(id);
+
         /// <summary>
         /// Positions the next line; false when the text no longer fits anywhere. With <paramref name="snapToGrid"/>
         /// the baseline that leading, space before/after or the first-baseline offset give moves down to the frame's
         /// baseline grid, and the next line's leading counts from there (06-frame-baseline-grid: 12 pt leading on a
         /// 14 pt grid, lines 14 pt apart; 7 pt space after with 14 pt leading, paragraphs 28 pt apart; a 22/26
         /// headline's first baseline down to the grid line below it). Whether it still fits is decided
-        /// after the snap.
+        /// after the snap. Below a spanning paragraph every column's first line is a leading below the span's last
+        /// baseline and its space after (06-frame-span-balance p1: the 22/8 pt headline's baseline at 79.4, the
+        /// 12.5 pt body lines of all three columns at 99.9).
         /// </summary>
         public bool Place(LineMetrics metrics, bool snapToGrid)
         {
@@ -1852,6 +2029,10 @@ internal sealed partial class TextComposer
                     // Above-line objects stack between the line before (or the column top) and this one, which keeps
                     // its leading below them (see AboveLineRoom).
                     baseline = (AtColumnTop ? column.Y : Baseline + PendingSpace) + metrics.AboveLine + metrics.Leading;
+                }
+                else if (AtColumnTop && LeadingTop)
+                {
+                    baseline = column.Y + metrics.Leading;
                 }
                 else if (AtColumnTop)
                 {
@@ -1875,7 +2056,7 @@ internal sealed partial class TextComposer
                     baseline = grid.Snap(baseline);
                 }
                 // InDesign keeps a line while its baseline is inside the column; descenders may hang below the frame.
-                if (baseline > column.Bottom + Epsilon && !(AtColumnTop && column.Height <= 0))
+                if (baseline > Bottom(column) + Epsilon && !(AtColumnTop && !LeadingTop && column.Height <= 0))
                 {
                     if (!NextColumn())
                     {
@@ -1889,10 +2070,32 @@ internal sealed partial class TextComposer
                 AtColumnTop = false;
                 PendingSpace = 0;
                 contentPage = Frame.PageIndex;
+                bandBottom = Deepest(bandBottom, baseline);
+                if (bands.Split is not null)
+                {
+                    splitBottom = Deepest(splitBottom, baseline);
+                }
                 return true;
             }
             return false;
         }
+
+        // The column's bottom, or the lowest baseline its band or split paragraph is limited to.
+        private double Bottom(Rect column)
+        {
+            var bottom = column.Bottom;
+            if (bands.Span == 0 && limits.TryGetValue(bands.Id, out var band))
+            {
+                bottom = Math.Min(bottom, band);
+            }
+            if (bands.Split is { } split && limits.TryGetValue(split.Id, out var sub))
+            {
+                bottom = Math.Min(bottom, sub);
+            }
+            return bottom;
+        }
+
+        private static double Deepest(double bottom, double baseline) => double.IsNaN(bottom) ? baseline : Math.Max(bottom, baseline);
 
         public void BeginBlock() => PendingSpace = 0;
 
@@ -1911,6 +2114,7 @@ internal sealed partial class TextComposer
             usedBottom = Math.Max(usedBottom, bottom);
             AtColumnTop = false;
             contentPage = Frame.PageIndex;
+            bandBottom = Deepest(bandBottom, bottom);
         }
 
         public bool NextColumn()
@@ -1919,10 +2123,19 @@ internal sealed partial class TextComposer
             {
                 return false;
             }
-            filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom));
-            columnOps = [];
+            if (bands.Split is { } split && split.Index + 1 < split.Count)
+            {
+                // The next sub-column of a split paragraph, in the same column of the frame.
+                bands = bands with { Split = split with { Index = split.Index + 1 } };
+                AtColumnTop = true;
+                PendingSpace = 0;
+                Baseline = split.Top;
+                return true;
+            }
+            PushColumn();
             ColumnOrdinal++;
-            ColumnIndex++;
+            // A spanning paragraph takes every column of its band: it goes on in the next frame.
+            ColumnIndex = bands.Span > 0 ? Frame.Columns.Count : ColumnIndex + 1;
             if (ColumnIndex >= Frame.Columns.Count)
             {
                 ColumnIndex = 0;
@@ -1937,12 +2150,129 @@ internal sealed partial class TextComposer
                     Exhausted = true;
                     return false;
                 }
+                bands = FrameBands() with { Span = bands.Span, SpanTop = Frame.Columns[0].Y, Split = bands.Split };
+                bandBottom = double.NaN;
+            }
+            if (bands.Split is { } continued)
+            {
+                // A split paragraph goes on in the sub-columns of the next column.
+                bands = bands with { Split = continued with { Index = 0, Top = bands.Tops[ColumnIndex], LeadingTop = bands.LeadingTops[ColumnIndex] } };
+                splitBottom = double.NaN;
             }
             AtColumnTop = true;
             PendingSpace = 0;
             Baseline = Column.Y;
             usedBottom = Column.Y;
             return true;
+        }
+
+        // A frame's first band: its columns from their tops.
+        private Bands FrameBands()
+        {
+            var columns = Frame.Columns;
+            return new Bands(++ids, [.. columns.Select(column => column.Y)], new bool[columns.Count], 0, 0, false, null);
+        }
+
+        private void PushColumn()
+        {
+            filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom, columnLines));
+            columnOps = [];
+            columnLines = Layout.Lines.Count;
+        }
+
+        /// <summary>
+        /// Starts a paragraph that spans <paramref name="count"/> columns of the frame from the first (0: all of them):
+        /// at the top of the band when nothing is in it yet, else below its lowest line, at least
+        /// <paramref name="spaceBefore"/> from it (06-frame-span-balance p2: the 22 pt headline's baseline 22 pt
+        /// below the last line of the balanced columns above). False when there is nothing to span (one column): the
+        /// paragraph is laid out as any other.
+        /// </summary>
+        public bool BeginSpan(int count, double spaceBefore)
+        {
+            var columns = Frame.Columns.Count;
+            var span = count <= 0 ? columns : Math.Min(count, columns);
+            if (Exhausted || span < 2)
+            {
+                return false;
+            }
+            var (top, leadingTop) = (bands.Tops[0], bands.LeadingTops[0]);
+            if (BandHasText)
+            {
+                (top, leadingTop) = (bandBottom, true);
+                Baseline = bandBottom;
+                AtColumnTop = false;
+                PendingSpace = Math.Max(PendingSpace, spaceBefore);
+            }
+            PushColumn();
+            ColumnIndex = 0;
+            usedBottom = top;
+            bands = bands with { Span = span, SpanTop = top, SpanLeadingTop = leadingTop };
+            return true;
+        }
+
+        /// <summary>
+        /// Ends a spanning paragraph: the columns it spanned start a new band below its last line and its space after
+        /// (at least <paramref name="spaceAfter"/>), the text going on in the first; the columns beside it keep
+        /// starting where it started (06-frame-span-balance p3, a headline across two of three columns).
+        /// </summary>
+        public void EndSpan(double spaceAfter)
+        {
+            if (bands.Span == 0 || Exhausted)
+            {
+                return;
+            }
+            PushColumn();
+            var top = Baseline + Math.Max(PendingSpace, spaceAfter);
+            var tops = (double[])bands.Tops.Clone();
+            var leadingTops = (bool[])bands.LeadingTops.Clone();
+            for (var i = 0; i < tops.Length; i++)
+            {
+                (tops[i], leadingTops[i]) = i < bands.Span ? (top, true) : (bands.SpanTop, bands.SpanLeadingTop);
+            }
+            bands = new Bands(++ids, tops, leadingTops, 0, 0, false, null);
+            bandBottom = double.NaN;
+            ColumnIndex = 0;
+            AtColumnTop = true;
+            PendingSpace = 0;
+            Baseline = top;
+            usedBottom = top;
+        }
+
+        /// <summary>
+        /// Starts a paragraph split into <paramref name="count"/> sub-columns of the current column, from where its
+        /// next line would go (a leading below the text above, space before included): in 06-frame-span-balance p4
+        /// both sub-columns' first lines are 20.5 pt (the headline's 8 pt space after, 12.5 pt leading) below the
+        /// headline.
+        /// </summary>
+        public bool BeginSplit(int count, double inside, double outside)
+        {
+            if (Exhausted || count < 2 || Frame.Columns.Count == 0)
+            {
+                return false;
+            }
+            var (top, leadingTop) = AtColumnTop ? (Column.Y, LeadingTop) : (Baseline + PendingSpace, true);
+            bands = bands with { Split = new SplitColumns(++ids, count, inside, outside, 0, top, leadingTop, ColumnOrdinal) };
+            splitBottom = double.NaN;
+            AtColumnTop = true;
+            PendingSpace = 0;
+            Baseline = top;
+            return true;
+        }
+
+        /// <summary>Ends a split paragraph: the text goes on below its lowest sub-column (06-frame-span-balance p4).</summary>
+        public void EndSplit()
+        {
+            if (bands.Split is not { } split)
+            {
+                return;
+            }
+            LastSplit = (split.Id, split.StartOrdinal == ColumnOrdinal);
+            bands = bands with { Split = null };
+            if (!double.IsNaN(splitBottom))
+            {
+                Baseline = splitBottom;
+                AtColumnTop = false;
+            }
         }
 
         /// <summary>
@@ -1985,7 +2315,7 @@ internal sealed partial class TextComposer
         }
 
         public State Save() => new(FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop, Baseline, LastDescent, PendingSpace, usedBottom,
-            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset);
+            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit);
 
         /// <summary>Goes back to <paramref name="state"/>, dropping everything laid out since.</summary>
         public void Restore(State state)
@@ -2000,6 +2330,7 @@ internal sealed partial class TextComposer
             Layout.Overset = state.Overset;
             (FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop) = (state.FrameIndex, state.ColumnIndex, state.ColumnOrdinal, state.Exhausted, state.AtColumnTop);
             (Baseline, LastDescent, PendingSpace, usedBottom, contentPage) = (state.Baseline, state.LastDescent, state.PendingSpace, state.UsedBottom, state.ContentPage);
+            (columnLines, bands, bandBottom, splitBottom, ids, LastSplit) = (state.ColumnLines, state.Bands, state.BandBottom, state.SplitBottom, state.Ids, state.LastSplit);
         }
 
         /// <summary>
@@ -2008,12 +2339,11 @@ internal sealed partial class TextComposer
         /// </summary>
         public void Finish()
         {
-            filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom));
-            columnOps = [];
+            PushColumn();
             var afterText = new List<(List<DrawOp> Target, DrawOp Op)>();
-            foreach (var column in filled)
+            for (var i = 0; i < filled.Count; i++)
             {
-                FinishColumn(column, afterText);
+                FinishColumn(filled[i], i + 1 < filled.Count ? filled[i + 1].FirstLine : Layout.Lines.Count, afterText);
             }
             foreach (var (target, op) in afterText)
             {
@@ -2022,9 +2352,10 @@ internal sealed partial class TextComposer
             filled.Clear();
         }
 
-        private void FinishColumn(FilledColumn filledColumn, List<(List<DrawOp> Target, DrawOp Op)> afterText)
+        // Moves a column's ops into its frame; its lines are Layout.Lines from its FirstLine to endLine.
+        private void FinishColumn(FilledColumn filledColumn, int endLine, List<(List<DrawOp> Target, DrawOp Op)> afterText)
         {
-            var (frameIndex, columnIndex, ops, used) = filledColumn;
+            var (frameIndex, columnIndex, ops, used, firstLine) = filledColumn;
             if (ops.Count == 0)
             {
                 return;
@@ -2053,13 +2384,9 @@ internal sealed partial class TextComposer
             }
             if (dy > 0)
             {
-                for (var i = 0; i < Layout.Lines.Count; i++)
+                for (var i = firstLine; i < endLine; i++)
                 {
-                    var line = Layout.Lines[i];
-                    if (line.FrameIndex == frameIndex && line.Column == columnIndex)
-                    {
-                        Layout.Lines[i] = line with { Baseline = line.Baseline + dy };
-                    }
+                    Layout.Lines[i] = Layout.Lines[i] with { Baseline = Layout.Lines[i].Baseline + dy };
                 }
             }
         }

@@ -117,9 +117,9 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Vertical justification | `VerticalJustification` | ✅ | ✅ | `verticalAlign`: top, center, bottom, justify. |
 | First baseline offset | `FirstBaselineOffset`, `MinimumFirstBaselineOffset` | ❌ | ✅ | |
 | Overset detection | — | ✅ | ✅ | `idml_check_fit` (exact, from the composer); summary `likelyOverset` (estimate). |
-| Auto-size frames **[plan]** | `TextFramePreference@AutoSizingType` | ❌ | ❌ † | The frame keeps its stored size; text that InDesign would show by growing the frame is reported overset. See [responsive-layout-plan.md](responsive-layout-plan.md), phase 1. |
-| Balance columns **[new]** | `TextFramePreference@VerticalBalanceColumns` | ❌ | ❌ † | |
-| Span and split columns **[new]** | `SpanColumnType`, `SpanSplitColumnCount` | ❌ | ❌ † | Headlines that span columns are composed in one column. |
+| Auto-size frames | `TextFramePreference@AutoSizingType`, `AutoSizingReferencePoint`, `UseMinimumHeightForAutoSizing`, `UseNoLineBreaksForAutoSizing` | ❌ | ✅ | The last frame of a story grows or shrinks to its text before it is drawn and in `idml_check_fit` (`TextMeasurer`): height to the last baseline plus the bottom inset, columns balanced; width to the longest paragraph on one line; proportionally until the text fits; around the reference point, within the minimum height (counted with the stroke). A frame already the size of its text keeps it: on every auto-size frame of the 74 samples our size is InDesign's within 0.05 pt, except where our line breaks differ (`06-frame-autosize` p6 grows a line). Not done: minimum width and threaded and non-rectangular frames from memory only; anchored frames keep their size. See [responsive-layout-plan.md](responsive-layout-plan.md), phase 1. |
+| Balance columns | `TextFramePreference@VerticalBalanceColumns` | ❌ | ✅ | When the story ends in the frame, its columns end at the lowest baseline that still holds the text, the first columns taking the extra line (`06-frame-span-balance` p5: 6, 6, 6; p6: 4, 4, 2 below a headline). |
+| Span and split columns | `SpanColumnType`, `SpanSplitColumnCount`, `SplitColumnInsideGutter`, `SplitColumnOutsideGutter`, `SpanColumnMinSpaceBefore`/`After` | ❌ | ✅ | A spanning paragraph is set across all or the first N columns, below the frame's text above it, which is balanced first; the columns it spans start a leading below its last line and space after, the others where it started. A split paragraph is set in sub-columns of its column, balanced, the text going on below (`06-frame-span-balance` p1 to p4, within 1 pt but for paragraph-composer choices). Space before/after span from memory (0 in the samples). |
 | Text in non-rectangular frames **[new]** | text in `Oval`, `Polygon` | ❌ | 🟡 | Composed in the bounding box ([IdmlRenderer.cs:225](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.cs#L225)), so lines run outside the shape. The stroke inset (half a centred stroke) moves those lines too: `06-frame-shapes` p2 and p5 lost 0.02 pp when it was added. |
 | Text on a path | `TextPath` | ❌ | ❌ † | |
 | Baseline grid | `GridPreference@BaselineStart`, `BaselineDivision`, `BaselineGridRelativeOption`; `BaselineFrameGridOption`; paragraph `GridAlignment="AlignBaseline"`, `GridAlignFirstLineOnly` | ❌ | ✅ | Measured against `06-frame-baseline-grid`: an aligned line moves down to the next grid line after leading, space before/after or the first-baseline offset, and the next line counts its leading from there; first line only snaps the first line of each paragraph; a custom frame grid (from the frame, its object style or the document default) starts its offset below the top of the frame, its inset, the page or the top margin. Every baseline on every page within 0.13 pt (a stroked frame starts half the stroke weight lower, see inset spacing). Not done: CJK grid alignments (`AlignEmCenter`, ...), text in table cells and anchored frames, page-relative grids for rotated or scaled frames; vertical justification other than top still moves aligned lines off the grid (not measured). |
@@ -251,7 +251,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 8 | ~~**Text stroke, skew, underline options**~~ | Drawn | S | See the character formatting rows; `07-char-outlined-text` and `07-char-underline-strike` match InDesign on every page. |
 | 9 | **TIFF and PSD images** | Missing | M | TIFF decoder (uncompressed, LZW, deflate) for the common case; PSD composite image. |
 | 10 | ~~**Nested and GREP styles**~~ | Drawn | M | See the row under paragraph formatting (nested line styles too); `08-para-nested-grep-styles` matches InDesign's fonts and colours on every page. |
-| 11 | **Auto-size frames, span columns, balance columns** | Overset or one column | M | All in frame-area construction. Auto-size is now in [responsive-layout-plan.md](responsive-layout-plan.md). |
+| 11 | ~~**Auto-size frames, span columns, balance columns**~~ | Drawn | M | See the text frame rows; `06-frame-span-balance` and `06-frame-autosize` match InDesign but for line breaks the paragraph composer chooses differently. |
 | 12 | ~~**Above-line and custom anchored objects**~~ | Drawn | M | See the row under page items; `02-item-anchored` matches InDesign except the text wrap of p4. |
 | 13 | **Cell border types, ~~footer row repeat~~, cell rotation, diagonal lines** | Simplified | S each | Footer rows now repeat at every break (see the table rows). |
 | 14 | ~~**Bleed in the PDF**~~ | With `includeBleed` | S | See bleed and slug; `01-doc-bleed-slug` matches `reference-bleed.pdf`. Printer's marks remain. |
@@ -265,13 +265,13 @@ composer itself. They are the composer's follow-up list:
 
 | Cause | Pages (score change) |
 | --- | --- |
-| Hyphenation points InDesign's dictionary has and the TeX patterns lack ("Neth-erfield", "En-gland"; the Hunspell en-US patterns give the same points as ours) | `06-frame-autosize` p6 (−4.8), `06-frame-basics` p2 (−1.3) |
+| Hyphenation points InDesign's dictionary has and the TeX patterns lack ("Neth-erfield", "En-gland"; the Hunspell en-US patterns give the same points as ours) | `06-frame-basics` p2 (−1.3) |
 | Narrow justified columns of long words; French and German are not hyphenated | `08-para-hyphenation-justification` p2 (−10.0 left of −15.5), `07-char-language-nobreak` p1 (−3.5 left of −7.8) |
 | A hyphen on the second-to-last line that InDesign refuses | `09-style-text-styles` p2 (−1.6), `11-long-markers-variables` p3 (−0.6) |
 | Text in non-rectangular frames composed in the bounding box | `02-item-corners` p4 (−6.0); `06-frame-shapes` p4 mixed |
 | Optical margin alignment not done | `08-para-optical-margin` p2 (−0.1) |
 
-Won back since: `01-doc-page-sizes` p4 and `01-doc-margins-guides` p2 (ragged badness linear in the room left: both 100%);
+Won back since: `06-frame-autosize` p6 (the frame now auto-sizes: it grows by the line the missing "Neth-erfield" break adds, 86.69%); `01-doc-page-sizes` p4 and `01-doc-margins-guides` p2 (ragged badness linear in the room left: both 100%);
 `01-doc-sections-numbering` p7, `11-long-footnotes-endnotes` p4 and `01-doc-margins-guides` p6 ("Mor-ris": a wide ragged
 column tolerates a little more room, hyphen 115: 100%, 93.1%, 100%, as before the composer). Partly:
 `08-para-hyphenation-justification` p2 and `07-char-language-nobreak` p1 (stretching that adds over 13% of a justified

@@ -685,6 +685,16 @@ internal sealed class StoryReader
             DropCap = (int)Values.Number(Get("DropCapLines"), 0) is var lines and > 0 && (int)Values.Number(Get("DropCapCharacters"), 0) is var characters and > 0
                 ? new DropCapFormat(lines, characters, ((int)Values.Number(Get("DropcapDetail"), 0) & 1) != 0)
                 : null,
+            ColumnSpan = Get("SpanColumnType") is "SpanColumns" or "SplitColumns"
+                ? new ColumnSpanFormat(
+                    Get("SpanColumnType") == "SplitColumns",
+                    // "All" (InDesign's default) spans every column; a split paragraph then takes two sub-columns.
+                    (int)Values.Number(Get("SpanSplitColumnCount"), Get("SpanColumnType") == "SplitColumns" ? 2 : 0),
+                    Values.Number(Get("SplitColumnInsideGutter"), 6),
+                    Values.Number(Get("SplitColumnOutsideGutter"), 0),
+                    Values.Number(Get("SpanColumnMinSpaceBefore"), 0),
+                    Values.Number(Get("SpanColumnMinSpaceAfter"), 0))
+                : null,
         };
         paragraphFormats[range] = format;
         return format;

@@ -53,8 +53,8 @@ public sealed class TextMeasurer : IDisposable
         ArgumentNullException.ThrowIfNull(story);
         const double Unlimited = 100_000;
         var frames = story.Frames;
-        var areas = frames.Select(frame => renderer.FrameArea(frame, frame.Page?.Name ?? "1")).ToList();
-        var layout = renderer.Compose(story, areas);
+        // An auto-sizing last frame is measured at the size its text gives it, as the PDF export draws it.
+        var (layout, areas) = renderer.ComposeFitted(story, frames, frames.Select(frame => renderer.FrameArea(frame, frame.Page?.Name ?? "1")).ToList());
         var frameFits = frames.Select((frame, index) => new FrameFit(
             frame.Id,
             frame.Page?.Name,
@@ -68,7 +68,7 @@ public sealed class TextMeasurer : IDisposable
         var last = areas[^1];
         var column = last.Columns[^1];
         var extended = areas.Take(areas.Count - 1)
-            .Append(last with { Columns = [.. last.Columns.Take(last.Columns.Count - 1), column with { Height = Unlimited }], VerticalJustification = "TopAlign" })
+            .Append(last with { Columns = [.. last.Columns.Take(last.Columns.Count - 1), column with { Height = Unlimited }], VerticalJustification = "TopAlign", BalanceColumns = false })
             .ToList();
         var full = renderer.Compose(story, extended);
         var lastColumn = last.Columns.Count - 1;

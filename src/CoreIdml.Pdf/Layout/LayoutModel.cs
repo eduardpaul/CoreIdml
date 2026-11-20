@@ -114,7 +114,21 @@ internal sealed record ParagraphFormatting
 
     /// <summary>The paragraph's drop cap (<c>DropCapLines</c>, <c>DropCapCharacters</c>, <c>DropcapDetail</c>); null for none.</summary>
     public DropCapFormat? DropCap { get; init; }
+
+    /// <summary>The paragraph spans or splits the frame's columns (<c>SpanColumnType</c>); null for a single column.</summary>
+    public ColumnSpanFormat? ColumnSpan { get; init; }
 }
+
+/// <summary>
+/// Span Columns (Paragraph &gt; Span Columns, <c>SpanColumnType</c>): a paragraph that spans <paramref name="Count"/>
+/// columns of its frame from the first (0: all, <c>SpanSplitColumnCount="All"</c>), or, with
+/// <paramref name="Split"/>, is split into <paramref name="Count"/> sub-columns of its own column, with
+/// <paramref name="InsideGutter"/> between them and <paramref name="OutsideGutter"/> at either side
+/// (<c>SplitColumnInsideGutter</c>, <c>SplitColumnOutsideGutter</c>). <paramref name="SpaceBefore"/> and
+/// <paramref name="SpaceAfter"/> are the least space a span keeps from the text above and below it
+/// (<c>SpanColumnMinSpaceBefore</c>, <c>SpanColumnMinSpaceAfter</c>).
+/// </summary>
+internal sealed record ColumnSpanFormat(bool Split, int Count, double InsideGutter, double OutsideGutter, double SpaceBefore, double SpaceAfter);
 
 /// <summary>
 /// A drop cap: the first <paramref name="Characters"/> characters of the paragraph, <paramref name="Lines"/> lines
@@ -351,6 +365,12 @@ internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, st
 
     /// <summary>The page the frame is on, in the frame's inner coordinates; null off the pages (and in a table cell).</summary>
     public PageArea? Page { get; init; }
+
+    /// <summary>
+    /// Balance Columns (<c>VerticalBalanceColumns</c>): when the story ends in this frame, its columns end at about the
+    /// same height.
+    /// </summary>
+    public bool BalanceColumns { get; init; }
 }
 
 /// <summary>
