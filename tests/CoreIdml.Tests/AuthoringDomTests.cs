@@ -31,6 +31,24 @@ public class AuthoringDomTests
     }
 
     [Fact]
+    public void A_text_wrap_reads_back_and_is_replaced_or_removed()
+    {
+        using var document = IdmlDocument.Create();
+        var box = document.Pages[0].AddRectangle(new Rect(0, 0, 50, 50));
+        var wrap = new TextWrap(TextWrapMode.BoundingBox, new Spacing(1, 2, 3, 4), TextWrapSide.SideAwayFromSpine, Inverse: true);
+
+        box.TextWrap = wrap;
+        Assert.Equal(wrap, box.TextWrap);
+        box.TextWrap = wrap with { Mode = TextWrapMode.NextColumn };
+
+        Assert.Single(box.Element.Elements("TextWrapPreference"));
+        Assert.Equal("NextColumnTextWrap", box.Element.Element("TextWrapPreference")!.Attribute("TextWrapMode")!.Value);
+        box.TextWrap = null;
+        Assert.Null(box.TextWrap);
+        Assert.Null(box.Element.Element("TextWrapPreference"));
+    }
+
+    [Fact]
     public void The_baseline_grid_changes_only_its_start_increment_and_origin()
     {
         using var document = IdmlDocument.Create();

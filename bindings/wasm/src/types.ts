@@ -224,6 +224,14 @@ export interface ItemSpec {
   opacity?: number;
   cornerRadius?: number;
   rotation?: number;
+  /** Text wrap around the item: `none`, `boundingBox`, `objectShape`, `jumpObject` or `nextColumn`. */
+  wrap?: string;
+  /** Gap between the item and the wrapped text (`objectShape` uses `top` all round). */
+  wrapOffset?: Spacing;
+  /** `both` (default), `left`, `right`, `towardsSpine`, `awayFromSpine` or `largest`. */
+  wrapSide?: string;
+  /** Keep the text inside the item instead. */
+  wrapInverse?: boolean;
   /** Text of a text frame; may hold `{{placeholders}}`. */
   text?: string;
   /** Paragraph style of `text`. */
@@ -235,6 +243,19 @@ export interface ItemSpec {
   verticalAlign?: string;
   /** Name of the frame this one continues (threaded text). */
   continueFrom?: string;
+  /** Text frames: `off`, `height`, `width`, `heightAndWidth` or `proportional`; the frame grows or shrinks to its text. */
+  autoSize?: string;
+  /** The point that stays put: `topLeft`, `top`, `topRight`, `left`, `center`, `right`, `bottomLeft`, `bottom`, `bottomRight`. */
+  autoSizeFrom?: string;
+  autoSizeMinHeight?: number;
+  /** Columns end at the same depth when the story ends in the frame. */
+  balanceColumns?: boolean;
+  /** `ascent` (default), `capHeight`, `leading`, `xHeight`, `emBox` or `fixed`. */
+  firstBaseline?: string;
+  /** Least distance from the frame's top (inside the inset) to the first baseline. */
+  firstBaselineMin?: number;
+  /** The frame's text ignores other items' text wrap. */
+  ignoreWrap?: boolean;
   /** Image of an image item: a JPEG or PNG in the in-memory file system, e.g. `/links/photo.jpg`. */
   path?: string;
   /** Image fit: `fill`, `fit`, `stretch`, `center` or `original`. */

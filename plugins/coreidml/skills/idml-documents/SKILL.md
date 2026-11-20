@@ -50,8 +50,8 @@ Where tools load on demand (Claude Code), load together: `idml_create`, `idml_li
    `fit` names frames whose text does not fit. Keep the returned item ids and names.
 3. **Look at every page** with `idml_render_page` (100 dpi or less): overlaps, alignment, colours, white space.
 4. **Fix in place**: one `idml_batch` of `idml_edit_item` calls (geometry, fill, stroke, tints, corners, opacity,
-   rotation, text frame columns, inset, vertical alignment). Resend the spec only for structural changes. Render and
-   check the fit again.
+   rotation, text wrap, text frame columns, inset, vertical alignment, auto-size). Resend the spec only for
+   structural changes. Render and check the fit again.
 5. **Validate** (`idml_validate`), then `idml_to_pdf` if the user wants a PDF.
 
 Common mistakes:
@@ -81,7 +81,7 @@ wider and taller than the page); use `cmyk` colours; keep text inside the margin
 
 The preview and PDF engine draws opacity, blend modes, shadows, glows and feathers (not bevel, emboss or satin, and
 shadows of text leave the text out); the spec writes only opacity and has no gradients, master pages,
-paragraph rules, text wrap or free paths. Design without them. When an existing document uses bevel, emboss
+paragraph rules or free paths. Design without them. When an existing document uses bevel, emboss
 or satin, say the preview leaves them out and InDesign will show them (gradients and text wrap in a document are drawn; a wrap that
 follows an image's detected edges or Photoshop path is not).
 

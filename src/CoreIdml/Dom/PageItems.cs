@@ -54,6 +54,82 @@ public enum StrokeKind
     Dotted,
 }
 
+/// <summary>How text wraps around an item (Window &gt; Text Wrap).</summary>
+public enum TextWrapMode
+{
+    None,
+
+    /// <summary>Around the item's bounding box (with its stroke), grown by the offsets.</summary>
+    BoundingBox,
+
+    /// <summary>Around the item's shape (its path), grown by the top offset.</summary>
+    ObjectShape,
+
+    /// <summary>No text beside the item: lines jump below it.</summary>
+    JumpObject,
+
+    /// <summary>The text after the item goes on in the next column or frame.</summary>
+    NextColumn,
+}
+
+/// <summary>Which sides of a wrapped item text may go (<c>TextWrapSide</c>).</summary>
+public enum TextWrapSide
+{
+    BothSides,
+    LeftSide,
+    RightSide,
+    SideTowardsSpine,
+    SideAwayFromSpine,
+
+    /// <summary>The wider side of each line.</summary>
+    LargestArea,
+}
+
+/// <summary>
+/// A text wrap: <paramref name="Mode"/>, the distance kept from the item on each side (<paramref name="Offset"/>, an
+/// object-shape wrap uses the top one all round), the sides text may take, and <paramref name="Inverse"/> to keep the
+/// text inside the item instead.
+/// </summary>
+public sealed record TextWrap(TextWrapMode Mode, Spacing Offset = default, TextWrapSide Side = TextWrapSide.BothSides, bool Inverse = false);
+
+/// <summary>How a text frame sizes itself to its text (Text Frame Options &gt; Auto-Size, <c>AutoSizingType</c>).</summary>
+public enum AutoSizing
+{
+    Off,
+    HeightOnly,
+    WidthOnly,
+    HeightAndWidth,
+    HeightAndWidthProportionally,
+}
+
+/// <summary>The point of an auto-sizing frame that stays put (<c>AutoSizingReferencePoint</c>).</summary>
+public enum AutoSizingReferencePoint
+{
+    TopLeftPoint,
+    TopCenterPoint,
+    TopRightPoint,
+    LeftCenterPoint,
+    CenterPoint,
+    RightCenterPoint,
+    BottomLeftPoint,
+    BottomCenterPoint,
+    BottomRightPoint,
+}
+
+/// <summary>Where a text frame's first baseline goes (Text Frame Options &gt; Baseline Options, <c>FirstBaselineOffset</c>).</summary>
+public enum FirstBaselineOffset
+{
+    /// <summary>The tallest glyph's ascent below the top of the frame (InDesign's default).</summary>
+    AscentOffset,
+    CapHeight,
+    LeadingOffset,
+    XHeight,
+    EmboxHeight,
+
+    /// <summary>Exactly the minimum offset below the top.</summary>
+    FixedHeight,
+}
+
 /// <summary>How an image is fitted into its frame.</summary>
 public enum ImageFit
 {
@@ -304,6 +380,78 @@ public abstract class PageItem : IdmlNode
     }
 
     /// <summary>
+    /// How text in other frames wraps around the item (Window &gt; Text Wrap, <c>TextWrapPreference</c>); null when
+    /// the item has none of its own (no wrap, or its object style's). Setting null removes the item's own.
+    /// </summary>
+    public TextWrap? TextWrap
+    {
+        get
+        {
+            var preference = Element.Element("TextWrapPreference");
+            if (preference is null)
+            {
+                return null;
+            }
+            var offset = preference.Element(IdmlXml.Properties)?.Element("TextWrapOffset");
+            double Offset(string side) => IdmlXml.ParseDouble(offset?.Attribute(side)?.Value) ?? 0;
+            return new TextWrap(
+                preference.Attribute("TextWrapMode")?.Value switch
+                {
+                    "BoundingBoxTextWrap" => TextWrapMode.BoundingBox,
+                    "Contour" => TextWrapMode.ObjectShape,
+                    "JumpObjectTextWrap" => TextWrapMode.JumpObject,
+                    "NextColumnTextWrap" => TextWrapMode.NextColumn,
+                    _ => TextWrapMode.None,
+                },
+                new Spacing(Offset("Top"), Offset("Right"), Offset("Bottom"), Offset("Left")),
+                Enum.TryParse<TextWrapSide>(preference.Attribute("TextWrapSide")?.Value, out var side) ? side : TextWrapSide.BothSides,
+                preference.Attribute("Inverse")?.Value == "true");
+        }
+        set
+        {
+            Element.Element("TextWrapPreference")?.Remove();
+            if (value is null)
+            {
+                return;
+            }
+            // As 02-item-text-wrap: the mode, side and inverse flag as attributes, the offsets in Properties, and for an
+            // object-shape wrap no ContourOption (InDesign follows the frame's path, "Same As Clipping").
+            var offset = value.Offset;
+            var preference = new XElement("TextWrapPreference",
+                new XAttribute("Inverse", value.Inverse ? "true" : "false"),
+                new XAttribute("ApplyToMasterPageOnly", "false"),
+                new XAttribute("TextWrapSide", value.Side.ToString()),
+                new XAttribute("TextWrapMode", TextWrapModeName(value.Mode)),
+                new XElement(IdmlXml.Properties,
+                    new XElement("TextWrapOffset",
+                        new XAttribute("Top", IdmlXml.Format(offset.Top)),
+                        new XAttribute("Left", IdmlXml.Format(offset.Left)),
+                        new XAttribute("Bottom", IdmlXml.Format(offset.Bottom)),
+                        new XAttribute("Right", IdmlXml.Format(offset.Right)))));
+            var before = Element.Elements().LastOrDefault(child => child.Name.LocalName is "Properties" or "TransparencySetting" or "StrokeTransparencySetting"
+                or "FillTransparencySetting" or "ContentTransparencySetting" or "TextFramePreference" or "BaselineFrameGridOption"
+                or "TextFrameFootnoteOptionsObject" or "AnchoredObjectSetting");
+            if (before is null)
+            {
+                Element.AddFirst(preference);
+            }
+            else
+            {
+                before.AddAfterSelf(preference);
+            }
+        }
+    }
+
+    private static string TextWrapModeName(TextWrapMode mode) => mode switch
+    {
+        TextWrapMode.BoundingBox => "BoundingBoxTextWrap",
+        TextWrapMode.ObjectShape => "Contour",
+        TextWrapMode.JumpObject => "JumpObjectTextWrap",
+        TextWrapMode.NextColumn => "NextColumnTextWrap",
+        _ => "None",
+    };
+
+    /// <summary>
     /// Moves and resizes a rectangle, oval or text frame to <paramref name="pageBounds"/> (page coordinates), dropping
     /// any rotation. Meant for laying out generated items before content is fitted into them, e.g. growing a text
     /// frame to its measured text; a placed image keeps its own transform, so re-place it afterwards.
@@ -443,6 +591,64 @@ public sealed class TextFrame : PageItem
             ? value
             : VerticalJustification.Top;
         set => Preference.SetAttributeValue("VerticalJustification", value == VerticalJustification.Justify ? "JustifyAlign" : value + "Align");
+    }
+
+    /// <summary>The frame grows or shrinks to its text (06-frame-autosize writes it on <c>TextFramePreference</c>).</summary>
+    public AutoSizing AutoSizing
+    {
+        get => Enum.TryParse<AutoSizing>(ExistingPreference?.Attribute("AutoSizingType")?.Value, out var value) ? value : AutoSizing.Off;
+        set => Preference.SetAttributeValue("AutoSizingType", value.ToString());
+    }
+
+    /// <summary>The point that stays put while the frame auto-sizes (InDesign's default: the centre).</summary>
+    public AutoSizingReferencePoint AutoSizingReferencePoint
+    {
+        get => Enum.TryParse<AutoSizingReferencePoint>(ExistingPreference?.Attribute("AutoSizingReferencePoint")?.Value, out var value) ? value : AutoSizingReferencePoint.CenterPoint;
+        set => Preference.SetAttributeValue("AutoSizingReferencePoint", value.ToString());
+    }
+
+    /// <summary>The height an auto-sizing frame never shrinks below; null for none.</summary>
+    public double? MinimumHeightForAutoSizing
+    {
+        get => ExistingPreference?.Attribute("UseMinimumHeightForAutoSizing")?.Value == "true"
+            ? IdmlXml.ParseDouble(ExistingPreference.Attribute("MinimumHeightForAutoSizing")?.Value) ?? 0
+            : null;
+        set
+        {
+            Preference.SetAttributeValue("UseMinimumHeightForAutoSizing", value is null ? "false" : "true");
+            if (value is { } height)
+            {
+                Preference.SetAttributeValue("MinimumHeightForAutoSizing", IdmlXml.Format(height));
+            }
+        }
+    }
+
+    /// <summary>When the story ends in the frame, its columns end at the same depth (<c>VerticalBalanceColumns</c>).</summary>
+    public bool BalanceColumns
+    {
+        get => ExistingPreference?.Attribute("VerticalBalanceColumns")?.Value == "true";
+        set => Preference.SetAttributeValue("VerticalBalanceColumns", value ? "true" : "false");
+    }
+
+    /// <summary>Where the first baseline goes below the top of the frame (inside its inset).</summary>
+    public FirstBaselineOffset FirstBaselineOffset
+    {
+        get => Enum.TryParse<FirstBaselineOffset>(ExistingPreference?.Attribute("FirstBaselineOffset")?.Value, out var value) ? value : FirstBaselineOffset.AscentOffset;
+        set => Preference.SetAttributeValue("FirstBaselineOffset", value.ToString());
+    }
+
+    /// <summary>The least distance from the top of the frame to its first baseline (all of it with <see cref="FirstBaselineOffset.FixedHeight"/>).</summary>
+    public double MinimumFirstBaselineOffset
+    {
+        get => IdmlXml.ParseDouble(ExistingPreference?.Attribute("MinimumFirstBaselineOffset")?.Value) ?? 0;
+        set => Preference.SetAttributeValue("MinimumFirstBaselineOffset", IdmlXml.Format(value));
+    }
+
+    /// <summary>Text in this frame ignores every other item's text wrap.</summary>
+    public bool IgnoreWrap
+    {
+        get => ExistingPreference?.Attribute("IgnoreWrap")?.Value == "true";
+        set => Preference.SetAttributeValue("IgnoreWrap", value ? "true" : "false");
     }
 
     /// <summary>

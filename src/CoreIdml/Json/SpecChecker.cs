@@ -26,9 +26,13 @@ public static partial class IdmlJson
     private static readonly string[] CommonItemFields =
     [
         "type", "name", "label", "tag", "layer", "x", "y", "width", "height", "fill", "fillTint", "stroke", "strokeWeight",
-        "strokeTint", "strokeType", "endCap", "opacity", "cornerRadius", "rotation",
+        "strokeTint", "strokeType", "endCap", "opacity", "cornerRadius", "rotation", "wrap", "wrapOffset", "wrapSide", "wrapInverse",
     ];
-    private static readonly string[] TextItemFields = ["text", "style", "paragraphs", "columns", "columnGutter", "inset", "verticalAlign", "continueFrom"];
+    private static readonly string[] TextItemFields =
+    [
+        "text", "style", "paragraphs", "columns", "columnGutter", "inset", "verticalAlign", "continueFrom", "autoSize", "autoSizeFrom",
+        "autoSizeMinHeight", "balanceColumns", "firstBaseline", "firstBaselineMin", "ignoreWrap",
+    ];
     private static readonly string[] TableItemFields = ["rows", "columnWidths", "headerRows", "rowHeight", "cellStyle", "headerStyle", "headerFill", "alternateFill", "cellInset"];
     private static readonly string[] ImageItemFields = ["path", "fit"];
     private static readonly string[] LineItemFields = ["x2", "y2"];
@@ -70,6 +74,12 @@ public static partial class IdmlJson
         ["textStroke"] = "stroke", ["slant"] = "skew", ["oblique"] = "skew", ["italicAngle"] = "skew", ["underlineThickness"] = "underlineWeight",
         ["underlinePosition"] = "underlineOffset", ["underlineStyle"] = "underlineType", ["strikeWeight"] = "strikeThroughWeight",
         ["strikeColor"] = "strikeThroughColor", ["strikeThroughStyle"] = "strikeThroughType", ["strikeThruWeight"] = "strikeThroughWeight",
+        ["textWrap"] = "wrap", ["wrapMode"] = "wrap", ["textWrapMode"] = "wrap", ["wrapOffsets"] = "wrapOffset", ["textWrapOffset"] = "wrapOffset",
+        ["wrapGap"] = "wrapOffset", ["textWrapSide"] = "wrapSide", ["inverse"] = "wrapInverse", ["invert"] = "wrapInverse", ["autoSizing"] = "autoSize",
+        ["autoSizingType"] = "autoSize", ["autoFit"] = "autoSize", ["autoGrow"] = "autoSize", ["autoSizingReferencePoint"] = "autoSizeFrom",
+        ["referencePoint"] = "autoSizeFrom", ["anchor"] = "autoSizeFrom", ["minHeight"] = "autoSizeMinHeight", ["minimumHeight"] = "autoSizeMinHeight",
+        ["balance"] = "balanceColumns", ["verticalBalanceColumns"] = "balanceColumns", ["firstBaselineOffset"] = "firstBaseline",
+        ["minimumFirstBaselineOffset"] = "firstBaselineMin", ["ignoreTextWrap"] = "ignoreWrap",
     };
 
     /// <summary>
@@ -134,6 +144,7 @@ public static partial class IdmlJson
         string[] others = [.. TextItemFields, .. TableItemFields, .. ImageItemFields, .. LineItemFields];
         CheckFields(item, path, [.. CommonItemFields, .. own], warnings, [.. others.Except(own)], $"a {type} item");
         CheckSpacing(item, path, warnings, "inset");
+        CheckSpacing(item, path, warnings, "wrapOffset");
         if (type == "text" && Property(item, "continueFrom") is not null && (Property(item, "text") ?? Property(item, "paragraphs")) is not null)
         {
             warnings.Add($"{path}: a frame with continueFrom shows the text of the frame it continues; its own text and paragraphs are ignored.");

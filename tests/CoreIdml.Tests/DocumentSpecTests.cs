@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using CoreIdml.Dom;
 using CoreIdml.Json;
 using CoreIdml.Packaging;
+using CoreIdml.Xml;
 
 namespace CoreIdml.Tests;
 
@@ -522,6 +523,80 @@ public class DocumentSpecTests
         Assert.Equal(message, exception.Message);
         Assert.Contains("characterStyles[0]: unknown field 'slant', ignored (did you mean 'skew'?).",
             IdmlJson.CheckSpec("""{ "characterStyles": [ { "name": "C", "slant": 10 } ] }"""));
+    }
+
+    [Fact]
+    public void Text_wrap_and_text_frame_options_are_written_as_InDesign_stores_them()
+    {
+        var spec = """
+        {
+          "unit": "mm",
+          "pages": [ { "items": [
+            { "type": "image", "name": "photo", "path": "PHOTO", "x": 10, "y": 10, "width": 50, "height": 40, "wrap": "objectShape", "wrapOffset": { "all": 2 }, "wrapSide": "largest" },
+            { "type": "text", "name": "copy", "x": 10, "y": 60, "width": 100, "height": 50, "text": "x", "columns": 2, "wrap": "jumpObject", "wrapInverse": true,
+              "autoSize": "heightAndWidth", "autoSizeMinHeight": 20, "balanceColumns": true, "firstBaseline": "fixed", "firstBaselineMin": 5, "ignoreWrap": true }
+          ] } ]
+        }
+        """.Replace("PHOTO", Png().Replace("\\", "/", StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        // 02-item-text-wrap: Inverse, ApplyToMasterPageOnly, TextWrapSide, TextWrapMode, then the offsets in Properties;
+        // after the frame's own options and before the placed image.
+        var photo = Item(document, "photo");
+        var wrap = photo.Element("TextWrapPreference")!;
+        Assert.Equal(["Inverse", "ApplyToMasterPageOnly", "TextWrapSide", "TextWrapMode"], wrap.Attributes().Select(attribute => attribute.Name.LocalName));
+        Assert.Equal(["false", "false", "LargestArea", "Contour"], wrap.Attributes().Select(attribute => attribute.Value));
+        var mm2 = IdmlXml.Format(Units.FromUnit(2, "mm"));
+        Assert.Equal([mm2, mm2, mm2, mm2], wrap.Element("Properties")!.Element("TextWrapOffset")!.Attributes().Select(attribute => attribute.Value));
+        Assert.Equal(["Properties", "TextWrapPreference", "Image"], photo.Elements().Select(element => element.Name.LocalName));
+        var copy = Item(document, "copy");
+        Assert.Equal(["Properties", "TextFramePreference", "TextWrapPreference"], copy.Elements().Select(element => element.Name.LocalName));
+        Assert.Equal(("JumpObjectTextWrap", "true"), (copy.Element("TextWrapPreference")!.Attribute("TextWrapMode")!.Value, copy.Element("TextWrapPreference")!.Attribute("Inverse")!.Value));
+        // 06-frame-autosize, 06-frame-span-balance, 06-frame-basics: TextFramePreference attributes.
+        var preference = copy.Element("TextFramePreference")!;
+        string Attribute(string name) => preference.Attribute(name)!.Value;
+        Assert.Equal("HeightAndWidth", Attribute("AutoSizingType"));
+        Assert.Equal("TopLeftPoint", Attribute("AutoSizingReferencePoint"));
+        Assert.Equal("true", Attribute("UseMinimumHeightForAutoSizing"));
+        Assert.Equal(IdmlXml.Format(Units.FromUnit(20, "mm")), Attribute("MinimumHeightForAutoSizing"));
+        Assert.Equal("true", Attribute("VerticalBalanceColumns"));
+        Assert.Equal("FixedHeight", Attribute("FirstBaselineOffset"));
+        Assert.Equal(IdmlXml.Format(Units.FromUnit(5, "mm")), Attribute("MinimumFirstBaselineOffset"));
+        Assert.Equal("true", Attribute("IgnoreWrap"));
+    }
+
+    [Theory]
+    [InlineData("""{ "type": "rectangle", "wrap": "around" }""", "Unknown wrap 'around'. Use none, boundingBox, objectShape, jumpObject or nextColumn.")]
+    [InlineData("""{ "type": "rectangle", "wrap": "boundingBox", "wrapSide": "top" }""", "Unknown wrapSide 'top'. Use both, left, right, towardsSpine, awayFromSpine or largest.")]
+    [InlineData("""{ "type": "text", "autoSize": "grow" }""", "Unknown autoSize 'grow'. Use off, height, width, heightAndWidth or proportional.")]
+    [InlineData("""{ "type": "text", "autoSize": "height", "autoSizeFrom": "middle" }""", "Unknown autoSizeFrom 'middle'. Use topLeft, top, topRight, left, center, right, bottomLeft, bottom or bottomRight.")]
+    [InlineData("""{ "type": "text", "firstBaseline": "descent" }""", "Unknown firstBaseline 'descent'. Use ascent, capHeight, leading, xHeight, emBox or fixed.")]
+    [InlineData("""{ "type": "line", "wrapOffset": { "all": 3 } }""", "wrapOffset, wrapSide and wrapInverse need wrap.")]
+    public void Unknown_frame_option_values_name_the_ones_allowed(string item, string message)
+    {
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument($$"""{ "pages": [ { "items": [ {{item}} ] } ] }"""));
+
+        Assert.Equal(message, exception.Message);
+    }
+
+    [Fact]
+    public void Text_frame_options_on_other_items_are_reported_as_misplaced()
+    {
+        var warnings = IdmlJson.CheckSpec("""
+            { "pages": [ { "items": [ { "type": "rectangle", "autoSize": "height", "textWrap": "boundingBox" }, { "type": "text", "autoSizing": "height" } ] } ] }
+            """);
+
+        Assert.Contains("pages[0].items[0]: 'autoSize' does not apply to a rectangle item; it is ignored.", warnings);
+        Assert.Contains("pages[0].items[0]: unknown field 'textWrap', ignored (did you mean 'wrap'?).", warnings);
+        Assert.Contains("pages[0].items[1]: unknown field 'autoSizing', ignored (did you mean 'autoSize'?).", warnings);
+    }
+
+    private static string Png()
+    {
+        var path = TestFiles.TempPath(".png");
+        File.WriteAllBytes(path, TestFiles.Png(40, 30));
+        return path;
     }
 
     private static XElement Item(IdmlDocument document, string name) =>

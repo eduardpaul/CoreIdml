@@ -84,6 +84,52 @@ public sealed class SpecAuthoringTests
     }
 
     [Fact]
+    public void Text_wraps_around_a_spec_item_unless_the_frame_ignores_wraps()
+    {
+        using var document = IdmlJson.CreateDocument($$"""
+        {
+          "paragraphStyles": [ { "name": "Body", "font": "Liberation Serif", "size": 10, "leading": 12 } ],
+          "pages": [ { "items": [
+            { "type": "text", "name": "around", "x": 36, "y": 36, "width": 300, "height": 300, "text": "{{Text}} {{Text}}", "style": "Body" },
+            { "type": "text", "name": "over", "x": 36, "y": 400, "width": 300, "height": 300, "text": "{{Text}} {{Text}}", "style": "Body", "ignoreWrap": true },
+            { "type": "rectangle", "x": 36, "y": 36, "width": 100, "height": 60, "fill": "Black", "wrap": "boundingBox", "wrapOffset": { "all": 8 } },
+            { "type": "rectangle", "x": 36, "y": 400, "width": 100, "height": 60, "fill": "Black", "wrap": "boundingBox", "wrapOffset": { "all": 8 } }
+          ] } ]
+        }
+        """);
+
+        var around = Layout(document, "around").Lines;
+        var over = Layout(document, "over").Lines;
+
+        // The box ends 100 pt into the frame plus its 8 pt offset: the lines beside it start there, the rest at the edge.
+        var left = around.Min(line => line.Left);
+        Assert.Equal(108, around[0].Left - left, 6);
+        Assert.Contains(around, line => line.Left == left && line.Baseline > around[0].Baseline + 60);
+        Assert.All(over, line => Assert.Equal(over[0].Left, line.Left, 6));
+    }
+
+    [Fact]
+    public void A_spec_frame_that_auto_sizes_grows_down_to_its_text()
+    {
+        using var document = IdmlJson.CreateDocument($$"""
+        {
+          "paragraphStyles": [ { "name": "Body", "font": "Liberation Serif", "size": 10, "leading": 12 } ],
+          "pages": [ { "items": [ { "type": "text", "name": "grows", "x": 36, "y": 36, "width": 200, "height": 20, "text": "{{Text}}", "style": "Body", "autoSize": "height" } ] } ]
+        }
+        """);
+        var frame = (TextFrame)document.AllPageItems.Single(item => item.Name == "grows");
+        using var renderer = new IdmlRenderer(document, TestSupport.ExportOptions());
+
+        var (layout, fitted) = renderer.ComposeFitted(frame.Story, frame.Story.Frames, [renderer.FrameArea(frame, "1")]);
+
+        // Height only, from the top: the frame keeps its top and ends at its last baseline.
+        Assert.False(layout.Overset);
+        Assert.True(layout.Lines.Count > 3);
+        Assert.Equal(frame.InnerBounds.Y, fitted[0].Bounds.Y, 6);
+        Assert.Equal(layout.Lines[^1].Baseline, fitted[0].Bounds.Bottom, 6);
+    }
+
+    [Fact]
     public void Paragraphs_aligned_to_the_spec_baseline_grid_sit_on_its_lines()
     {
         using var document = IdmlJson.CreateDocument($$"""

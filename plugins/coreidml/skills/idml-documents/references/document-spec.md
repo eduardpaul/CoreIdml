@@ -183,6 +183,8 @@ Every item has `type` (default `text`), `x`, `y`, `width`, `height`, and optiona
 | `endCap` | Ends of lines: `butt` (default), `round` or `projecting`. |
 | `opacity` | Whole item, 0-100. |
 | `cornerRadius`, `rotation` | Rounded corners; degrees. |
+| `wrap` | Text wrap: the text of other frames goes around the item. `boundingBox` (its box), `objectShape` (its outline: ellipses, rounded corners), `jumpObject` (no text beside it), `nextColumn` (the text after it goes to the next column), `none`. See [Text wrap](#text-wrap). |
+| `wrapOffset`, `wrapSide`, `wrapInverse` | The gap kept around the item (a margins object in `unit`; `objectShape` uses `top` all round); `both` (default), `left`, `right`, `towardsSpine`, `awayFromSpine` or `largest` (the wider side of each line); `true` keeps the text inside the item instead. |
 
 By `type`:
 
@@ -192,6 +194,16 @@ By `type`:
     `runs`; each run has `text`, `style` (a **character** style) and character format fields.
   - `columns`, `columnGutter`, `inset` (a margins object), `verticalAlign` (`top`, `center`, `bottom`, `justify`).
   - `continueFrom`: `name` of an earlier text frame whose story continues here (threaded); no text of its own.
+  - `autoSize`: the frame grows or shrinks to its text: `height` (down from its top: captions, boxes whose text
+    varies), `width` (one line, from its left: labels, buttons), `heightAndWidth`, `proportional` or `off`.
+    `autoSizeFrom` is the point that stays put (`topLeft`, `top`, `topRight`, `left`, `center`, `right`,
+    `bottomLeft`, `bottom`, `bottomRight`; default `top` for height, `left` for width, else `topLeft`);
+    `autoSizeMinHeight` a height it never goes below. The preview, PDF and `idml_check_fit` size it as InDesign does.
+  - `balanceColumns`: `true` ends the columns at the same depth when the story ends in the frame.
+  - `firstBaseline`: where the first baseline goes: `ascent` (default), `capHeight`, `leading`, `xHeight`, `emBox`
+    or `fixed`; `firstBaselineMin` the least distance (in `unit`) from the top, inside the inset (all of it with
+    `fixed`: the way to put baselines exactly on a grid).
+  - `ignoreWrap`: `true` lets the frame's text run under every text wrap (a caption on a wrapped photo).
 - **`rectangle`**, **`ellipse`**: shapes, styled with `fill` and `stroke`.
 - **`line`**: from `x`, `y` to `x2`, `y2` (default `x + width`, `y + height`). Black 1 pt unless `stroke`,
   `strokeWeight` say otherwise.
@@ -203,6 +215,19 @@ By `type`:
   - `cellStyle`, `headerStyle`: paragraph styles. `headerFill`: a swatch. `alternateFill`: a swatch for every other
     body row, from the first below the header (zebra stripes).
   - `stroke` and `strokeWeight` draw the cell borders; `fill` is the frame's background.
+
+### Text wrap
+
+Put `wrap` on the item the text should avoid, not on the text frame:
+
+```json
+{ "type": "image", "name": "photo", "path": "/abs/photo.jpg", "x": 15, "y": 40, "width": 60, "height": 45,
+  "wrap": "boundingBox", "wrapOffset": { "all": 4 } }
+```
+
+Every text frame the item overlaps then sets its lines beside the item, `wrapOffset` away (in `unit`). An ellipse or
+a frame with rounded corners wraps closer with `objectShape`. A frame whose text should cross the item anyway (a
+caption on the photo) takes `"ignoreWrap": true`. Render the page to check the lines left beside a narrow item.
 
 ## Example
 
@@ -252,11 +277,13 @@ and `warnings`; `idml_apply` returns the items `added`. With `"checkFit": true` 
 not fit, with their frames by name. Pass the same `fonts` as for the PDF (fonts decide line breaks).
 
 Small fixes do not need the spec again: `idml_edit_item` moves and resizes (**in points**) and takes `fill`,
-`fillTint`, `stroke`, `strokeWeight`, `strokeTint`, `strokeType`, `endCap`, `cornerRadius`, `opacity`, `rotateBy`, and
-a text frame's `columns`, `columnGutter`, `inset`, `verticalAlign`. Put several in one `idml_batch`.
+`fillTint`, `stroke`, `strokeWeight`, `strokeTint`, `strokeType`, `endCap`, `cornerRadius`, `opacity`, `rotateBy`,
+`wrap`, `wrapOffset`, `wrapSide`, `wrapInverse`, and a text frame's `columns`, `columnGutter`, `inset`,
+`verticalAlign`, `autoSize`, `autoSizeFrom`, `autoSizeMinHeight`, `balanceColumns`, `firstBaseline`,
+`firstBaselineMin`, `ignoreWrap`. Put several in one `idml_batch`.
 
 ## Not supported
 
-Master pages, paragraph rules and text wrap (drawn when a document has them, but not authorable), polygons
+Master pages and paragraph rules (drawn when a document has them, but not authorable), polygons
 and free paths, gradients, effects other than opacity (the preview and PDF draw gradients a document already has, but
 not other effects). Repeat a header on each page instead of a master; draw rules with a `line`.

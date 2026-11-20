@@ -714,6 +714,47 @@ public class CliAndMcpTests
     }
 
     [Fact]
+    public void Edit_item_sets_text_wrap_auto_size_and_frame_options()
+    {
+        var path = TestFiles.TempPath(".idml");
+        var edited = TestFiles.TempPath(".idml");
+        var client = new McpTestClient();
+        client.CallText("idml_create", new JsonObject
+        {
+            ["spec"] = JsonNode.Parse("""{ "pages": [ { "items": [ { "type": "ellipse", "name": "dot", "x": 0, "y": 0, "width": 50, "height": 50, "wrap": "boundingBox", "wrapOffset": { "all": 4 } }, { "type": "text", "name": "copy", "x": 0, "y": 60, "width": 200, "height": 100, "text": "x" } ] } ] }"""),
+            ["outPath"] = path,
+        });
+
+        client.CallText("idml_batch", new JsonObject
+        {
+            ["path"] = path,
+            ["outPath"] = edited,
+            ["operations"] = JsonNode.Parse("""
+            [
+              { "tool": "idml_edit_item", "arguments": { "name": "dot", "wrap": "objectShape", "wrapOffset": { "top": 9 }, "wrapSide": "right" } },
+              { "tool": "idml_edit_item", "arguments": { "name": "copy", "autoSize": "height", "balanceColumns": true, "firstBaseline": "capHeight", "firstBaselineMin": 6, "ignoreWrap": true } }
+            ]
+            """),
+        });
+
+        using var document = IdmlDocument.Open(edited);
+        var dot = document.AllPageItems.Single(item => item.Name == "dot");
+        // Sides not given keep their value.
+        Assert.Equal(new Dom.TextWrap(Dom.TextWrapMode.ObjectShape, new Spacing(9, 4, 4, 4), Dom.TextWrapSide.RightSide), dot.TextWrap);
+        var copy = (Dom.TextFrame)document.AllPageItems.Single(item => item.Name == "copy");
+        Assert.Equal(Dom.AutoSizing.HeightOnly, copy.AutoSizing);
+        Assert.Equal(Dom.AutoSizingReferencePoint.TopCenterPoint, copy.AutoSizingReferencePoint);
+        Assert.True(copy.BalanceColumns);
+        Assert.Equal(Dom.FirstBaselineOffset.CapHeight, copy.FirstBaselineOffset);
+        Assert.Equal(6, copy.MinimumFirstBaselineOffset);
+        Assert.True(copy.IgnoreWrap);
+
+        Assert.Contains("apply to text frames", client.CallError("idml_edit_item", new JsonObject { ["path"] = edited, ["name"] = "dot", ["autoSize"] = "height", ["dryRun"] = true }), StringComparison.Ordinal);
+        Assert.Contains("Use none, boundingBox, objectShape, jumpObject or nextColumn", client.CallError("idml_edit_item", new JsonObject { ["path"] = edited, ["name"] = "dot", ["wrap"] = "square", ["dryRun"] = true }), StringComparison.Ordinal);
+        Assert.Contains("need wrap", client.CallError("idml_edit_item", new JsonObject { ["path"] = edited, ["name"] = "copy", ["wrapSide"] = "left", ["dryRun"] = true }), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void List_fonts_gives_families_and_their_styles()
     {
         var client = new McpTestClient();

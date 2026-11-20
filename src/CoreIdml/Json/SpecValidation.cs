@@ -148,6 +148,14 @@ public static partial class IdmlJson
                 Swatch(item.Stroke, path);
                 Choice<StrokeKind>(item.StrokeType, "strokeType", path);
                 Choice<LineCap>(item.EndCap, "endCap", path);
+                if (ItemOptionsError(ItemOptions(item, type)) is { } optionsError)
+                {
+                    Add(path, optionsError);
+                }
+                else if (item.Wrap is null && (item.WrapOffset ?? (object?)item.WrapSide ?? item.WrapInverse) is not null)
+                {
+                    Add(path, "wrapOffset, wrapSide and wrapInverse need wrap.");
+                }
                 switch (type)
                 {
                     case "text":

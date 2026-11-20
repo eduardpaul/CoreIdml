@@ -15,7 +15,7 @@ internal static class LayoutTools
         {
             Name = "idml_edit_item",
             Title = "Edit an item",
-            Description = "Change a page item: geometry (x, y, width, height in pt, page coordinates; omitted ones keep their value), look, page (same position), layer, name, visibility, lock. columns, columnGutter, inset, verticalAlign: text frames only. Only rectangles, ovals and text frames resize; other items only move. Returns the new bounds.",
+            Description = "Change a page item: geometry (x, y, width, height in pt, page coordinates; omitted ones keep their value), look, text wrap (wrap, wrapOffset, wrapSide, wrapInverse), page (same position), layer, name, visibility, lock. columns, columnGutter, inset, verticalAlign, autoSize, autoSizeFrom, autoSizeMinHeight, balanceColumns, firstBaseline, firstBaselineMin, ignoreWrap: text frames only. Only rectangles, ovals and text frames resize; other items only move. Returns the new bounds.",
             InputSchema = Schema.Edit(ItemProperty + "," +
                 """ "x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number","exclusiveMinimum":0},"height":{"type":"number","exclusiveMinimum":0},""" +
                 """ "pageIndex":{"type":"integer","minimum":0,"description":"Move to this page"},""" +
@@ -299,7 +299,13 @@ internal static class LayoutTools
         """ "opacity":{"type":"number","minimum":0,"maximum":100},"rotateBy":{"type":"number","description":"Degrees counter-clockwise, around the centre"},""" +
         """ "columns":{"type":"integer","minimum":1},"columnGutter":{"type":"number","minimum":0},""" +
         """ "inset":{"type":"object","description":"Sides not given fall back to all, then keep their value","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},""" +
-        """ "verticalAlign":{"type":"string","enum":["top","center","bottom","justify"]}""";
+        """ "verticalAlign":{"type":"string","enum":["top","center","bottom","justify"]},""" +
+        """ "wrap":{"type":"string","enum":["none","boundingBox","objectShape","jumpObject","nextColumn"],"description":"Text wrap around this item"},""" +
+        """ "wrapOffset":{"type":"object","description":"pt; sides not given fall back to all, then keep their value","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},""" +
+        """ "wrapSide":{"type":"string","enum":["both","left","right","towardsSpine","awayFromSpine","largest"]},"wrapInverse":{"type":"boolean"},""" +
+        """ "autoSize":{"type":"string","enum":["off","height","width","heightAndWidth","proportional"]},""" +
+        """ "autoSizeFrom":{"type":"string","enum":["topLeft","top","topRight","left","center","right","bottomLeft","bottom","bottomRight"]},"autoSizeMinHeight":{"type":"number","minimum":0},""" +
+        """ "balanceColumns":{"type":"boolean"},"firstBaseline":{"type":"string","enum":["ascent","capHeight","leading","xHeight","emBox","fixed"]},"firstBaselineMin":{"type":"number","minimum":0},"ignoreWrap":{"type":"boolean"}""";
 
     /// <summary>The look arguments of idml_edit_item (see <see cref="LookProperties"/>) applied to an item.</summary>
     internal static void ApplyLook(IdmlDocument document, PageItem item, ToolArguments args)
@@ -319,6 +325,11 @@ internal static class LayoutTools
             Rotation = args.OptionalDouble("rotateBy"),
         };
         item.ApplyStyle(style);
+        var options = (string[])["wrap", "wrapOffset", "wrapSide", "wrapInverse", "autoSize", "autoSizeFrom", "autoSizeMinHeight", "balanceColumns", "firstBaseline", "firstBaselineMin", "ignoreWrap"];
+        if (options.Any(args.Has))
+        {
+            Checked(() => IdmlJson.ApplyItemOptions(document, item, args.Json.GetRawText()));
+        }
 
         var textArguments = (string[])["columns", "columnGutter", "inset", "verticalAlign"];
         if (!textArguments.Any(args.Has))

@@ -348,7 +348,13 @@ public static partial class IdmlJson
         {
             document.Tags.TagPageItem(created, tag);
         }
+        ApplyItemOptions(created, ItemOptions(item, type), unit);
     }
+
+    /// <summary>The options of a spec item that apply to its type: text wrap for every item, text frame options for text.</summary>
+    private static ItemSpec ItemOptions(ItemSpec item, string type) => type == "text"
+        ? item
+        : new ItemSpec { Wrap = item.Wrap, WrapOffset = item.WrapOffset, WrapSide = item.WrapSide, WrapInverse = item.WrapInverse };
 
     private static void RenderText(IdmlDocument document, Story story, ItemSpec item)
     {

@@ -350,6 +350,18 @@ public sealed class ItemSpec
 
     public double? Rotation { get; set; }
 
+    /// <summary>Text wrap around the item: none, boundingBox, objectShape, jumpObject or nextColumn.</summary>
+    public string? Wrap { get; set; }
+
+    /// <summary>Distance kept between the item and the wrapped text (an object-shape wrap uses top all round).</summary>
+    public SpacingSpec? WrapOffset { get; set; }
+
+    /// <summary>both (default), left, right, towardsSpine, awayFromSpine or largest: where the text may go.</summary>
+    public string? WrapSide { get; set; }
+
+    /// <summary>Keep the text inside the item instead.</summary>
+    public bool? WrapInverse { get; set; }
+
     // ---- text ----
 
     /// <summary>Plain text; "\n" separates paragraphs.</summary>
@@ -371,6 +383,27 @@ public sealed class ItemSpec
 
     /// <summary>Name of a text frame whose overflow continues in this one.</summary>
     public string? ContinueFrom { get; set; }
+
+    /// <summary>off, height, width, heightAndWidth or proportional: the frame grows or shrinks to its text.</summary>
+    public string? AutoSize { get; set; }
+
+    /// <summary>The point that stays put: topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight.</summary>
+    public string? AutoSizeFrom { get; set; }
+
+    /// <summary>The height an auto-sizing frame never shrinks below.</summary>
+    public double? AutoSizeMinHeight { get; set; }
+
+    /// <summary>Columns end at the same depth when the story ends in the frame.</summary>
+    public bool? BalanceColumns { get; set; }
+
+    /// <summary>ascent (default), capHeight, leading, xHeight, emBox or fixed: where the first baseline goes.</summary>
+    public string? FirstBaseline { get; set; }
+
+    /// <summary>The least distance from the frame's top (inside the inset) to the first baseline.</summary>
+    public double? FirstBaselineMin { get; set; }
+
+    /// <summary>The frame's text ignores other items' text wrap.</summary>
+    public bool? IgnoreWrap { get; set; }
 
     // ---- image ----
 
