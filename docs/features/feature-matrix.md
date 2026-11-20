@@ -257,6 +257,23 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 14 | **Bleed in the PDF** | Cut at trim | S | MediaBox = trim + bleed, TrimBox and BleedBox. |
 | 15 | **Mixed inks, OpenType features, optical kerning** | Approximated or missing | M each | Lower priority. |
 
+### Pages the paragraph composer made worse
+
+The paragraph composer, spacing limits and drop caps (`2f0438e`, `fb081d1`, `e960eb4`) raised the doc-samples mean
+from 93.25% to 94.49% (59 pages better) and were merged with these 14 pages worse, each by a cause other than the
+composer itself. They are the composer's follow-up list:
+
+| Cause | Pages (score change) |
+| --- | --- |
+| Hyphenation points from the TeX patterns that InDesign's dictionary does not use ("Mor-ris", "Neth-erfield"), now taken by whole-paragraph breaking | `01-doc-sections-numbering` p7 (−10.5), `11-long-footnotes-endnotes` p4 (−9.9), `01-doc-margins-guides` p6 (−7.8), `06-frame-autosize` p6 (−4.8), `06-frame-basics` p2 (−1.3) |
+| Narrow justified columns of long words; French and German are not hyphenated | `08-para-hyphenation-justification` p2 (−15.5), `07-char-language-nobreak` p1 (−7.8) |
+| A hyphen on the second-to-last line that InDesign refuses (no rule found yet) | `01-doc-page-sizes` p4 (−2.7), `09-style-text-styles` p2 (−1.6), `11-long-markers-variables` p3 (−0.6), `01-doc-margins-guides` p2 (−0.4) |
+| Text in non-rectangular frames composed in the bounding box | `02-item-corners` p4 (−6.0); `06-frame-shapes` p4 mixed |
+| Optical margin alignment not done | `08-para-optical-margin` p2 (−0.1) |
+
+`08-para-drop-caps` p2 also reports story u270 overset: InDesign fits it by setting a line at 66% word spacing, below
+the 80% minimum.
+
 Agent-only gaps (the preview already draws them, the tools cannot author them), cheapest first: stroke alignment,
 join; baseline shift, scale and language in styles; cell fill, inset and vertical alignment per cell;
 merged cells; delete rows and add or delete columns; groups; placed PDFs; object styles. Most are a field in
