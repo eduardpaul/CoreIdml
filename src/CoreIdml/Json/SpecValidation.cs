@@ -184,6 +184,7 @@ public static partial class IdmlJson
                         ParagraphStyle(item.CellStyle, path);
                         ParagraphStyle(item.HeaderStyle, path);
                         Swatch(item.HeaderFill, path);
+                        Swatch(item.AlternateFill, path);
                         break;
                 }
             }

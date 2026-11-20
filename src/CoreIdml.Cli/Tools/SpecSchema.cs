@@ -93,7 +93,7 @@ internal static class SpecSchema
           "columnWidths":{"type":"array","items":{"type":"number"},"description":"table"},
           "headerRows":{"type":"integer","minimum":0,"description":"table"},"rowHeight":{"type":"number","description":"table: default 18 pt"},
           "cellStyle":{"type":"string","description":"table: paragraph style"},"headerStyle":{"type":"string","description":"table: paragraph style"},
-          "headerFill":{"type":"string","description":"table: swatch"},"cellInset":{"type":"number","description":"table"},
+          "headerFill":{"type":"string","description":"table: swatch"},"alternateFill":{"type":"string","description":"table: swatch of every other body row"},"cellInset":{"type":"number","description":"table"},
           "x2":{"type":"number","description":"line: end; default x + width"},"y2":{"type":"number","description":"line: default y + height"}}}}
         """;
 

@@ -21,7 +21,7 @@ public static partial class IdmlJson
         "strokeTint", "strokeType", "endCap", "opacity", "cornerRadius", "rotation",
     ];
     private static readonly string[] TextItemFields = ["text", "style", "paragraphs", "columns", "columnGutter", "inset", "verticalAlign", "continueFrom"];
-    private static readonly string[] TableItemFields = ["rows", "columnWidths", "headerRows", "rowHeight", "cellStyle", "headerStyle", "headerFill", "cellInset"];
+    private static readonly string[] TableItemFields = ["rows", "columnWidths", "headerRows", "rowHeight", "cellStyle", "headerStyle", "headerFill", "alternateFill", "cellInset"];
     private static readonly string[] ImageItemFields = ["path", "fit"];
     private static readonly string[] LineItemFields = ["x2", "y2"];
 

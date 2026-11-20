@@ -160,7 +160,8 @@ By `type`:
 - **`table`**: a text frame holding a table.
   - `rows`: list of rows, each a list of cell texts.
   - `headerRows`, `columnWidths` (in `unit`), `rowHeight` (default 18 pt), `cellInset`.
-  - `cellStyle`, `headerStyle`: paragraph styles. `headerFill`: a swatch.
+  - `cellStyle`, `headerStyle`: paragraph styles. `headerFill`: a swatch. `alternateFill`: a swatch for every other
+    body row, from the first below the header (zebra stripes).
   - `stroke` and `strokeWeight` draw the cell borders; `fill` is the frame's background.
 
 ## Example

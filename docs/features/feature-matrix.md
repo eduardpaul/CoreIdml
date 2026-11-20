@@ -176,14 +176,14 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | --- | --- | --- | --- | --- |
 | Paragraph and character styles | `ParagraphStyle`, `CharacterStyle`, `BasedOn` | ✅ | ✅ | `idml_define_style`, `idml_apply_style`, spec styles. Local overrides kept. |
 | Object styles | `ObjectStyle` | ❌ | 🟡 | See page items. |
-| Cell styles | `CellStyle` | ❌ | ✅ | Resolved for fill, edges, insets, vertical alignment. (The spec's `cellStyle` is a *paragraph* style.) |
-| Table styles **[new]** | `TableStyle`, `*RegionCellStyle` | ❌ | 🟡 | The table style's own attributes resolve; its header, body, footer and column region cell styles are not applied to cells. |
+| Cell styles | `CellStyle` | ❌ | ✅ | Resolved for fill, edges, insets, vertical alignment; a cell without one takes its table style's region cell style. (The spec's `cellStyle` is a *paragraph* style.) |
+| Table styles **[new]** | `TableStyle`, `*RegionCellStyle` | ❌ | ✅ | The table style's attributes resolve (alternating fills and strokes, border); its header, footer, left and right column and body region cell styles apply to cells without a cell style of their own (header and footer first, then the columns). `09-style-table-cell-styles` p2. |
 
 ## Tables
 
 | Feature | IDML | Agent | Preview | Notes |
 | --- | --- | --- | --- | --- |
-| Create a table | `Table` in a story | ✅ | ✅ | Spec `table`: `rows`, `headerRows`, `columnWidths`, `rowHeight`, `cellInset`, `headerFill`, borders. |
+| Create a table | `Table` in a story | ✅ | ✅ | Spec `table`: `rows`, `headerRows`, `columnWidths`, `rowHeight`, `cellInset`, `headerFill`, `alternateFill`, borders. |
 | Cell text | `Cell` | ✅ | ✅ | `idml_edit_table` `setCell`, `setRow`; `idml_get_story` lists table runs. |
 | Add rows | `Row` | ✅ | ✅ | `addRow`. |
 | Delete rows, insert or delete columns **[new]** | `Row`, `Column` | ❌ | — | No operation. |
@@ -196,7 +196,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Cell borders | `*EdgeStrokeWeight`, `*EdgeStrokeColor`, `*EdgeStrokeTint` | 🟡 | ✅ | Agent: one stroke for the whole table. Shared edges drawn once, heavier wins. |
 | Cell border types **[new]** | `*EdgeStrokeType`, `*EdgeStrokeGapColor` | ❌ | ❌ † | Dashed and dotted cell borders drawn solid. |
 | Cell inset, vertical alignment | `TextTopInset`, ..., `VerticalJustification` | 🟡 | ✅ | Agent: one inset for every cell; vertical alignment DOM only. |
-| Alternating fills and strokes **[new]** | `StartRowFillColor`, `EndRowFillColor`, `*RowFillCount`, `StartRowStrokeColor`, ... | ❌ | ❌ † | Zebra-striped tables are drawn plain. Very common in data sheets and price lists. |
+| Alternating fills and strokes **[new]** | `StartRowFillColor`, `EndRowFillColor`, `*RowFillCount`, `StartRowStrokeColor`, ... | 🟡 | ✅ | Row and column patterns with counts and skipped rows or columns, from the table or its table style; body rows only. A cell's own fill colour takes the pattern's tint. Agent: `alternateFill` (every other body row). `10-table-alternating` matches InDesign on every page. |
 | Diagonal lines **[new]** | `DiagonalLine*` | ❌ | ❌ † | |
 | Cell rotation **[new]** | `RotationAngle` on cells | ❌ | ❌ † | Rotated column headers are drawn horizontal. |
 | Graphic cells | cell holding a `Rectangle` with an image | ❌ | ❌ † | |
@@ -243,7 +243,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | --- | --- | --- | --- | --- |
 | 1 | ~~**Bullets and numbering**~~ | Drawn | M | See the row under paragraph formatting; `08-para-bullets-numbering` matches InDesign on every page. |
 | 2 | ~~**Tracked changes**~~ | Drawn | S | See the row under long documents; `11-long-tracked-changes` matches InDesign except one hyphenation on p4. |
-| 3 | **Table alternating fills, table style region cell styles** | Plain tables | S–M | Both resolved in `DrawCell`; the agent side can expose `alternateFill` on the spec table. |
+| 3 | ~~**Table alternating fills, table style region cell styles**~~ | Drawn | S–M | See the table and table style rows; spec `alternateFill`. |
 | 4 | **Keep options, widows and orphans, start in next frame** | Headings orphaned | M | In `Flow.Place`; needs look-ahead of N lines. Changes overset results. |
 | 5 | **Text variables, next/previous page number** | Blank | S | Draw `ResultText`; compute page markers like the current page number. |
 | 6 | ~~**Tab leaders, decimal tabs**~~ | Drawn | S | See the tab rows under paragraph formatting; `08-para-tabs` matches InDesign within 1 pt on every page. |

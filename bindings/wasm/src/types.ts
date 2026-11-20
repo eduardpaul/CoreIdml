@@ -163,6 +163,8 @@ export interface ItemSpec {
   cellStyle?: string;
   headerStyle?: string;
   headerFill?: string;
+  /** Swatch of every other body row, from the first (zebra stripes). */
+  alternateFill?: string;
   cellInset?: number;
   [field: string]: unknown;
 }

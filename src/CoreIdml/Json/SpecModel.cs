@@ -269,6 +269,8 @@ public sealed class ItemSpec
 
     public string? HeaderFill { get; set; }
 
+    public string? AlternateFill { get; set; }
+
     public double? CellInset { get; set; }
 }
 

@@ -284,6 +284,7 @@ public static partial class IdmlJson
                     CellParagraphStyle = item.CellStyle is { } cellStyle ? RequireParagraphStyle(document, cellStyle) : null,
                     HeaderParagraphStyle = item.HeaderStyle is { } headerStyle ? RequireParagraphStyle(document, headerStyle) : null,
                     HeaderFill = item.HeaderFill is { } headerFill ? RequireSwatch(document, headerFill) : null,
+                    AlternateFill = item.AlternateFill is { } alternateFill ? RequireSwatch(document, alternateFill) : null,
                     Stroke = shape.Stroke,
                     StrokeWeight = item.StrokeWeight,
                     CellInset = item.CellInset is { } cellInset ? U(cellInset) : null,

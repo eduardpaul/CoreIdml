@@ -8,7 +8,7 @@ namespace CoreIdml.Dom;
 /// <list type="bullet">
 /// <item>text: run (local formatting), character style and its BasedOn chain, paragraph (local), paragraph style and its BasedOn chain;</item>
 /// <item>page items: the item, then its object style and the object style's BasedOn chain;</item>
-/// <item>table cells: the cell, then its cell style chain.</item>
+/// <item>table cells: the cell, then its cell style chain (or its table style's region cell style chain).</item>
 /// </list>
 /// A value is looked up as an attribute first, then as a <c>Properties</c> child (<c>AppliedFont</c>, <c>Leading</c>,
 /// <c>BasedOn</c>, ...). Read-only and cached per instance; create one per rendering pass.
@@ -109,11 +109,57 @@ public sealed class AttributeResolver
     internal static string? FramePreference(IReadOnlyList<XElement> objectChain, string name) =>
         FramePreferenceSource(objectChain, name) is { } preference ? Own(preference, name) : null;
 
-    /// <summary>The cell, then its cell style chain.</summary>
+    /// <summary>
+    /// The cell, then its cell style chain. A cell without a cell style of its own ([None]) takes the cell style its
+    /// table style gives its region instead (<see cref="RegionCellStyle"/>).
+    /// </summary>
     public string? Cell(XElement cell, string name)
     {
         ArgumentNullException.ThrowIfNull(cell);
-        return Own(cell, name) ?? First(StyleChain(cell.Attribute("AppliedCellStyle")?.Value), name);
+        if (Own(cell, name) is { } value)
+        {
+            return value;
+        }
+        var style = cell.Attribute("AppliedCellStyle")?.Value;
+        if (style is null or IdmlNames.NoCellStyle && RegionCellStyle(cell) is { } region)
+        {
+            style = region;
+        }
+        return First(StyleChain(style), name);
+    }
+
+    /// <summary>
+    /// The cell style the table style applies to the region of <paramref name="cell"/>, or null. Header and footer
+    /// rows come before the left and right columns, which come before the body (InDesign's order of precedence;
+    /// in 09-style-table-cell-styles p2 the corner cells take the header and footer styles). A region marked "same
+    /// as body" (<c>HeaderRegionSameAsBodyRegion</c>, ...) takes the body's style.
+    /// </summary>
+    public string? RegionCellStyle(XElement cell)
+    {
+        ArgumentNullException.ThrowIfNull(cell);
+        if (cell.Parent is not { Name.LocalName: "Table" } table)
+        {
+            return null;
+        }
+        var name = (cell.Attribute("Name")?.Value ?? "0:0").Split(':');
+        var column = IdmlXml.ParseDouble(name[0]) ?? 0;
+        var row = name.Length > 1 ? IdmlXml.ParseDouble(name[1]) ?? 0 : 0;
+        var columnSpan = IdmlXml.ParseDouble(cell.Attribute("ColumnSpan")?.Value) ?? 1;
+        double Count(string attribute) => IdmlXml.ParseDouble(table.Attribute(attribute)?.Value) ?? 0;
+        var header = Count("HeaderRowCount");
+        var footer = Count("FooterRowCount");
+        var rows = header + Count("BodyRowCount") + footer;
+        var columns = Count("ColumnCount");
+        var region = row < header ? "Header"
+            : row >= rows - footer ? "Footer"
+            : column == 0 ? "LeftColumn"
+            : column + columnSpan >= columns ? "RightColumn"
+            : "Body";
+        if (region != "Body" && Table(table, region + "RegionSameAsBodyRegion") == "true")
+        {
+            region = "Body";
+        }
+        return Table(table, region + "RegionCellStyle") is { } style and not IdmlNames.NoReference ? style : null;
     }
 
     /// <summary>The table, then its table style chain.</summary>

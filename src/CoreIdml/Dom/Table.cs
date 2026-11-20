@@ -22,6 +22,12 @@ public sealed record TableOptions
 
     public Swatch? HeaderFill { get; init; }
 
+    /// <summary>
+    /// Fill of every other body row, from the first (zebra stripes): the table's alternating row fills, one row
+    /// filled and one not. Header rows are not counted.
+    /// </summary>
+    public Swatch? AlternateFill { get; init; }
+
     /// <summary>Colour of every cell edge; null keeps InDesign's default (black).</summary>
     public Swatch? Stroke { get; init; }
 
@@ -142,6 +148,14 @@ public sealed class Table : IdmlNode
             new XAttribute("ColumnCount", columns.ToString(CultureInfo.InvariantCulture)),
             new XAttribute("AppliedTableStyle", IdmlNames.BasicTableStyle),
             new XAttribute("TableDirection", "LeftToRightDirection"));
+        if (options.AlternateFill is { } alternate)
+        {
+            table.SetAttributeValue("StartRowFillColor", alternate.Reference);
+            table.SetAttributeValue("StartRowFillTint", "100");
+            table.SetAttributeValue("StartRowFillCount", "1");
+            table.SetAttributeValue("EndRowFillColor", Swatch.None.Reference);
+            table.SetAttributeValue("EndRowFillCount", "1");
+        }
 
         for (var row = 0; row < rows; row++)
         {

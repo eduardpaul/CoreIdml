@@ -394,7 +394,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | Sample | Checks | Pass when | Watch out |
 | --- | --- | --- | --- |
 | `09-style-text-styles` | B, D | Based-on chains, next style (B only), character styles, overrides and clearing, object style carrying a paragraph style. | |
-| `09-style-table-cell-styles` | C, B | Cell styles per cell; table style regions (header, body, footer, left/right column) including across a frame break; local overrides. | Region cell styles are not applied today. |
+| `09-style-table-cell-styles` | C, B | Cell styles per cell; table style regions (header, body, footer, left/right column) including across a frame break; local overrides. | p3 still fails: footer rows are not repeated at the frame break (`10-table-structure`). |
 | `10-table-structure` | D, C | Header and footer rows, row heights (at least / exactly), merged cells, table across two frames with the header repeated, table in running text, nested table. | |
 | `10-table-cells` | C (regions), F | Fills, per-edge strokes and types, insets and vertical alignment, rotated text, diagonal lines in front and behind; p6 empty graphic cells with their insets and clipping, the overset cell reported. | Edge types are drawn solid today. The overset cell is the one expected overset in the package. |
 | `10-table-alternating` | C (regions) | Alternating row and column fills and strokes with counts, from the table and from a table style, with merged cells. | |
@@ -497,9 +497,9 @@ changes, variables).
 | `08-para-optical-margin` | 1/3 | p3 6.21% | 75% | 56.4 pt |  |
 | `08-para-rules` | 0/6 | p5 1.04% | 100% | 0.2 pt |  |
 | `08-para-tabs` | 0/5 | p2 0.44% | 96% | 9.9 pt |  |
-| `09-style-table-cell-styles` | 3/5 | p3 17.27% | 94% | 22.4 pt |  |
+| `09-style-table-cell-styles` | 1/5 | p3 6.50% | 94% | 22.4 pt |  |
 | `09-style-text-styles` | 0/5 | p4 1.24% | 97% | 53.9 pt |  |
-| `10-table-alternating` | 5/7 | p6 15.33% | 99% | 0.7 pt |  |
+| `10-table-alternating` | 0/7 | p6 2.51% | 99% | 0.7 pt |  |
 | `10-table-cells` | 1/6 | p2 5.44% | 95% | 4.2 pt |  |
 | `10-table-structure` | 1/6 | p4 5.96% | 83% | 1.6 pt |  |
 | `11-long-conditional-text` | 0/5 | p3 0.31% | 92% | 12.5 pt |  |

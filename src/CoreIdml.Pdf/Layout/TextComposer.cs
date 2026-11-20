@@ -823,6 +823,7 @@ internal sealed class TextComposer
         }
         flow.BeginBlock();
 
+        var formatting = new TableFormatting(table, resolver, rows.Count, columnWidths.Count);
         var edges = new Dictionary<(long, long, long, long), LineOp>();
         void FlushEdges()
         {
@@ -839,7 +840,7 @@ internal sealed class TextComposer
             {
                 var height = heights.Skip(r).Take(cell.RowSpan).Sum();
                 var cellX = x + columnWidths.Take(cell.Column).Sum();
-                DrawCell(cell, new Rect(cellX, rowTop, cell.Width, height), flow, edges);
+                DrawCell(cell, new Rect(cellX, rowTop, cell.Width, height), flow, formatting, edges);
             }
         }
 
@@ -983,13 +984,18 @@ internal sealed class TextComposer
         return new Spacing(Inset("Top"), Inset("Right"), Inset("Bottom"), Inset("Left"));
     }
 
-    private void DrawCell(CellLayout cell, Rect box, Flow flow, Dictionary<(long, long, long, long), LineOp> edges)
+    /// <summary>
+    /// Draws a cell's fill, text and edges. Each fill and stroke attribute comes from the cell (local, then its cell
+    /// style, own or from its table style's region), else from the table (<see cref="TableFormatting"/>).
+    /// </summary>
+    private void DrawCell(CellLayout cell, Rect box, Flow flow, TableFormatting table, Dictionary<(long, long, long, long), LineOp> edges)
     {
         var resolver = reader.Resolver;
         var element = cell.Cell;
-        if (document.Swatches.ResolveColor(resolver.Cell(element, "FillColor")) is { } fill)
+        var fillSource = table.FillSource(cell.Row, cell.Column);
+        if (document.Swatches.ResolveColor(resolver.Cell(element, "FillColor") ?? table.Value(fillSource, "Color")) is { } fill)
         {
-            var tint = Values.Number(resolver.Cell(element, "FillTint"), -1);
+            var tint = Values.Number(resolver.Cell(element, "FillTint") ?? table.Value(fillSource, "Tint"), -1);
             flow.Add(new RectOp(box, tint >= 0 ? fill.WithTint(tint) : fill));
         }
         var inset = CellInsets(element);
@@ -1010,22 +1016,26 @@ internal sealed class TextComposer
             var stored = resolver.Cell(element, side + "EdgeStrokeWeight");
             // A merged cell borders several cells along its spanning sides. InDesign leaves the weight out when the
             // segments differ ("mixed"); the neighbouring cells then hold each segment's stroke, so draw nothing here.
+            // On the outside of the table there is no neighbour: a cell that stores no edge weight at all has default
+            // edges, not mixed ones, and gets the table border there (10-table-alternating p7).
             var spans = side is "Left" or "Right" ? cell.RowSpan > 1 : cell.ColumnSpan > 1;
-            if (stored is null && spans)
+            if (stored is null && spans && (!table.IsOuter(side, cell.Row, cell.Column, cell.RowSpan, cell.ColumnSpan)
+                || ((string[])["Top", "Bottom", "Left", "Right"]).Any(other => resolver.Cell(element, other + "EdgeStrokeWeight") is not null)))
             {
                 return;
             }
-            var weight = Values.Number(stored, 1);
+            var source = table.EdgeSource(side, cell.Row, cell.Column, cell.RowSpan, cell.ColumnSpan);
+            var weight = Values.Number(stored ?? table.Value(source, "Weight"), 1);
             if (weight <= 0)
             {
                 return;
             }
-            var color = document.Swatches.ResolveColor(resolver.Cell(element, side + "EdgeStrokeColor") ?? "Color/Black");
+            var color = document.Swatches.ResolveColor(resolver.Cell(element, side + "EdgeStrokeColor") ?? table.Value(source, "Color") ?? "Color/Black");
             if (color is null)
             {
                 return;
             }
-            var tint = Values.Number(resolver.Cell(element, side + "EdgeStrokeTint"), -1);
+            var tint = Values.Number(resolver.Cell(element, side + "EdgeStrokeTint") ?? table.Value(source, "Tint"), -1);
             // Neighbouring cells share an edge: keep the heavier stroke, drawn once (InDesign's best-joins look).
             var key = ((long)Math.Round(from.X * 100), (long)Math.Round(from.Y * 100), (long)Math.Round(to.X * 100), (long)Math.Round(to.Y * 100));
             if (!edges.TryGetValue(key, out var existing) || existing.Width < weight)
