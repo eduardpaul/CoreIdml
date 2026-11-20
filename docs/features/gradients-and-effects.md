@@ -2,8 +2,12 @@
 
 Status: **gradients (6a's shading and pattern part, 6b's rendering) done**, checked against `03-color-gradients`;
 the facts marked "(memory)" below were checked there (start and length are in inner coordinates, radial is centred on
-the start with radius = length; InDesign's midpoint encoding is in `Writing/GradientShading.cs`). Not done: spec and
-MCP authoring (`AddGradient` is DOM only), the radial highlight, and all effects (6c). The rest is the plan, written against commit `691f87a`; the files it then marked **(wip)** were committed in `dc5bbf4` (1.1.0), so their line numbers may have moved. Overview, order, milestones and open questions: [README.md](README.md).
+the start with radius = length; InDesign's midpoint encoding is in `Writing/GradientShading.cs`). Gradient authoring
+(spec `gradients`, `gradientAngle`) is done. **Effects (6c tiers 1 and 2) are done**, checked against the
+`04-fx-*` samples: what is drawn and what is not is in the feature matrix's "Transparency and effects" rows. Where
+this plan's "(memory)" facts were wrong: the blur is a Gaussian with σ = size / 2, not a box blur of radius `Size`.
+Not done: the radial highlight; bevel and emboss and satin (reported as not drawn); noise; the `EffectResolution`
+option (effects are always 150 ppi); effect authoring (only `opacity`). The rest is the plan, written against commit `691f87a`; the files it then marked **(wip)** were committed in `dc5bbf4` (1.1.0), so their line numbers may have moved. Overview, order, milestones and open questions: [README.md](README.md).
 
 
 ## IDML
