@@ -110,6 +110,46 @@ export interface TextFormat {
   splitColumns?: number;
   /** Points between split sub-columns; default 6. */
   splitGutter?: number;
+  /** A rule above the paragraph; the `ruleAbove...` fields turn it on too, `false` turns a style's off. */
+  ruleAbove?: boolean;
+  ruleAboveColor?: string;
+  ruleAboveWeight?: number;
+  /** Points up from the first baseline. */
+  ruleAboveOffset?: number;
+  ruleAboveTint?: number;
+  /** `solid`, `dashed`, `dotted`, `wavy` or `thickThin`. */
+  ruleAboveType?: string;
+  /** `column` (default) or `text`. */
+  ruleAboveWidth?: string;
+  ruleAboveLeftIndent?: number;
+  ruleAboveRightIndent?: number;
+  /** A rule below the paragraph; the `ruleBelow...` fields turn it on too. */
+  ruleBelow?: boolean;
+  ruleBelowColor?: string;
+  ruleBelowWeight?: number;
+  /** Points down from the last baseline. */
+  ruleBelowOffset?: number;
+  ruleBelowTint?: number;
+  ruleBelowType?: string;
+  ruleBelowWidth?: string;
+  ruleBelowLeftIndent?: number;
+  ruleBelowRightIndent?: number;
+  /** A box round the paragraph: a swatch, `None` removes it. */
+  border?: string;
+  /** Points, every side. */
+  borderWeight?: number;
+  borderTint?: number;
+  borderType?: string;
+  /** Points between the text and the border. */
+  borderOffset?: Spacing;
+  borderCornerRadius?: number;
+  /** A background behind the paragraph: a swatch, `None` removes it. */
+  shading?: string;
+  /** InDesign's default is 20; 100 for the full colour. */
+  shadingTint?: number;
+  /** Points the shading reaches beyond the text. */
+  shadingOffset?: Spacing;
+  shadingCornerRadius?: number;
 }
 
 /** A nested style: a character style through (or up to) the `count`th delimiter. Give `through` or `upTo`. */

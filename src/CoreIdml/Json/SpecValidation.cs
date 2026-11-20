@@ -129,6 +129,14 @@ public static partial class IdmlJson
             if (paragraph)
             {
                 CharacterStyle(format.DropCapStyle, path);
+                foreach (var swatch in (string?[])[format.RuleAboveColor, format.RuleBelowColor, format.Border, format.Shading])
+                {
+                    Swatch(swatch, path);
+                }
+                if (DecorationError(format) is { } decorationError)
+                {
+                    Add(path, decorationError);
+                }
                 foreach (var style in (format.NestedStyles ?? []).Select(nested => nested.Style).Concat((format.GrepStyles ?? []).Select(grep => grep.Style)))
                 {
                     CharacterStyle(style, path);

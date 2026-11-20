@@ -285,6 +285,78 @@ public class TextFormatSpec
     /// <summary>Character styles applied to the text a GREP expression matches; [] clears them.</summary>
     public List<GrepStyleSpec>? GrepStyles { get; set; }
 
+    // ---- paragraph rules, borders and shading (paragraphs and paragraph styles; points) ----
+
+    /// <summary>A rule above the paragraph (false turns a style's off). The ruleAbove... fields turn it on too.</summary>
+    public bool? RuleAbove { get; set; }
+
+    public string? RuleAboveColor { get; set; }
+
+    public double? RuleAboveWeight { get; set; }
+
+    /// <summary>Points up from the first line's baseline.</summary>
+    public double? RuleAboveOffset { get; set; }
+
+    public double? RuleAboveTint { get; set; }
+
+    /// <summary>solid, dashed, dotted, wavy or thickThin.</summary>
+    public string? RuleAboveType { get; set; }
+
+    /// <summary>column (default) or text: as wide as the line's text.</summary>
+    public string? RuleAboveWidth { get; set; }
+
+    public double? RuleAboveLeftIndent { get; set; }
+
+    public double? RuleAboveRightIndent { get; set; }
+
+    /// <summary>A rule below the paragraph (false turns a style's off). The ruleBelow... fields turn it on too.</summary>
+    public bool? RuleBelow { get; set; }
+
+    public string? RuleBelowColor { get; set; }
+
+    public double? RuleBelowWeight { get; set; }
+
+    /// <summary>Points down from the last line's baseline.</summary>
+    public double? RuleBelowOffset { get; set; }
+
+    public double? RuleBelowTint { get; set; }
+
+    /// <summary>solid, dashed, dotted, wavy or thickThin.</summary>
+    public string? RuleBelowType { get; set; }
+
+    /// <summary>column (default) or text.</summary>
+    public string? RuleBelowWidth { get; set; }
+
+    public double? RuleBelowLeftIndent { get; set; }
+
+    public double? RuleBelowRightIndent { get; set; }
+
+    /// <summary>A border round the paragraph: a swatch; "None" removes it.</summary>
+    public string? Border { get; set; }
+
+    /// <summary>Border line weight in points, every side.</summary>
+    public double? BorderWeight { get; set; }
+
+    public double? BorderTint { get; set; }
+
+    /// <summary>solid, dashed, dotted, wavy or thickThin.</summary>
+    public string? BorderType { get; set; }
+
+    /// <summary>Points between the text and the border on each side.</summary>
+    public SpacingSpec? BorderOffset { get; set; }
+
+    public double? BorderCornerRadius { get; set; }
+
+    /// <summary>Shading behind the paragraph: a swatch; "None" removes it.</summary>
+    public string? Shading { get; set; }
+
+    public double? ShadingTint { get; set; }
+
+    /// <summary>Points the shading reaches beyond the text on each side.</summary>
+    public SpacingSpec? ShadingOffset { get; set; }
+
+    public double? ShadingCornerRadius { get; set; }
+
     /// <summary>Put the baselines on the document's baseline grid.</summary>
     public bool? AlignToBaselineGrid { get; set; }
 

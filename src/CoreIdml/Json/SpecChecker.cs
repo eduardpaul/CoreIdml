@@ -28,6 +28,10 @@ public static partial class IdmlJson
         "list", "bullet", "bulletAfter", "numberFormat", "numberText", "listLevel", "startAt", "tabs",
         "keepWithNext", "keepTogether", "keepFirstLines", "keepLastLines", "startParagraph", "dropCapLines", "dropCapCharacters",
         "dropCapStyle", "nestedStyles", "grepStyles", "alignToBaselineGrid", "gridFirstLineOnly", "spanColumns", "splitColumns", "splitGutter",
+        "ruleAbove", "ruleAboveColor", "ruleAboveWeight", "ruleAboveOffset", "ruleAboveTint", "ruleAboveType", "ruleAboveWidth", "ruleAboveLeftIndent",
+        "ruleAboveRightIndent", "ruleBelow", "ruleBelowColor", "ruleBelowWeight", "ruleBelowOffset", "ruleBelowTint", "ruleBelowType", "ruleBelowWidth",
+        "ruleBelowLeftIndent", "ruleBelowRightIndent", "border", "borderWeight", "borderTint", "borderType", "borderOffset", "borderCornerRadius",
+        "shading", "shadingTint", "shadingOffset", "shadingCornerRadius",
     ];
     private static readonly string[] PageFields = ["index", "margins", "items"];
     private static readonly string[] CommonItemFields =
@@ -90,6 +94,9 @@ public static partial class IdmlJson
         ["minimumFirstBaselineOffset"] = "firstBaselineMin", ["ignoreTextWrap"] = "ignoreWrap",
         ["appliedObjectStyle"] = "objectStyle", ["frameStyle"] = "objectStyle", ["angle"] = "gradientAngle", ["gradientFillAngle"] = "gradientAngle",
         ["stopColor"] = "color", ["gradientType"] = "type", ["colorStops"] = "stops",
+        ["ruleAboveLineWeight"] = "ruleAboveWeight", ["ruleBelowLineWeight"] = "ruleBelowWeight", ["ruleAboveColour"] = "ruleAboveColor",
+        ["ruleBelowColour"] = "ruleBelowColor", ["paragraphBorder"] = "border", ["paragraphShading"] = "shading", ["shadingColor"] = "shading",
+        ["borderOffsets"] = "borderOffset", ["shadingOffsets"] = "shadingOffset",
     };
 
     /// <summary>
@@ -140,6 +147,8 @@ public static partial class IdmlJson
             CheckFields(style, path, ["name", "basedOn", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings);
             CheckTabs(style, path, warnings);
             CheckCharacterStyleLists(style, path, warnings);
+            CheckSpacing(style, path, warnings, "borderOffset");
+            CheckSpacing(style, path, warnings, "shadingOffset");
         });
         ForEach(root, "pages", warnings, (pageSpec, pagePath) =>
         {
@@ -174,6 +183,8 @@ public static partial class IdmlJson
             CheckFields(paragraph, paragraphPath, ["text", "style", "runs", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings);
             CheckTabs(paragraph, paragraphPath, warnings);
             CheckCharacterStyleLists(paragraph, paragraphPath, warnings);
+            CheckSpacing(paragraph, paragraphPath, warnings, "borderOffset");
+            CheckSpacing(paragraph, paragraphPath, warnings, "shadingOffset");
             ForEach(paragraph, "runs", warnings, (run, runPath) =>
                 CheckFields(run, runPath, ["text", "style", .. CharacterFormatFields], warnings, ParagraphOnlyFields, "a run (set it on the paragraph)"),
                 paragraphPath);

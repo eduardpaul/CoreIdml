@@ -552,6 +552,10 @@ public static partial class IdmlJson
         },
         SpanSplitColumnCount = spec.SpanColumns is > 1 ? spec.SpanColumns : spec.SplitColumns is > 1 ? spec.SplitColumns : null,
         SplitColumnInsideGutter = spec.SplitGutter is { } splitGutter ? splitGutter >= 0 ? splitGutter : throw new IdmlException(ParagraphValueError(spec)!) : null,
+        RuleAbove = ToRule(document, spec, above: true),
+        RuleBelow = ToRule(document, spec, above: false),
+        Border = ToBorder(document, spec),
+        Shading = ToShading(document, spec),
     };
 
     /// <summary>A nested style's delimiter: one of the names agents write, or one character.</summary>
@@ -671,7 +675,7 @@ public static partial class IdmlJson
         || spec.StrokeWeight is not null || spec.StrokeTint is not null || spec.Skew is not null || spec.UnderlineWeight is not null
         || spec.UnderlineOffset is not null || spec.UnderlineColor is not null || spec.UnderlineTint is not null || spec.UnderlineType is not null
         || spec.StrikeThroughWeight is not null || spec.StrikeThroughOffset is not null || spec.StrikeThroughColor is not null
-        || spec.StrikeThroughTint is not null || spec.StrikeThroughType is not null;
+        || spec.StrikeThroughTint is not null || spec.StrikeThroughType is not null || HasParagraphDecoration(spec);
 
     private static Justification? ParseJustification(string? align) =>
         align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));

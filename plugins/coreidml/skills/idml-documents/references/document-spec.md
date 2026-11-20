@@ -128,6 +128,9 @@ Format fields:
 | `alignToBaselineGrid`, `gridFirstLineOnly` | `true`: every baseline (or only the first line's) moves down to the next line of the document's baseline grid (`page.baselineGrid`). Lines in neighbouring columns then line up. |
 | `spanColumns` | A headline over multi-column text: `0` spans all the frame's columns, `N` the first N, `1` is a single column again. |
 | `splitColumns`, `splitGutter` | Set the paragraph in N sub-columns of its own column (`1`: none), `splitGutter` points apart (default 6). |
+| `ruleAbove`, `ruleBelow` and their `...Color`, `...Weight`, `...Offset`, `...Tint`, `...Type`, `...Width`, `...LeftIndent`, `...RightIndent` | A rule above or below the paragraph (points). Any `ruleAbove...` field turns the rule on; `"ruleAbove": false` turns a style's off. The offset runs up from the first baseline (above) or down from the last (below) to the rule's edge; `width` is `column` (default) or `text`; types `solid`, `dashed`, `dotted`, `wavy`, `thickThin`. Headings with a rule: `"ruleBelowWeight": 1, "ruleBelowOffset": 4`. |
+| `border`, `borderWeight`, `borderTint`, `borderType`, `borderOffset`, `borderCornerRadius` | A box round the paragraph: swatch (`"None"` removes it), line weight (points, every side), tint, type, the space between the text and the box (a margins object, points) and rounded corners. |
+| `shading`, `shadingTint`, `shadingOffset`, `shadingCornerRadius` | A background behind the paragraph: swatch (`"None"` removes it), tint (**InDesign's default is 20**: give 100 for the full colour), how far it reaches beyond the text (points), rounded corners. Callouts and notes: `"shading": "Brand light", "shadingTint": 100, "shadingOffset": { "all": 6 }`. |
 
 ### Drop caps, nested and GREP styles
 
@@ -319,5 +322,5 @@ Small fixes do not need the spec again: `idml_edit_item` moves and resizes (**in
 
 ## Not supported
 
-Master pages and paragraph rules (drawn when a document has them, but not authorable), polygons and free paths,
-effects other than opacity. Repeat a header on each page instead of a master; draw rules with a `line`.
+Master pages (drawn when a document has them, but not authorable), polygons and free paths,
+effects other than opacity. Repeat a header on each page instead of a master.

@@ -156,6 +156,35 @@ public sealed class SpecAuthoringTests
     }
 
     [Fact]
+    public void Spec_paragraph_rules_borders_and_shading_are_drawn()
+    {
+        using var document = IdmlJson.CreateDocument($$"""
+        {
+          "colors": [ { "name": "Red", "cmyk": [0, 100, 100, 0] }, { "name": "Pale", "cmyk": [0, 0, 20, 0] } ],
+          "paragraphStyles": [
+            { "name": "Body", "font": "Liberation Serif", "size": 10, "leading": 12 },
+            { "name": "Head", "basedOn": "Body", "ruleBelowWeight": 2, "ruleBelowOffset": 5, "ruleBelowColor": "Red" },
+            { "name": "Box", "basedOn": "Body", "border": "Red", "borderWeight": 1.5, "borderOffset": { "all": 4 }, "shading": "Pale", "shadingTint": 100, "shadingOffset": { "all": 4 } }
+          ],
+          "pages": [ { "items": [ { "type": "text", "name": "story", "x": 36, "y": 36, "width": 250, "height": 300,
+            "paragraphs": [ { "style": "Head", "text": "Heading" }, { "style": "Box", "text": "{{Text}}" } ] } ] } ]
+        }
+        """);
+
+        var layout = Layout(document, "story");
+        var ops = layout.OpsByFrame.Values.Single();
+
+        var rule = ops.OfType<TextRuleOp>().Single();
+        // The rule's top edge is its offset below the baseline (08-para-rules); From is its centre line.
+        Assert.Equal(layout.Lines[0].Baseline + 5 + 1, rule.From.Y, 6);
+        Assert.Equal(2, rule.Weight);
+        Assert.Equal([0, 1, 1, 0], rule.Color.Components);
+        var border = ops.OfType<ParagraphBorderOp>().Single();
+        Assert.Equal(new Spacing(1.5, 1.5, 1.5, 1.5), border.Border.Weights);
+        Assert.Equal([0, 0, 0.2, 0], ops.OfType<ParagraphShadingOp>().Single().Color.Components);
+    }
+
+    [Fact]
     public void Paragraphs_aligned_to_the_spec_baseline_grid_sit_on_its_lines()
     {
         using var document = IdmlJson.CreateDocument($$"""

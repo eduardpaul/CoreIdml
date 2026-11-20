@@ -73,7 +73,8 @@ Common mistakes:
 - Typographic touches belong on the paragraph style, not in the text: `dropCapLines` with a `dropCapStyle`, a bold
   lead-in with `nestedStyles` (`{"style": "Lead", "through": "words", "count": 3}`), coloured prices or numbers with
   `grepStyles`, a headline across a multi-column frame with `"spanColumns": 0`, columns that line up with
-  `page.baselineGrid` and `"alignToBaselineGrid": true`. Declare the character styles they name first.
+  `page.baselineGrid` and `"alignToBaselineGrid": true`, rules under headings (`ruleBelow...`), boxed or shaded
+  notes (`border`, `shading` with `"shadingTint": 100`). Declare the character styles they name first.
 - Repeated looks (cards, captions, sidebars) belong in `objectStyles`, applied with `objectStyle` on items;
   `gradients` are swatches like colours (`fill`, `stroke`, text `color`), turned with `gradientAngle`.
 
@@ -82,9 +83,9 @@ wider and taller than the page); use `cmyk` colours; keep text inside the margin
 `includeBleed: true` exports pages with that bleed around the trim (TrimBox), as InDesign's Use Document Bleed Settings.
 
 The preview and PDF engine draws opacity, blend modes, shadows, glows and feathers (not bevel, emboss or satin, and
-shadows of text leave the text out); the spec writes only opacity and has no master pages,
-paragraph rules or free paths. Design without them. When an existing document uses bevel, emboss
-or satin, say the preview leaves them out and InDesign will show them (gradients and text wrap in a document are drawn; a wrap that
+shadows of text leave the text out); the spec writes only opacity and has no master pages or free paths. Design
+without them. When an existing document uses bevel, emboss or satin, say the preview leaves them out and InDesign
+will show them (gradients and text wrap in a document are drawn; a wrap that
 follows an image's detected edges or Photoshop path is not).
 
 ## Reporting back

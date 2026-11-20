@@ -52,6 +52,129 @@ public enum StartParagraph
     NextEvenPage,
 }
 
+/// <summary>
+/// A paragraph rule above or below (<c>RuleAbove*</c>, <c>RuleBelow*</c>, as 08-para-rules stores them: the switch,
+/// weight, offset, tint, indents and width as attributes, colour and type as object properties). Null properties are
+/// not set; <see cref="On"/> false turns the rule off.
+/// </summary>
+public sealed class ParagraphRule
+{
+    public bool On { get; init; } = true;
+
+    public Swatch? Color { get; init; }
+
+    /// <summary>Weight in points.</summary>
+    public double? Weight { get; init; }
+
+    /// <summary>Points from the baseline: a rule above goes up from the first line's, one below down from the last line's.</summary>
+    public double? Offset { get; init; }
+
+    public double? Tint { get; init; }
+
+    public TextLineType? Type { get; init; }
+
+    /// <summary>True: as wide as the line's text (<c>TextWidth</c>); false: the column (<c>ColumnWidth</c>, the default).</summary>
+    public bool? TextWidth { get; init; }
+
+    public double? LeftIndent { get; init; }
+
+    public double? RightIndent { get; init; }
+
+    internal void ApplyTo(XElement element, string prefix)
+    {
+        element.SetAttributeValue(prefix, On ? "true" : "false");
+        void Number(string name, double? value)
+        {
+            if (value is { } number)
+            {
+                element.SetAttributeValue(prefix + name, IdmlXml.Format(number));
+            }
+        }
+        Number("LineWeight", Weight);
+        Number("Offset", Offset);
+        Number("Tint", Tint);
+        Number("LeftIndent", LeftIndent);
+        Number("RightIndent", RightIndent);
+        if (TextWidth is { } textWidth)
+        {
+            element.SetAttributeValue(prefix + "Width", textWidth ? "TextWidth" : "ColumnWidth");
+        }
+        if (Color is { } color)
+        {
+            IdmlXml.SetProperty(element, prefix + "Color", "object", color.Reference);
+        }
+        if (Type is { } type)
+        {
+            IdmlXml.SetProperty(element, prefix + "Type", "object", CharacterFormat.StrokeStyleReference(type));
+        }
+    }
+}
+
+/// <summary>
+/// A paragraph border or shading (<c>ParagraphBorder*</c>, <c>ParagraphShading*</c>, as 08-para-borders-shading
+/// stores them): the switch, offsets per side, tint, corners and (borders) line weights as attributes, colour and
+/// (borders) type as object properties. Null properties are not set; <see cref="On"/> false turns it off.
+/// </summary>
+public sealed class ParagraphBox
+{
+    public bool On { get; init; } = true;
+
+    public Swatch? Color { get; init; }
+
+    public double? Tint { get; init; }
+
+    /// <summary>Space between the text and the box on each side, in points.</summary>
+    public Spacing? Offset { get; init; }
+
+    /// <summary>Rounded corners of this radius (0: square).</summary>
+    public double? CornerRadius { get; init; }
+
+    /// <summary>Borders: the line weight on every side.</summary>
+    public double? Weight { get; init; }
+
+    /// <summary>Borders: the line type.</summary>
+    public TextLineType? Type { get; init; }
+
+    internal void ApplyTo(XElement element, string prefix, bool border)
+    {
+        element.SetAttributeValue(prefix + "On", On ? "true" : "false");
+        if (Tint is { } tint)
+        {
+            element.SetAttributeValue(prefix + "Tint", IdmlXml.Format(tint));
+        }
+        if (Offset is { } offset)
+        {
+            element.SetAttributeValue(prefix + "LeftOffset", IdmlXml.Format(offset.Left));
+            element.SetAttributeValue(prefix + "RightOffset", IdmlXml.Format(offset.Right));
+            element.SetAttributeValue(prefix + "TopOffset", IdmlXml.Format(offset.Top));
+            element.SetAttributeValue(prefix + "BottomOffset", IdmlXml.Format(offset.Bottom));
+        }
+        if (border && Weight is { } weight)
+        {
+            foreach (var side in (string[])["Top", "Bottom", "Left", "Right"])
+            {
+                element.SetAttributeValue(prefix + side + "LineWeight", IdmlXml.Format(weight));
+            }
+        }
+        if (CornerRadius is { } radius)
+        {
+            foreach (var corner in (string[])["TopLeft", "TopRight", "BottomLeft", "BottomRight"])
+            {
+                element.SetAttributeValue(prefix + corner + "CornerOption", radius > 0 ? "RoundedCorner" : "None");
+                element.SetAttributeValue(prefix + corner + "CornerRadius", IdmlXml.Format(radius));
+            }
+        }
+        if (Color is { } color)
+        {
+            IdmlXml.SetProperty(element, prefix + "Color", "object", color.Reference);
+        }
+        if (border && Type is { } type)
+        {
+            IdmlXml.SetProperty(element, prefix + "Type", "object", CharacterFormat.StrokeStyleReference(type));
+        }
+    }
+}
+
 /// <summary>The line of an underline or strikethrough (Underline Options &gt; Type).</summary>
 public enum TextLineType
 {
@@ -307,7 +430,7 @@ public class CharacterFormat
     }
 
     /// <summary>The stroke style InDesign's Underline and Strikethrough Options pick for a line type.</summary>
-    private static string StrokeStyleReference(TextLineType type) => type switch
+    internal static string StrokeStyleReference(TextLineType type) => type switch
     {
         TextLineType.Dashed => "StrokeStyle/$ID/Dashed",
         TextLineType.Dotted => "StrokeStyle/$ID/Canned Dotted",
@@ -444,6 +567,18 @@ public sealed class ParagraphFormat : CharacterFormat
     /// <summary>GREP styles, in order (a later one wins what both set), replacing the ones set before; empty clears them.</summary>
     public IReadOnlyList<GrepStyle>? GrepStyles { get; init; }
 
+    /// <summary>Paragraph rule above (Paragraph Rules &gt; Rule Above).</summary>
+    public ParagraphRule? RuleAbove { get; init; }
+
+    /// <summary>Paragraph rule below.</summary>
+    public ParagraphRule? RuleBelow { get; init; }
+
+    /// <summary>A border round the paragraph (Paragraph Borders and Shading &gt; Border).</summary>
+    public ParagraphBox? Border { get; init; }
+
+    /// <summary>Shading behind the paragraph (Paragraph Borders and Shading &gt; Shading).</summary>
+    public ParagraphBox? Shading { get; init; }
+
     /// <summary>Align to Baseline Grid (<c>GridAlignment="AlignBaseline"</c>; false: <c>None</c>).</summary>
     public bool? AlignToBaselineGrid { get; init; }
 
@@ -571,6 +706,10 @@ public sealed class ParagraphFormat : CharacterFormat
         }
         Set(element, "SplitColumnInsideGutter", SplitColumnInsideGutter);
         Set(element, "SplitColumnOutsideGutter", SplitColumnOutsideGutter);
+        RuleAbove?.ApplyTo(element, "RuleAbove");
+        RuleBelow?.ApplyTo(element, "RuleBelow");
+        Border?.ApplyTo(element, "ParagraphBorder", border: true);
+        Shading?.ApplyTo(element, "ParagraphShading", border: false);
     }
 
     /// <summary>

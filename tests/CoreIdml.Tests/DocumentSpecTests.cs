@@ -668,6 +668,47 @@ public class DocumentSpecTests
         Assert.Equal(message, exception.Message);
     }
 
+    [Fact]
+    public void Paragraph_rules_borders_and_shading_are_written_as_InDesign_stores_them()
+    {
+        var spec = """
+        {
+          "colors": [ { "name": "Red", "cmyk": [0, 100, 100, 0] } ],
+          "paragraphStyles": [
+            { "name": "Head", "ruleAbove": true, "ruleAboveWeight": 3, "ruleAboveOffset": 6, "ruleAboveColor": "Red", "ruleAboveType": "dotted",
+              "ruleBelowWeight": 1, "ruleBelowWidth": "text", "ruleBelowLeftIndent": 20, "ruleBelowTint": 50 },
+            { "name": "Box", "border": "Red", "borderWeight": 1.5, "borderOffset": { "all": 4, "top": 6 }, "borderCornerRadius": 10, "borderType": "dashed",
+              "shading": "Red", "shadingTint": 20, "shadingOffset": { "all": 6 } },
+            { "name": "Plain", "basedOn": "Box", "border": "None", "ruleAbove": false }
+          ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        // 08-para-rules: RuleAbove/RuleBelow switches, weights, offsets, tints, indents and widths as attributes; the
+        // colour and type as object properties.
+        XElement Style(string name) => document.Styles.FindParagraphStyle(name)!.Element;
+        string Property(XElement element, string name) => $"{element.Element("Properties")!.Element(name)!.Attribute("type")!.Value}:{element.Element("Properties")!.Element(name)!.Value}";
+        var head = Style("Head");
+        Assert.Equal(["true", "3", "6", "true", "1", "TextWidth", "20", "50"],
+            ((string[])["RuleAbove", "RuleAboveLineWeight", "RuleAboveOffset", "RuleBelow", "RuleBelowLineWeight", "RuleBelowWidth", "RuleBelowLeftIndent", "RuleBelowTint"]).Select(name => head.Attribute(name)!.Value));
+        Assert.Equal("object:Color/Red", Property(head, "RuleAboveColor"));
+        Assert.Equal("object:StrokeStyle/$ID/Canned Dotted", Property(head, "RuleAboveType"));
+        // 08-para-borders-shading: ParagraphBorderOn and ParagraphShadingOn, per-side offsets, weights and corners.
+        var box = Style("Box");
+        Assert.Equal(["true", "6", "4", "1.5", "1.5", "RoundedCorner", "10", "true", "20", "6"],
+            ((string[])["ParagraphBorderOn", "ParagraphBorderTopOffset", "ParagraphBorderLeftOffset", "ParagraphBorderTopLineWeight", "ParagraphBorderRightLineWeight",
+                "ParagraphBorderTopLeftCornerOption", "ParagraphBorderBottomRightCornerRadius", "ParagraphShadingOn", "ParagraphShadingTint", "ParagraphShadingBottomOffset"])
+            .Select(name => box.Attribute(name)!.Value));
+        Assert.Equal("object:Color/Red", Property(box, "ParagraphBorderColor"));
+        Assert.Equal("object:StrokeStyle/$ID/Dashed", Property(box, "ParagraphBorderType"));
+        Assert.Equal("object:Color/Red", Property(box, "ParagraphShadingColor"));
+        Assert.Equal(("false", "false"), (Style("Plain").Attribute("ParagraphBorderOn")!.Value, Style("Plain").Attribute("RuleAbove")!.Value));
+        Assert.Equal("Unknown ruleBelowWidth 'page'. Use column or text.",
+            Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument("""{ "paragraphStyles": [ { "name": "P", "ruleBelowWidth": "page" } ] }""")).Message);
+    }
+
     private static string Png()
     {
         var path = TestFiles.TempPath(".png");
