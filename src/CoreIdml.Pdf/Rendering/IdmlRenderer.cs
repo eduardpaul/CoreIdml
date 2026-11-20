@@ -51,6 +51,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         resolver = new AttributeResolver(document);
         reader = new StoryReader(document, resolver, fonts);
         composer = new TextComposer(document, reader, fonts);
+        effects = new EffectReader(document, resolver);
         foreach (var layer in document.Layers.All.Where(layer => !layer.Visible || !layer.Printable))
         {
             hiddenLayers.Add(layer.Id);
@@ -92,7 +93,7 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     public PdfExportResult Render(Stream output)
     {
-        pdf = new PdfDocumentBuilder(output, options.CompressContent);
+        pdf = new PdfDocumentBuilder(output, options.CompressContent) { BlendSpace = BlendSpace() };
         var pages = document.Pages;
         var selected = options.Pages is { Count: > 0 } wanted
             ? wanted.Where(number => number >= 1 && number <= pages.Count).Select(number => pages[number - 1]).ToList()
@@ -447,6 +448,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         // the trim (TrimBox) inside it.
         var pageRect = Outset(origin, bleed);
         var content = new ContentBuilder();
+        BeginEffects(pageRect.Width, pageRect.Height);
         // PDF space has y up from the bottom; draw everything in IDML spread coordinates (y down).
         content.Transform(new CoreIdml.Matrix(1, 0, 0, -1, 0, pageRect.Height));
         content.Transform(CoreIdml.Matrix.Translation(-pageRect.X, -pageRect.Y));
@@ -462,7 +464,7 @@ internal sealed partial class IdmlRenderer : IDisposable
                 DrawItem(item, content, page.Name, null);
             }
         }
-        Pdf.AddPage(pageRect.Width, pageRect.Height, new Rect(bleed.Left, bleed.Bottom, size.Width, size.Height), content);
+        Pdf.AddPage(pageRect.Width, pageRect.Height, new Rect(bleed.Left, bleed.Bottom, size.Width, size.Height), content, pageTransparency);
     }
 
     /// <summary>
@@ -534,82 +536,115 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             return;
         }
-        if (item is Group group)
-        {
-            content.Save();
-            ApplyOpacity(item.Element, content);
-            foreach (var child in group.Items)
+        // The object's transparency and effects apply to the item as a whole: a group's children are one group.
+        Composite(content, item, Effects(item.Element, EffectTarget.Object), ObjectFrame(item, pageName, master),
+            () => ObjectShape(item, pageName, master),
+            () => ObjectExtent(item, pageName, master),
+            target =>
             {
-                DrawItem(child, content, pageName, master);
-            }
-            content.Restore();
-            return;
-        }
+                if (item is Group group)
+                {
+                    foreach (var child in group.Items)
+                    {
+                        DrawItem(child, target, pageName, master);
+                    }
+                }
+                else
+                {
+                    DrawItemParts(item, target, pageName, master);
+                }
+            });
+    }
 
+    /// <summary>
+    /// Draws an item's fill, content (image, text, items pasted inside) and stroke, each with its own transparency
+    /// (<c>FillTransparencySetting</c>, <c>ContentTransparencySetting</c>, <c>StrokeTransparencySetting</c>).
+    /// </summary>
+    private void DrawItemParts(PageItem item, ContentBuilder content, string pageName, MasterSpread? master)
+    {
         var element = item.Element;
         content.Save();
-        ApplyOpacity(element, content);
         content.Transform(item.SpreadTransform);
         // A text frame's text first: an auto-sizing frame is drawn at the size it gives it (see AutoSize).
         var ops = item is not TextFrame textFrame ? null
             : IsInStory(textFrame.Element) ? AnchoredFrameOps(textFrame, pageName)
             : master is null ? frameOps.GetValueOrDefault(textFrame.Id) ?? []
             : MasterFrameOps(textFrame, master, pageName);
-        var sizeKey = master is null ? item.Id : item.Id + "@" + (drawingPage?.Id ?? pageName);
+        var sizeKey = SizeKey(item, pageName, master);
         var contours = FrameContours(item, sizeKey);
         var bounds = FrameBounds(item, sizeKey);
         var closed = contours.Count > 0 && contours.All(contour => !contour.IsOpen);
 
         // Fill.
-        if (closed && Gradient(item, "Fill", bounds) is { } gradientFill)
-        {
-            // Clipped to the path, the shading painted in the gradient's space (InDesign writes the same).
-            content.Save();
-            AppendPath(item, contours, content, bounds);
-            content.Clip(evenOdd: contours.Count > 1);
-            content.Transform(gradientFill.Space);
-            content.PaintShading(Pdf.Shading(gradientFill.Shading));
-            content.Restore();
-        }
-        else if (closed && ResolveColor(element, "FillColor", "FillTint") is { } fill)
-        {
-            AppendPath(item, contours, content, bounds);
-            content.FillColor(fill).Fill(evenOdd: contours.Count > 1);
-        }
+        var inner = new EffectFrame(bounds, CoreIdml.Matrix.Identity);
+        Composite(content, item, Effects(element, EffectTarget.Fill), inner,
+            () => PartShape(item, sizeKey, EffectTarget.Fill, CoreIdml.Matrix.Identity),
+            () => closed ? bounds.Inflate(1) : null,
+            target =>
+            {
+                if (closed && Gradient(item, "Fill", bounds) is { } gradientFill)
+                {
+                    // Clipped to the path, the shading painted in the gradient's space (InDesign writes the same).
+                    target.Save();
+                    AppendPath(item, contours, target, bounds);
+                    target.Clip(evenOdd: contours.Count > 1);
+                    target.Transform(gradientFill.Space);
+                    target.PaintShading(Pdf.Shading(gradientFill.Shading));
+                    target.Restore();
+                }
+                else if (closed && ResolveColor(element, "FillColor", "FillTint") is { } fill)
+                {
+                    AppendPath(item, contours, target, bounds);
+                    target.FillColor(fill).Fill(evenOdd: contours.Count > 1);
+                }
+            });
 
         // Content: image, nested items, text.
-        if (item is GraphicFrame frame)
-        {
-            DrawGraphic(frame, contours, content);
-        }
-        else if (ops is not null)
-        {
-            DrawOps(ops, content, item, bounds, pageName, master);
-        }
         // Items pasted inside the frame, clipped to it. Their SpreadTransform already includes this frame's.
         var nested = item is GraphicFrame or TextFrame
             ? element.Elements().Select(child => NestedItem(item, child)).OfType<PageItem>().ToList()
             : [];
-        if (nested.Count > 0)
-        {
-            content.Save();
-            if (closed)
+        Composite(content, item, Effects(element, EffectTarget.Content), inner,
+            () => PartShape(item, sizeKey, EffectTarget.Content, CoreIdml.Matrix.Identity),
+            () => item is GraphicFrame && closed ? bounds.Inflate(1) : null,
+            target =>
             {
-                AppendPath(item, contours, content, bounds);
-                content.Clip(contours.Count > 1);
-            }
-            content.Transform(Invert(item.SpreadTransform));
-            foreach (var child in nested)
-            {
-                DrawItem(child, content, pageName, master);
-            }
-            content.Restore();
-        }
+                if (item is GraphicFrame frame)
+                {
+                    DrawGraphic(frame, contours, target);
+                }
+                else if (ops is not null)
+                {
+                    DrawOps(ops, target, item, bounds, pageName, master);
+                }
+                if (nested.Count > 0)
+                {
+                    target.Save();
+                    if (closed)
+                    {
+                        AppendPath(item, contours, target, bounds);
+                        target.Clip(contours.Count > 1);
+                    }
+                    target.Transform(Invert(item.SpreadTransform));
+                    foreach (var child in nested)
+                    {
+                        DrawItem(child, target, pageName, master);
+                    }
+                    target.Restore();
+                }
+            });
 
         // Stroke on top.
-        DrawStroke(item, contours, closed, content, bounds);
+        Composite(content, item, Effects(element, EffectTarget.Stroke), inner,
+            () => PartShape(item, sizeKey, EffectTarget.Stroke, CoreIdml.Matrix.Identity),
+            () => closed ? bounds.Inflate(StrokeReach(element) + 1) : null,
+            target => DrawStroke(item, contours, closed, target, bounds));
         content.Restore();
     }
+
+    /// <summary>The key an item's auto-sized bounds are kept under: its id, and the page for master items.</summary>
+    private string SizeKey(PageItem item, string pageName, MasterSpread? master) =>
+        master is null ? item.Id : item.Id + "@" + (drawingPage?.Id ?? pageName);
 
     private static PageItem? NestedItem(PageItem parent, XElement child) =>
         child.Name.LocalName is "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "TextFrame" or "Group"
@@ -628,16 +663,6 @@ internal sealed partial class IdmlRenderer : IDisposable
         var c = -m.C / determinant;
         var d = m.A / determinant;
         return new CoreIdml.Matrix(a, b, c, d, -((m.Tx * a) + (m.Ty * c)), -((m.Tx * b) + (m.Ty * d)));
-    }
-
-    /// <summary>The opacity of an item, its own or from its object style (<see cref="AttributeResolver.Blending"/>).</summary>
-    private void ApplyOpacity(XElement element, ContentBuilder content)
-    {
-        var opacity = Values.Number(resolver.Blending(element, "Opacity"), 100);
-        if (opacity < 100)
-        {
-            content.GraphicsState(Pdf.Opacity(opacity / 100, opacity / 100));
-        }
     }
 
     private ResolvedColor? ResolveColor(XElement element, string colorName, string tintName)
@@ -726,11 +751,7 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     private void AppendPath(PageItem item, IReadOnlyList<PathContour> contours, ContentBuilder content, Rect bounds)
     {
-        if (RoundedCorners(item, contours) is { } corners)
-        {
-            contours = [CornerContour(bounds, corners)];
-        }
-        foreach (var contour in contours)
+        foreach (var contour in DrawnContours(item, contours, bounds))
         {
             var points = contour.Points;
             content.MoveTo(points[0].Anchor.X, points[0].Anchor.Y);
@@ -754,6 +775,10 @@ internal sealed partial class IdmlRenderer : IDisposable
             }
         }
     }
+
+    /// <summary>The contours an item's path is drawn with: its own, or a rectangle with its corner options.</summary>
+    private IReadOnlyList<PathContour> DrawnContours(PageItem item, IReadOnlyList<PathContour> contours, Rect bounds) =>
+        RoundedCorners(item, contours) is { } corners ? [CornerContour(bounds, corners)] : contours;
 
     /// <summary>Corner options of a plain rectangle (null when it has none or is not a 4-point rectangle).</summary>
     private (string Option, double Radius)[]? RoundedCorners(PageItem item, IReadOnlyList<PathContour> contours)
@@ -923,30 +948,38 @@ internal sealed partial class IdmlRenderer : IDisposable
             right = left + image.Width;
             bottom = top + image.Height;
         }
-        content.Save();
-        if (contours.Count > 0 && contours.All(c => !c.IsOpen))
-        {
-            AppendPath(frame, contours, content, frame.InnerBounds);
-            content.Clip(contours.Count > 1);
-        }
-        content.Transform(CoreIdml.Matrix.Parse(graphic.Attribute("ItemTransform")?.Value));
-        if (image is not null)
-        {
-            content.Transform(new CoreIdml.Matrix(right - left, 0, 0, -(bottom - top), left, bottom));
-            content.XObject(image.Name);
-        }
-        else
-        {
-            missingImages.Add(uri ?? "(no link)");
-            if (options.MarkMissingImages)
+        var closed = contours.Count > 0 && contours.All(c => !c.IsOpen);
+        // The placed image has transparency of its own (04-fx-opacity-blend p6: an image at 60% in an unstroked frame).
+        Composite(content, frame, Effects(graphic, EffectTarget.Object), new EffectFrame(frame.InnerBounds, CoreIdml.Matrix.Identity),
+            () => PartShape(frame, frame.Id, EffectTarget.Content, CoreIdml.Matrix.Identity),
+            () => closed ? frame.InnerBounds.Inflate(1) : null,
+            target =>
             {
-                var grey = new ResolvedColor(ColorSpaceKind.Gray, [0.5]);
-                content.LineWidth(0.5).StrokeColor(grey);
-                content.Rectangle(left, top, right - left, bottom - top).Stroke();
-                content.MoveTo(left, top).LineTo(right, bottom).MoveTo(right, top).LineTo(left, bottom).Stroke();
-            }
-        }
-        content.Restore();
+                target.Save();
+                if (closed)
+                {
+                    AppendPath(frame, contours, target, frame.InnerBounds);
+                    target.Clip(contours.Count > 1);
+                }
+                target.Transform(CoreIdml.Matrix.Parse(graphic.Attribute("ItemTransform")?.Value));
+                if (image is not null)
+                {
+                    target.Transform(new CoreIdml.Matrix(right - left, 0, 0, -(bottom - top), left, bottom));
+                    target.XObject(image.Name);
+                }
+                else
+                {
+                    missingImages.Add(uri ?? "(no link)");
+                    if (options.MarkMissingImages)
+                    {
+                        var grey = new ResolvedColor(ColorSpaceKind.Gray, [0.5]);
+                        target.LineWidth(0.5).StrokeColor(grey);
+                        target.Rectangle(left, top, right - left, bottom - top).Stroke();
+                        target.MoveTo(left, top).LineTo(right, bottom).MoveTo(right, top).LineTo(left, bottom).Stroke();
+                    }
+                }
+                target.Restore();
+            });
     }
 
     /// <summary>The PNG files placed on <paramref name="pages"/> and their masters (a superset of what gets drawn).</summary>

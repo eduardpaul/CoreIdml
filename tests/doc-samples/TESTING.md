@@ -256,6 +256,11 @@ look against `reference-overprint.pdf` (Acrobat 4, flattened with Simulate Overp
 will never match pixel for pixel: compare the item's region at low resolution (24 dpi, or blurred) with a loose
 tolerance, and check extent and position (shadow offset and size) rather than exact values.
 
+**pdf_oxide and transparency.** pdf_oxide (the harness's rasterizer) ignores `/BM` and the opacity a transparency
+group is painted with, reads a soft mask in the page's default space whatever the current matrix (CoreIdml sets its
+masks there, as InDesign does), and draws InDesign's inner-shadow and satin groups as solid dark squares
+(`04-fx-shadows-glows` p2). Check blend modes, group opacity and inner effects with PDFium (`idml_render_page`).
+
 **Gradients** are PDF shadings in the reference; the midpoint becomes a stitching function. Expect banding noise;
 compare in the region with a moderate tolerance and check the colours at a few sample points along the gradient
 axis.
@@ -332,7 +337,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `02-item-groups-paste-into` | C | Group opacity as one layer (overlaps not visible through each other), nested clipping. | Group opacity applied per child shows as darker overlaps. |
 | `02-item-anchored` | D, C | Inline objects on the baseline with offsets; above-line alignment; custom anchored objects at the reference position (within 1 pt). | Custom positions are relative to frame, column, margin or page edge. Done: every box within 0.001 pt (measure by the visible bounds: the 1 pt stroke of `[Normal Graphics Frame]` counts), p2, p3 and p5 match pixel for pixel. An above-line object sits 0.8274 em above its line's baseline, which keeps its leading below it; a positive X offset from a left edge moves the object left (p4: "x -60" in the label, -90 in the XML, ends the box 90 pt inside the column). p4: text wrap around the custom box is not done (8 words). |
 | `02-item-hidden-locked-nonprinting` | C | Hidden and non-printing items absent, locked items present, group flags inherited. | |
-| `02-item-object-styles` | B, C | Fill, stroke, corners, insets and **transparency/shadow** resolved through the style; local overrides win; disabled categories leave the item's own values. | Opacity from the style is resolved (the sample has none, only a drop shadow, which CoreIdml does not draw). p1: the text frame's 2 pt stroke moves the text 1 pt in and narrows the columns to 255 pt; the remaining misses are one line break of InDesign's paragraph composer ("may" moved to the next line). |
+| `02-item-object-styles` | B, C | Fill, stroke, corners, insets and **transparency/shadow** resolved through the style; local overrides win; disabled categories leave the item's own values. | Opacity and effects from the style are resolved (the sample has none but the drop shadow of "OS Shadow", drawn since the effects work). p1: the text frame's 2 pt stroke moves the text 1 pt in and narrows the columns to 255 pt; the remaining misses are one line break of InDesign's paragraph composer ("may" moved to the next line). |
 | `02-item-text-wrap` | D, C | Lines avoid the wrap area per mode and side; contour wraps follow the shape and the alpha channel; inverted wrap flows inside. | Large composer effects; judge by line starts and line lengths. A line is tested from the baseline before it to its own; shape edges are truncated to whole points from the column's left edge, box edges are exact. every page at 97 to 100% (the rest paragraph-composer choices in narrow stretches); p8's alpha channel is the pixels whose alpha reaches 230. |
 
 ### 03 Colour, 04 Effects
@@ -343,9 +348,9 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `03-color-gradients` | C (moderate), sample points | Linear angles, 4 stops, midpoints, radial, gradient stroke, gradient with tints and spots. | Gradient Tool start/length (`GradientFillStart`, `GradientFillLength`) are relative to the item. Drawn since the gradients work: p1, p2, p3 and p5 match (mean error under 0.05%). p4's rectangle stroke and text fill are shading patterns: pdf_oxide paints a pattern stroke black, in the reference too (PDFium draws the gradient), and so does the stroked "Gradient Stroke" text (drawn since text strokes are, a pattern spanning the frame as in the reference; 100%). |
 | `03-color-strokes` | C | Weights, canned and custom dashes, gap colour, caps, joins, miter limit, alignment. | Custom dashes scale differently from canned ones. |
 | `03-color-overprint` | E, then C against `reference-overprint.pdf` | Overprint flags written for fill, stroke, text, spot. | Invisible in `reference.pdf` (section 4). |
-| `04-fx-opacity-blend` | C (tolerance 8), E | Opacity values, blend modes, fill/stroke/content opacity, group opacity, isolate and knockout, image opacity. | Blend space CMYK. |
-| `04-fx-shadows-glows` | C at 24 dpi | Shadow offset, size and colour; inner shadow, glows; bevel/emboss and satin present at least as "not drawn" warnings. | Raster effects; never pixel exact. |
-| `04-fx-feathers-other` | C at 24 dpi | Basic, directional and gradient feather extents. | Same as above. |
+| `04-fx-opacity-blend` | C (tolerance 8), E | Opacity values, blend modes, fill/stroke/content opacity, group opacity, isolate and knockout, image opacity. | Blend space CMYK. Every transparent item, part and group is a transparency group, as in the reference. pdf_oxide ignores `/BM` and the opacity of a group (it draws the reference's p1 boxes opaque), so check blend modes and opacity with PDFium: all pages 99.8% or better at tolerance 64. |
+| `04-fx-shadows-glows` | C at 24 dpi | Shadow offset, size and colour; inner shadow, glows; bevel/emboss and satin present at least as "not drawn" warnings. | Raster effects; never pixel exact. pdf_oxide draws the reference's inner-shadow and satin groups (p2) as dark squares, so p2 fails whatever we draw (PDFium: 98.05%). p4 is bevel and emboss, p5's text shadow needs glyph outlines (not drawn, reported). |
+| `04-fx-feathers-other` | C at 24 dpi | Basic, directional and gradient feather extents. | Same as above. Diffusion corners are drawn as rounded; choke and noise are ignored (the IDML has no choke values). |
 
 ### 05 Images
 
@@ -465,17 +470,17 @@ changes, variables).
 | `02-item-corners` | 0/4 | p1 0.61% | 98% | 7.9 pt |  |
 | `02-item-groups-paste-into` | 0/4 | p3 0.07% | 100% | 0.0 pt |  |
 | `02-item-hidden-locked-nonprinting` | 0/5 | p1 0.00% | 100% | 0.0 pt |  |
-| `02-item-object-styles` | 0/3 | p1 1.55% | 99% | 20.2 pt |  |
+| `02-item-object-styles` | 0/3 | p1 0.00% | 99% | 20.2 pt |  |
 | `02-item-paths` | 0/5 | p1 3.87% | 100% | 0.0 pt |  |
 | `02-item-shapes-transforms` | 0/6 | p5 0.13% | 100% | 0.5 pt |  |
 | `02-item-text-wrap` | 0/9 | p5 3.46% | 54% | 50.0 pt |  |
 | `03-color-gradients` | 4/5 | p1 27.90% | 96% | 0.0 pt |  |
-| `03-color-overprint` | 1/5 | p5 10.60% | 100% | 0.0 pt |  |
+| `03-color-overprint` | 1/5 | p5 7.97% | 100% | 0.0 pt |  |
 | `03-color-strokes` | 0/5 | p2 1.01% | 100% | 0.0 pt |  |
 | `03-color-swatches` | 2/4 | p4 32.98% | 100% | 0.0 pt |  |
-| `04-fx-feathers-other` | 3/5 | p4 15.77% | 100% | 0.5 pt |  |
-| `04-fx-opacity-blend` | 2/6 | p5 9.08% | 100% | 0.5 pt |  |
-| `04-fx-shadows-glows` | 3/5 | p2 19.05% | 100% | 0.0 pt |  |
+| `04-fx-feathers-other` | 0/5 | p5 0.29% | 100% | 0.5 pt |  |
+| `04-fx-opacity-blend` | 0/6 | p5 1.23% | 100% | 0.5 pt |  |
+| `04-fx-shadows-glows` | 2/5 | p2 19.17% | 100% | 0.0 pt |  |
 | `05-image-clipping` | 3/3 | p2 25.41% | 100% | 0.0 pt |  |
 | `05-image-fitting` | 0/4 | p3 1.31% | 100% | 0.0 pt |  |
 | `05-image-links` | 1/4 | p4 6.20% | 100% | 0.0 pt | missing image fmt-lzw.tif; missing image fmt-missing.jpg |
@@ -519,4 +524,4 @@ changes, variables).
 | `11-long-tracked-changes` | 0/5 | p3 0.60% | 76% | 60.0 pt |  |
 | `11-long-xml-structure` | 0/1 | p1 0.00% | 100% | 0.0 pt |  |
 | `12-pdf-accessibility` | 0/5 | p4 1.17% | 89% | 37.3 pt |  |
-| `12-pdf-output` | 2/4 | p3 5.91% | 100% | 0.0 pt |  |
+| `12-pdf-output` | 1/4 | p3 5.91% | 100% | 0.0 pt |  |

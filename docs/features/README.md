@@ -84,7 +84,7 @@ Every "(memory)" item below maps to one of these documents.
 | 3. Text wrap | Known; measured in `02-item-text-wrap` | None (read by the renderer) | None | **Done** (`TextArea`): box, object shape, jump, next column, sides, inverse, ignore wrap, shaped frames. Gaps: detect edges and Photoshop paths; anchored objects wrap only the lines after them | **Done**: line stretches, baseline probing, the paragraph composer plans in the stretches | n/a | **L** |
 | 4. Polygons and paths | Known; real data | Reads contours. Creates only rectangles, ovals and 2-point lines | rectangle, ellipse, line | Béziers and compound paths done. Gaps: open paths not filled, no arrowheads | n/a | Rectangles and 2-point lines only | **M** |
 | 5a. Gradients | Known and checked against `03-color-gradients` | `ResolveGradient`, `AddGradient` | None | **Done**: linear and radial fills and strokes (shadings, shading patterns), midpoints, spot stops. Gap: radial highlight | Gradient text fill done; text stroke not drawn | None | **M** + **M** PDF infra |
-| 5b. Effects | Known from `Preferences.xml` | Opacity only (wip) | Opacity only | Opacity only (`ca`/`CA`); no blend modes, soft masks or groups | n/a | None | Tier 1 **S–M**, tier 2 **L** |
+| 5b. Effects | Known; measured in `04-fx-opacity-blend`, `04-fx-shadows-glows`, `04-fx-feathers-other` | Opacity only | Opacity only | **Done**: transparency groups (opacity, blend modes, isolate, knockout; object, fill, stroke, content, group), drop and inner shadows, glows, basic, directional and gradient feathers as soft masks. Gaps: text in effect shapes, noise, bevel and emboss, satin (reported) | n/a | None | Tier 1 **S–M**, tier 2 **L** |
 | 6. Drop caps | Attributes known (defaults) | None | None | Through glyph ops (nothing new) | **None.** Per-line indents, sizing | Not planned | **M** |
 
 **What every feature touches (checklist):**
@@ -206,8 +206,8 @@ Each release updates the spec reference's "Not supported" section, the skill (`S
 
 - Gradient mesh.
 - Radial highlights (`Hilite*`).
-- Bevel and emboss, satin, directional feather, noise.
-- Blurred shadows of text (unblurred fallback only).
+- Bevel and emboss, satin (reported as not drawn), noise.
+- Text in the shapes of shadows, glows and feathers (no glyph outlines: the text is left out, with a warning).
 - Effects on text runs.
 - Importing gradients or effects from PDF.
 

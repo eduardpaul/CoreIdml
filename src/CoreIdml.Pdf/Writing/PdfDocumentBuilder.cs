@@ -11,10 +11,10 @@ namespace CoreIdml.Pdf.Writing;
 
 /// <summary>
 /// Assembles a PDF: pages with content streams, shared resources (fonts embedded as subsets on finish, images
-/// written once per source, opacity states, gradient shadings and shading patterns). All pages share one resource
-/// dictionary.
+/// written once per source, graphics states, gradient shadings and shading patterns, transparency groups and soft
+/// masks). All pages, and the forms of transparency groups and soft masks, share one resource dictionary.
 /// </summary>
-internal sealed class PdfDocumentBuilder : IDisposable
+internal sealed partial class PdfDocumentBuilder : IDisposable
 {
     private readonly PdfObjectWriter writer;
     private readonly bool compress;
@@ -69,16 +69,19 @@ internal sealed class PdfDocumentBuilder : IDisposable
     /// <summary>
     /// Adds a page <paramref name="width"/> by <paramref name="height"/> points (MediaBox and BleedBox) with the
     /// finished page at <paramref name="trim"/> (TrimBox, in PDF space: x from the left, y from the bottom). InDesign
-    /// writes the boxes this way: all equal at the trim size, or the trim inside the bleed (01-doc-bleed-slug).
+    /// writes the boxes this way: all equal at the trim size, or the trim inside the bleed (01-doc-bleed-slug). A page
+    /// that uses <paramref name="transparency"/> is a transparency group in <see cref="BlendSpace"/>, as InDesign
+    /// writes every page (<c>/Group &lt;&lt;/S /Transparency /CS /DeviceCMYK&gt;&gt;</c> in 04-fx-opacity-blend).
     /// </summary>
-    public void AddPage(double width, double height, CoreIdml.Rect trim, ContentBuilder content)
+    public void AddPage(double width, double height, CoreIdml.Rect trim, ContentBuilder content, bool transparency = false)
     {
         var page = writer.Reserve();
         var contents = writer.Reserve();
         writer.WriteStream(contents, string.Empty, content.ToBytes(), compress);
         var media = $"[0 0 {Number(width)} {Number(height)}]";
         var trimBox = $"[{Number(trim.X)} {Number(trim.Y)} {Number(trim.X + trim.Width)} {Number(trim.Y + trim.Height)}]";
-        writer.WriteObject(page, $"<</Type /Page /Parent {Ref(pagesObject)} /MediaBox {media} /BleedBox {media} /TrimBox {trimBox} /Resources {Ref(resourcesObject)} /Contents {Ref(contents)}>>");
+        var group = transparency ? $" /Group <</Type /Group /S /Transparency /CS {BlendSpace}>>" : string.Empty;
+        writer.WriteObject(page, $"<</Type /Page /Parent {Ref(pagesObject)} /MediaBox {media} /BleedBox {media} /TrimBox {trimBox}{group} /Resources {Ref(resourcesObject)} /Contents {Ref(contents)}>>");
         pageObjects.Add(page);
     }
 
@@ -91,21 +94,6 @@ internal sealed class PdfDocumentBuilder : IDisposable
             fonts[face.Key] = resource;
         }
         return resource;
-    }
-
-    /// <summary>The resource name for an ExtGState with the given fill/stroke opacity.</summary>
-    public string Opacity(double fill, double stroke)
-    {
-        var key = Number(fill) + "/" + Number(stroke);
-        if (!graphicStates.TryGetValue(key, out var name))
-        {
-            name = "GS" + (graphicStates.Count + 1).ToString(CultureInfo.InvariantCulture);
-            var number = writer.Reserve();
-            writer.WriteObject(number, $"<</Type /ExtGState /ca {Number(fill)} /CA {Number(stroke)}>>");
-            graphicStates[key] = name;
-            graphicStateObjects[name] = number;
-        }
-        return name;
     }
 
     /// <summary>The resource name for a shading painted with <c>sh</c>, writing it on first use.</summary>
@@ -440,7 +428,7 @@ internal sealed class PdfDocumentBuilder : IDisposable
         }
         var usedImages = images.Values.OfType<ImageResource>().ToList();
         var usedForms = forms.Values.OfType<FormResource>().ToList();
-        if (usedImages.Count > 0 || usedForms.Count > 0)
+        if (usedImages.Count > 0 || usedForms.Count > 0 || effectXObjects.Count > 0)
         {
             resources.Append(" /XObject <<");
             foreach (var image in usedImages)
@@ -450,6 +438,10 @@ internal sealed class PdfDocumentBuilder : IDisposable
             foreach (var form in usedForms)
             {
                 resources.Append(CultureInfo.InvariantCulture, $" /{form.Name} {Ref(form.ObjectNumber)}");
+            }
+            foreach (var (name, number) in effectXObjects)
+            {
+                resources.Append(CultureInfo.InvariantCulture, $" /{name} {Ref(number)}");
             }
             resources.Append(">>");
         }
