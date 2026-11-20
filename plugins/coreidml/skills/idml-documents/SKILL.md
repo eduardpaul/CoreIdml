@@ -78,7 +78,7 @@ wider and taller than the page); use `cmyk` colours; keep text inside the margin
 The preview and PDF engine does not draw effects other than opacity; the spec has no gradients, master pages,
 paragraph rules, drop caps, text wrap or free paths. Design without them. When an existing document uses effects, say
 the preview leaves them out and InDesign will show them (gradients and text wrap in a document are drawn; a wrap that
-follows an image's alpha channel or edges is not).
+follows an image's detected edges or Photoshop path is not).
 
 ## Reporting back
 

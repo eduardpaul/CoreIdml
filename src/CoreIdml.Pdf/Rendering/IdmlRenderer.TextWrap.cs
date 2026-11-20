@@ -13,6 +13,13 @@ internal sealed partial class IdmlRenderer
     // Text wrap only affects text beneath (Preferences > Composition, TextPreference@ZOrderTextWrap).
     private bool? wrapBeneathOnly;
 
+    // The opaque strips of placed images with alpha-channel contours, by graphic id (see AlphaShape).
+    private readonly Dictionary<string, List<Rect>> alphaShapes = new(StringComparer.Ordinal);
+
+    // The alpha a pixel needs to be inside an alpha-channel contour, and the most strips of rows an image is read in.
+    private const int AlphaThreshold = 230;
+    private const int MaxAlphaStrips = 512;
+
     /// <summary>
     /// Where the lines of <paramref name="frame"/> may go in its columns (inner bounds <paramref name="inner"/>, text
     /// inset with the stroke <paramref name="inset"/>): its own shape when it is not a plain rectangle, less the wraps of
@@ -135,11 +142,10 @@ internal sealed partial class IdmlRenderer
             return null;
         }
         var preference = WrapPreference(item.Element);
-        var contentTransform = transform;
-        if (Mode(preference) == "None" && item is GraphicFrame { Graphic: { } graphic } && WrapPreference(graphic) is { } inner && Mode(inner) != "None")
+        var graphic = (item as GraphicFrame)?.Graphic;
+        if (Mode(preference) == "None" && graphic is not null && WrapPreference(graphic) is { } inner && Mode(inner) != "None")
         {
             preference = inner;
-            contentTransform = CoreIdml.Matrix.Parse(graphic.Attribute("ItemTransform")?.Value).Then(transform);
         }
         var mode = Mode(preference);
         if (preference is null || mode == "None" || (masterItem && preference.Attribute("ApplyToMasterPageOnly")?.Value == "true"))
@@ -182,7 +188,7 @@ internal sealed partial class IdmlRenderer
             "NextColumnTextWrap" => WrapMode.NextColumn,
             _ => WrapMode.Around,
         };
-        if (mode == "Contour" && ContourOutlines(item, preference, outlines, contentTransform) is { } contour)
+        if (mode == "Contour" && ContourOutlines(preference, outlines, graphic, transform) is { } contour)
         {
             return new WrapRegion(wrapMode, Bounds(contour), Spacing.All(spacing.Top + stroke), side, contour);
         }
@@ -196,23 +202,95 @@ internal sealed partial class IdmlRenderer
 
     /// <summary>
     /// The shape an object-shape wrap follows (<c>ContourOption@ContourType</c>): the frame's path for Same as
-    /// Clipping, Graphic Frame and a user-modified path, its box for Bounding Box. Null for the contours read from the
-    /// image (alpha channel, detect edges, Photoshop path), which are not supported: such an item does not wrap.
+    /// Clipping, Graphic Frame and a user-modified path, its box for Bounding Box, the opaque part of a placed PNG for
+    /// Alpha Channel (see <see cref="AlphaShape"/>). Null for the other contours read from the image (detect edges,
+    /// Photoshop path), which are not supported, and for an alpha channel that cannot be read: such an item does not wrap.
     /// </summary>
-    private static List<Outline>? ContourOutlines(PageItem item, XElement preference, List<Outline> outlines, CoreIdml.Matrix contentTransform)
-    {
-        _ = item;
-        _ = contentTransform;
-        return (preference.Element("ContourOption")?.Attribute("ContourType")?.Value ?? "SameAsClipping") switch
+    private List<Outline>? ContourOutlines(XElement preference, List<Outline> outlines, XElement? graphic, CoreIdml.Matrix transform) =>
+        (preference.Element("ContourOption")?.Attribute("ContourType")?.Value ?? "SameAsClipping") switch
         {
             "BoundingBox" => [BoxOutline(Bounds(outlines))],
-            "AlphaChannel" or "DetectEdges" or "PhotoshopPath" => null,
+            "AlphaChannel" => graphic is null ? null : AlphaShape(graphic) is { Count: > 0 } strips
+                ? strips.Select(strip => BoxOutline(strip, CoreIdml.Matrix.Parse(graphic.Attribute("ItemTransform")?.Value).Then(transform))).ToList()
+                : null,
+            "DetectEdges" or "PhotoshopPath" => null,
             _ => outlines,
         };
+
+    private static Outline BoxOutline(Rect box, CoreIdml.Matrix? transform = null)
+    {
+        Point[] corners = [new(box.Left, box.Top), new(box.Right, box.Top), new(box.Right, box.Bottom), new(box.Left, box.Bottom)];
+        return new(transform is { } matrix ? [.. corners.Select(matrix.Apply)] : corners, true);
     }
 
-    private static Outline BoxOutline(Rect box) =>
-        new([new(box.Left, box.Top), new(box.Right, box.Top), new(box.Right, box.Bottom), new(box.Left, box.Bottom)], true);
+    /// <summary>
+    /// The opaque part of a placed PNG with an alpha channel, in the image's inner coordinates (its
+    /// <c>GraphicBounds</c>): for each strip of rows, the box from the first pixel whose alpha reaches 230 to the last
+    /// (inside edges are not followed, <c>IncludeInsideEdges="false"</c>). 02-item-text-wrap p8 wraps a feathered
+    /// ellipse: every line beside it ends where a threshold from 220 to 230 puts the edge, and 230 also keeps the next
+    /// word off each line (25 is InDesign's default threshold, from memory). Tall images are read in at most
+    /// <see cref="MaxAlphaStrips"/> strips. Empty when the image cannot be read or has no alpha.
+    /// </summary>
+    private List<Rect> AlphaShape(XElement graphic)
+    {
+        var id = graphic.Attribute("Self")?.Value ?? string.Empty;
+        if (alphaShapes.TryGetValue(id, out var cached))
+        {
+            return cached;
+        }
+        var strips = new List<Rect>();
+        alphaShapes[id] = strips;
+        if (ResolveLink(graphic.Element("Link")?.Attribute("LinkResourceURI")?.Value) is not { } path || !File.Exists(path))
+        {
+            return strips;
+        }
+        Imaging.RasterImage raster;
+        try
+        {
+            var data = File.ReadAllBytes(path);
+            if (!Imaging.PngCodec.IsPng(data))
+            {
+                return strips;
+            }
+            raster = Imaging.PngCodec.Decode(data);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return strips;
+        }
+        if (raster.Channels is not (2 or 4) || raster.Width == 0 || raster.Height == 0)
+        {
+            return strips;
+        }
+        var bounds = graphic.Element("Properties")?.Element("GraphicBounds");
+        var left = Values.Number(bounds?.Attribute("Left")?.Value, 0);
+        var top = Values.Number(bounds?.Attribute("Top")?.Value, 0);
+        var right = Values.Number(bounds?.Attribute("Right")?.Value, left + raster.Width);
+        var bottom = Values.Number(bounds?.Attribute("Bottom")?.Value, top + raster.Height);
+        var (scaleX, scaleY) = ((right - left) / raster.Width, (bottom - top) / raster.Height);
+        var rows = Math.Max(1, (raster.Height + MaxAlphaStrips - 1) / MaxAlphaStrips);
+        var alpha = raster.Channels - 1;
+        for (var row = 0; row < raster.Height; row += rows)
+        {
+            var (first, last) = (int.MaxValue, -1);
+            for (var y = row; y < Math.Min(raster.Height, row + rows); y++)
+            {
+                var offset = y * raster.Width * raster.Channels;
+                for (var x = 0; x < raster.Width; x++)
+                {
+                    if (raster.Pixels[offset + (x * raster.Channels) + alpha] >= AlphaThreshold)
+                    {
+                        (first, last) = (Math.Min(first, x), Math.Max(last, x));
+                    }
+                }
+            }
+            if (last >= 0)
+            {
+                strips.Add(Rect.FromEdges(left + (first * scaleX), top + (row * scaleY), left + ((last + 1) * scaleX), top + (Math.Min(raster.Height, row + rows) * scaleY)));
+            }
+        }
+        return strips;
+    }
 
     // The item's paths in the frame (a group's are its items' paths).
     private List<Outline> Outlines(PageItem item, CoreIdml.Matrix transform)

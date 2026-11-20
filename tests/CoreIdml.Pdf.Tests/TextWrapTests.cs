@@ -251,6 +251,35 @@ public sealed class TextWrapTests
     }
 
     [Fact]
+    public void An_alpha_channel_contour_wraps_the_opaque_part_of_the_image()
+    {
+        var (document, frame) = Document();
+        using var _ = document;
+        // A 20 x 20 pixel PNG whose right half is opaque, placed 100 pt square: the opaque part starts 50 pt in.
+        var pixels = new byte[20 * 20 * 4];
+        for (var i = 0; i < 20 * 20; i++)
+        {
+            pixels[(4 * i) + 3] = (byte)(i % 20 >= 10 ? 255 : 0);
+        }
+        var path = Path.Combine(TestSupport.OutputDirectory("text-wrap-alpha"), "half.png");
+        File.WriteAllBytes(path, Imaging.PngCodec.Encode(new Imaging.RasterImage(20, 20, 4, pixels)));
+        var image = document.Pages[0].AddImage(new Rect(150, 150, 100, 100), path);
+        image.Element.Add(new XElement("TextWrapPreference",
+            new XAttribute("TextWrapSide", "BothSides"),
+            new XAttribute("TextWrapMode", "Contour"),
+            new XElement("Properties", new XElement("TextWrapOffset", new XAttribute("Top", "0"), new XAttribute("Left", "0"), new XAttribute("Bottom", "0"), new XAttribute("Right", "0"))),
+            new XElement("ContourOption", new XAttribute("ContourType", "AlphaChannel"))));
+
+        var (layout, _, box) = Layout(document, frame, image);
+
+        var beside = layout.Lines.Where(line => line.Baseline - 12.5 < box.Bottom && line.Baseline > box.Top).ToList();
+        Assert.NotEmpty(beside);
+        // The transparent left half takes text: a line ends in it, and none crosses the opaque half.
+        Assert.Contains(beside, line => line.Left + line.Width > box.Left + 1 && line.Left + line.Width <= box.Left + 50 + 0.01);
+        Assert.All(beside, line => Assert.True(line.Left + line.Width <= box.Left + 50 + 0.01 || line.Left >= box.Right - 0.01, $"{line.Text} at {line.Left}"));
+    }
+
+    [Fact]
     public void Text_in_a_polygon_frame_stays_inside_it()
     {
         var (document, frame) = Document();
