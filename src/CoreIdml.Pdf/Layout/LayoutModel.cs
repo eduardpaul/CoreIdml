@@ -166,6 +166,12 @@ internal sealed record ParagraphModel(ParagraphFormatting Format, IReadOnlyList<
 {
     /// <summary>The paragraph's <c>AppliedParagraphStyle</c>, which running-header variables match.</summary>
     public string? ParagraphStyle { get; init; }
+
+    /// <summary>
+    /// The paragraph's nested line styles, when it has any: <see cref="Items"/> are styled for its first line, and the
+    /// composer restyles the rest of the paragraph at each new line.
+    /// </summary>
+    public NestedStyleText? LineStyles { get; init; }
 }
 
 /// <summary>Something to paint, in the coordinates of the frame (or cell) it was laid out in.</summary>

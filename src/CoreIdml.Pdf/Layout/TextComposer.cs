@@ -199,18 +199,23 @@ internal sealed class TextComposer
         public TabItem? Tab;
         public XElement? Table;
         public InlineObjectItem? Object;
+        // The item it was shaped from, and the index in that item's text of its (first) character.
+        public InlineItem? Item;
+        public int Index;
     }
 
-    private List<Shaped> Shape(ParagraphModel paragraph, FrameArea frame)
+    private List<Shaped> Shape(ParagraphModel paragraph, FrameArea frame) => Shape(paragraph.Items, paragraph.Format, frame);
+
+    private List<Shaped> Shape(IReadOnlyList<InlineItem> items, ParagraphFormatting format, FrameArea frame)
     {
         var result = new List<Shaped>();
-        foreach (var item in paragraph.Items)
+        foreach (var item in items)
         {
             var first = result.Count;
             switch (item)
             {
                 case TextItem text:
-                    ShapeText(text.Text, text.Style, result, text.Generated ? null : paragraph.Format.Hyphenation);
+                    ShapeText(text.Text, text.Style, result, text.Generated ? null : format.Hyphenation);
                     break;
                 case PageNumberItem number:
                     ShapeText(number.Marker switch
@@ -246,12 +251,10 @@ internal sealed class TextComposer
                     });
                     break;
             }
-            if (item.Generated)
+            for (var i = first; i < result.Count; i++)
             {
-                for (var i = first; i < result.Count; i++)
-                {
-                    result[i].Marker = true;
-                }
+                result[i].Item = item;
+                result[i].Marker = item.Generated;
             }
         }
         // Pair kerning between neighbours in the same font and size. A hyphenation point between two letters does not
@@ -332,7 +335,7 @@ internal sealed class TextComposer
             var value = CharacterText(codePoint);
             if (codePoint == 0x00AD)
             {
-                output.Add(new Shaped { Kind = GlyphKind.SoftHyphen, Style = style, Font = style.Font, Size = size, Rise = rise, BreakAfter = true, Text = string.Empty });
+                output.Add(new Shaped { Kind = GlyphKind.SoftHyphen, Style = style, Font = style.Font, Size = size, Rise = rise, BreakAfter = true, Text = string.Empty, Index = index });
                 continue;
             }
             var isSpace = codePoint is 0x20 or 0xA0 or (>= 0x2000 and <= 0x200A) or 0x3000 or 0x202F or 0x205F;
@@ -370,6 +373,7 @@ internal sealed class TextComposer
                 Size = size,
                 Rise = rise,
                 Style = style,
+                Index = index,
                 BreakAfter = codePoint is 0x20 or 0x200B or 0x2002 or 0x2003 or 0x2009 or 0x200A or 0x2008 or 0x2004 or 0x2005 or 0x2006 or 0x3000
                     or '-' or 0x2010 or 0x2013 or 0x2014,
             });
@@ -379,7 +383,7 @@ internal sealed class TextComposer
             }
             if (nextHyphen < hyphens.Count && hyphens[nextHyphen] == index)
             {
-                output.Add(new Shaped { Kind = GlyphKind.SoftHyphen, Style = style, Font = style.Font, Size = size, Rise = rise, BreakAfter = true, Text = string.Empty });
+                output.Add(new Shaped { Kind = GlyphKind.SoftHyphen, Style = style, Font = style.Font, Size = size, Rise = rise, BreakAfter = true, Text = string.Empty, Index = index });
             }
         }
         if (style.Ligatures)
@@ -427,6 +431,7 @@ internal sealed class TextComposer
                 Size = first.Size,
                 Rise = first.Rise,
                 Style = first.Style,
+                Index = first.Index,
                 BreakAfter = last.BreakAfter,
             };
             output.RemoveRange(i + 1, length - 1);
@@ -487,6 +492,12 @@ internal sealed class TextComposer
         var index = 0;
         var firstLine = true;
         var emitted = false;
+        // Nested line styles: the items come styled for the first line; a line that takes another style restyles the
+        // rest of the paragraph before it is broken, so its breaks use its own widths (08-para-nested-grep-styles p3).
+        // Lines are counted by `columns` (every line, a forced line break starting a new one, lines that do not fit
+        // included); a paragraph laid out again after a keep restore starts over from its own items at line 0.
+        var lineStyles = paragraph.LineStyles;
+        var lineStyle = lineStyles?.LineStyle(0);
         while (index < glyphs.Count || !emitted)
         {
             if (index < glyphs.Count && glyphs[index].Kind == GlyphKind.Table)
@@ -503,6 +514,14 @@ internal sealed class TextComposer
             if (columns.Count > 0 && forcedBreaks.Contains((number, columns.Count)) && !flow.AtColumnTop)
             {
                 flow.NextColumn();
+            }
+            if (lineStyles is not null && index < glyphs.Count && glyphs[index].Item is { } source
+                && lineStyles.LineStyle(columns.Count) is var wanted && wanted != lineStyle)
+            {
+                var rest = Shape(lineStyles.ItemsFrom(source, glyphs[index].Index, wanted), format, flow.Frame);
+                glyphs.RemoveRange(index, glyphs.Count - index);
+                glyphs.AddRange(rest);
+                lineStyle = wanted;
             }
             var column = flow.Column;
             var indent = format.LeftIndent + (firstLine ? format.FirstLineIndent : 0);

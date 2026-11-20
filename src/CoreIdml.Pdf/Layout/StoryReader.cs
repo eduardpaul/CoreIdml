@@ -23,6 +23,7 @@ internal sealed class StoryReader
     private readonly FontLibrary fonts;
     private readonly Dictionary<XElement, RunStyle> runStyles = [];
     private readonly Dictionary<XElement, ParagraphFormatting> paragraphFormats = [];
+    private readonly NestedStyles nestedStyles;
 
     // Anchored items live in a story, not a spread; their geometry does not depend on the spread they are wrapped with.
     private Spread? anchorSpread;
@@ -32,6 +33,7 @@ internal sealed class StoryReader
         this.document = document;
         this.resolver = resolver;
         this.fonts = fonts;
+        nestedStyles = new NestedStyles(this);
     }
 
     public AttributeResolver Resolver => resolver;
@@ -41,6 +43,9 @@ internal sealed class StoryReader
     {
         var paragraphs = new List<ParagraphModel>();
         var items = new List<InlineItem>();
+        // The element each item came from, and zero-width special characters between items, for nested and GREP styles.
+        var sources = new List<XElement>();
+        var hidden = new List<(int Before, char Code)>();
         XElement? currentRange = null;
         // Where the paragraph's text starts: its list marker takes this character's formatting.
         XElement? firstText = null;
@@ -50,7 +55,13 @@ internal sealed class StoryReader
         void EndParagraph(XElement? markSource)
         {
             var range = currentRange ?? markSource?.AncestorsAndSelf("ParagraphStyleRange").FirstOrDefault();
+            NestedStyleText? lineStyles = null;
             var markStyle = markSource is not null ? StyleOf(markSource) : lastStyle ?? (range is not null ? StyleOf(range) : DefaultStyle());
+            if (range is not null && nestedStyles.Apply(range, items, sources, hidden) is { } styled)
+            {
+                items = [.. styled.Items(0, styled.LineStyle(0))];
+                lineStyles = styled.HasLineStyles ? styled : null;
+            }
             if (range is not null && markers.Marker(range, firstText ?? markSource ?? range) is { } marker)
             {
                 items.InsertRange(0, marker);
@@ -58,8 +69,11 @@ internal sealed class StoryReader
             paragraphs.Add(new ParagraphModel(range is null ? new ParagraphFormatting() : FormatOf(range), items, markStyle)
             {
                 ParagraphStyle = range?.Attribute("AppliedParagraphStyle")?.Value,
+                LineStyles = lineStyles,
             });
             items = [];
+            sources.Clear();
+            hidden.Clear();
             currentRange = null;
             firstText = null;
         }
@@ -79,7 +93,7 @@ internal sealed class StoryReader
                         }
                         var style = StyleOf(child);
                         lastStyle = style;
-                        AddContent(child, style, items);
+                        AddContent(child, style, items, hidden);
                         break;
                     case "Br":
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
@@ -115,6 +129,10 @@ internal sealed class StoryReader
                     default:
                         Walk(child);
                         break;
+                }
+                while (sources.Count < items.Count)
+                {
+                    sources.Add(child);
                 }
             }
         }
@@ -306,7 +324,7 @@ internal sealed class StoryReader
         return Rect.FromEdges(bounds.Left - outside, bounds.Top - outside, bounds.Right + outside, bounds.Bottom + outside);
     }
 
-    private static void AddContent(XElement content, RunStyle style, List<InlineItem> items)
+    private static void AddContent(XElement content, RunStyle style, List<InlineItem> items, List<(int Before, char Code)> hidden)
     {
         var text = new StringBuilder();
         var run = content.Ancestors("CharacterStyleRange").FirstOrDefault();
@@ -363,6 +381,12 @@ internal sealed class StoryReader
                             Flush();
                             items.Add(new TabItem(style, RightIndentTab: true));
                             break;
+                        case "3":
+                        case "7":
+                            // End nested style here, indent to here: not drawn, but nested and GREP styles see them.
+                            Flush();
+                            hidden.Add((items.Count, (char)(instruction.Data.Trim() == "3" ? 3 : 7)));
+                            break;
                     }
                     break;
             }
@@ -386,6 +410,42 @@ internal sealed class StoryReader
         // Every attribute resolves along the same chain (run, character style, paragraph, paragraph style).
         var style = Build(resolver.TextChain(run), run, null, null);
         runStyles[run] = style;
+        return style;
+    }
+
+    private readonly Dictionary<(XElement, string), RunStyle> layeredStyles = [];
+
+    /// <summary>
+    /// The formatting of text at <paramref name="element"/> under character styles applied by the paragraph's nested,
+    /// line and GREP styles (<paramref name="layers"/>, lowest first): each sits above the run's own character style and
+    /// below its local formatting, and defines only the attributes it sets (see <see cref="NestedStyles"/>).
+    /// </summary>
+    public RunStyle StyleOf(XElement element, IReadOnlyList<string> layers)
+    {
+        if (layers.Count == 0)
+        {
+            return StyleOf(element);
+        }
+        var run = element.AncestorsAndSelf("CharacterStyleRange").FirstOrDefault()
+            ?? element.AncestorsAndSelf("ParagraphStyleRange").FirstOrDefault();
+        if (run is null)
+        {
+            return DefaultStyle();
+        }
+        var key = (run, string.Join('\n', layers));
+        if (!layeredStyles.TryGetValue(key, out var style))
+        {
+            var chain = new List<XElement>(resolver.TextChain(run));
+            var at = run.Name.LocalName == "CharacterStyleRange" ? 1 : 0;
+            for (var i = layers.Count - 1; i >= 0; i--)
+            {
+                var layer = resolver.StyleChain(layers[i]);
+                chain.InsertRange(at, layer);
+                at += layer.Count;
+            }
+            style = Build(chain, run, null, null);
+            layeredStyles[key] = style;
+        }
         return style;
     }
 
