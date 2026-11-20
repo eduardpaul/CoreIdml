@@ -33,12 +33,14 @@ Measured against `02-item-text-wrap` and `06-frame-shapes` (InDesign 20). Code:
   + 0.5); a band that crosses its edge stays empty, bands above and below are free.
 - **Jump to next column** (p6), **ignore wrap** (06-frame-basics p6). A graphic frame without a wrap of its own takes
   its image's (p8).
+- **Anchored objects** (02-item-anchored p4): a custom-positioned object's wrap goes round the lines placed after
+  its anchor in the same frame (lines before it are not set again); an object-shape wrap is taken as its box.
 - **Alpha channel** (p8): the pixels of a placed PNG whose alpha reaches 230 (thresholds from 220 to 230 end every
   line beside the feathered ellipse where InDesign does, and 230 keeps each next word off; InDesign's default
   threshold is 25, from memory), each strip of rows from its first such pixel to its last (no inside edges).
 - **Shaped text frames** (ovals, polygons, curves, corner options): the frame's path less its inset (a single
   `InsetSpacing` value) and half its stroke, as an inverted object-shape wrap (06-frame-shapes, 02-item-corners p4).
-- **Not done:** detect edges and Photoshop paths (such an item does not wrap), wraps of anchored objects (02-item-anchored p4), `AbutTextToTextWrap="false"`, `JustifyTextWraps`,
+- **Not done:** detect edges and Photoshop paths (such an item does not wrap), `AbutTextToTextWrap="false"`, `JustifyTextWraps`,
   `IncludeInsideEdges`; tables ignore wraps; vertical justification still shifts wrapped lines.
 - **From memory, no sample:** master items (`ApplyToMasterPageOnly`), `ZOrderTextWrap`, `Layer@IgnoreWrap`, hidden
   items, the spine sides, object-shape wraps using only the top offset (the samples set all four alike).

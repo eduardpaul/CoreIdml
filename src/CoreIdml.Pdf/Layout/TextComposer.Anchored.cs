@@ -85,8 +85,9 @@ internal sealed partial class TextComposer
     /// boxes 10 pt right of the column, 4 pt inside the frame, the margin and the page, their bottoms 8 pt above the
     /// baseline; p4: a box aligned to the column's left edge with X offset -90 ends 90 pt inside it). Kept within the
     /// column's top and bottom when <c>PinPosition</c> is on and the reference is the line (p4: moved down to the
-    /// column top). Relative to the spine, left and right swap on a left page. It takes no room in the text (text wrap
-    /// is not done) and is drawn after the frame's text.
+    /// column top). Relative to the spine, left and right swap on a left page. It takes no room in its line and is drawn
+    /// after the frame's text; its text wrap goes round the lines placed after it (<see cref="Flow.AddWrap"/>; p4: the
+    /// two lines below the wrapped box end 4 pt left of it).
     /// </summary>
     private static PageItemOp PlaceCustom(InlineObjectItem item, AnchorSettings settings, Shaped anchor, Flow flow, double x, double baseline, LineMetrics metrics)
     {

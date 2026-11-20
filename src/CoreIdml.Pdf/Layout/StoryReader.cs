@@ -314,7 +314,13 @@ internal sealed class StoryReader
                     Number("AnchorYoffset"),
                     Number("AnchorSpaceAbove"),
                     Setting("PinPosition") != "false",
-                    Setting("SpineRelative") == "true"),
+                    Setting("SpineRelative") == "true")
+                {
+                    // Around the box (an object-shape wrap too); the spine sides as on a right page.
+                    Wrap = position == "Anchored" && WrapRegion.Read(WrapRegion.PreferenceOf(resolver.ObjectChain(element)), leftPage: false) is { } wrap
+                        ? wrap with { Box = bounds }
+                        : null,
+                },
         };
     }
 

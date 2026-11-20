@@ -147,25 +147,10 @@ internal sealed partial class IdmlRenderer
         {
             preference = inner;
         }
-        var mode = Mode(preference);
-        if (preference is null || mode == "None" || (masterItem && preference.Attribute("ApplyToMasterPageOnly")?.Value == "true"))
+        if (WrapRegion.Read(preference, leftPage) is not { } wrap || (masterItem && preference!.Attribute("ApplyToMasterPageOnly")?.Value == "true"))
         {
             return null;
         }
-        var offset = preference.Element("Properties")?.Element("TextWrapOffset");
-        double Offset(string side) => Math.Max(0, Values.Number(offset?.Attribute(side)?.Value, 0));
-        var spacing = new Spacing(Offset("Top"), Offset("Right"), Offset("Bottom"), Offset("Left"));
-        var inverse = preference.Attribute("Inverse")?.Value == "true";
-        var side = preference.Attribute("TextWrapSide")?.Value switch
-        {
-            "LeftSide" => WrapSide.Left,
-            "RightSide" => WrapSide.Right,
-            "LargestArea" => WrapSide.Largest,
-            // Towards the spine: the right side of a left page, the left side of a right page.
-            "SideTowardsSpine" => leftPage ? WrapSide.Right : WrapSide.Left,
-            "SideAwayFromSpine" => leftPage ? WrapSide.Left : WrapSide.Right,
-            _ => WrapSide.Both,
-        };
         var outlines = Outlines(item, transform);
         if (outlines.Count == 0)
         {
@@ -180,24 +165,15 @@ internal sealed partial class IdmlRenderer
             "OutsideAlignment" => weight,
             _ => weight / 2,
         };
-        var stroke = inverse ? weight - outside : outside;
-        var box = Bounds(outlines);
-        var wrapMode = inverse ? WrapMode.Inside : mode switch
+        var stroke = wrap.Mode == WrapMode.Inside ? weight - outside : outside;
+        var offset = wrap.Offset;
+        if (Mode(preference) == "Contour")
         {
-            "JumpObjectTextWrap" => WrapMode.Jump,
-            "NextColumnTextWrap" => WrapMode.NextColumn,
-            _ => WrapMode.Around,
-        };
-        if (mode == "Contour" && ContourOutlines(preference, outlines, graphic, transform) is { } contour)
-        {
-            return new WrapRegion(wrapMode, Bounds(contour), Spacing.All(spacing.Top + stroke), side, contour);
+            return ContourOutlines(preference!, outlines, graphic, transform) is { } contour
+                ? wrap with { Box = Bounds(contour), Offset = Spacing.All(offset.Top + stroke), Outlines = contour }
+                : null;
         }
-        if (mode == "Contour")
-        {
-            return null;
-        }
-        var grown = new Spacing(spacing.Top + stroke, spacing.Right + stroke, spacing.Bottom + stroke, spacing.Left + stroke);
-        return new WrapRegion(wrapMode, box, grown, side);
+        return wrap with { Box = Bounds(outlines), Offset = new Spacing(offset.Top + stroke, offset.Right + stroke, offset.Bottom + stroke, offset.Left + stroke) };
     }
 
     /// <summary>
@@ -315,18 +291,7 @@ internal sealed partial class IdmlRenderer
         return weight <= 0 || resolver.Item(item.Element, "StrokeColor") is null or "Swatch/None" ? 0 : weight;
     }
 
-    // The item's TextWrapPreference, or its object style's when the style controls text wrap.
-    private XElement? WrapPreference(XElement element)
-    {
-        if (element.Element("TextWrapPreference") is { } own)
-        {
-            return own;
-        }
-        var chain = resolver.ObjectChain(element);
-        return AttributeResolver.StylesControl(chain, "EnableTextWrapAndOthers")
-            ? chain.Skip(1).Select(style => style.Element("TextWrapPreference")).FirstOrDefault(found => found is not null)
-            : null;
-    }
+    private XElement? WrapPreference(XElement element) => WrapRegion.PreferenceOf(resolver.ObjectChain(element));
 
     private static string Mode(XElement? preference) => preference?.Attribute("TextWrapMode")?.Value ?? "None";
 

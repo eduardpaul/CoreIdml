@@ -127,6 +127,29 @@ public sealed class AnchoredObjectTests
     }
 
     [Fact]
+    public void A_custom_object_with_text_wrap_wraps_the_lines_after_it()
+    {
+        var text = "Anchor here. " + string.Concat(Enumerable.Repeat("Some words that run on for a few lines below the object. ", 6));
+        var (document, frame) = DocumentWithAnchoredShape(text, ("AnchoredPosition", "Anchored"), ("AnchorPoint", "TopRightAnchor"),
+            ("HorizontalReferencePoint", "ColumnEdge"), ("HorizontalAlignment", "RightAlign"), ("VerticalReferencePoint", "LineBaseline"),
+            ("PinPosition", "false"));
+        using var _ = document;
+        frame.Story.Element.Descendants("Rectangle").Single().Add(new XElement("TextWrapPreference",
+            new XAttribute("TextWrapMode", "BoundingBoxTextWrap"),
+            new XElement("Properties", new XElement("TextWrapOffset", new XAttribute("Top", "4"), new XAttribute("Left", "4"), new XAttribute("Bottom", "4"), new XAttribute("Right", "4")))));
+        var (layout, area) = Layout(document, frame);
+        var column = area.Columns[0];
+        var first = layout.Lines[0];
+
+        // 02-item-anchored p4: the box hangs from the anchor's baseline at the column's right edge; the lines whose
+        // band (the leading above the baseline) meets it and its 4 pt offset end left of it, the others are as wide.
+        var beside = layout.Lines.Skip(1).Where(line => line.Baseline - 12.5 < first.Baseline + Height + 4).ToList();
+        Assert.NotEmpty(beside);
+        Assert.All(beside, line => Assert.True(line.Left + line.Width <= column.Right - Width - 4 + 0.01, $"{line.Text} ends at {line.Left + line.Width}"));
+        Assert.Contains(layout.Lines.Skip(1).Except(beside), line => line.Left + line.Width > column.Right - Width);
+    }
+
+    [Fact]
     public void An_x_offset_from_a_left_edge_moves_the_object_out_of_the_area()
     {
         var (document, frame) = DocumentWithAnchoredShape("Paragraph", ("AnchoredPosition", "Anchored"), ("AnchorPoint", "TopLeftAnchor"),

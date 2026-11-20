@@ -812,7 +812,7 @@ internal sealed partial class TextComposer
             bool forced;
             double available;
             LineMetrics metrics;
-            if (flow.Frame.TextArea is not null)
+            if (flow.Area is not null)
             {
                 if (!PlaceWrapped(out end, out forced, out available, out metrics))
                 {
@@ -1405,7 +1405,12 @@ internal sealed partial class TextComposer
                 // Above-line objects are placed with their line (EmitAboveLine); a custom one from its anchor's position.
                 if (!anchored.AboveLine)
                 {
-                    flow.Add(PlaceCustom(placed, anchored, glyph, flow, x, baseline, metrics));
+                    var custom = PlaceCustom(placed, anchored, glyph, flow, x, baseline, metrics);
+                    flow.Add(custom);
+                    if (anchored.Wrap is { } wrap)
+                    {
+                        flow.AddWrap(wrap with { Box = wrap.Box.Offset(custom.Placement.Tx, custom.Placement.Ty) });
+                    }
                 }
                 lineText.Append(glyph.Text);
                 // The marker is only as wide as its kerning with the next letter.
@@ -2003,6 +2008,37 @@ internal sealed partial class TextComposer
         // band and the next stretch to fill.
         private readonly List<(double Left, double Right)> pieces = [];
         private (double Baseline, double Top, int Next)? pending;
+        // The wraps of the custom-positioned objects placed so far, with the frame (index) each is in: replaced, never
+        // changed, so that a State keeps the ones placed before it. The text area they make with the frame's, cached.
+        private (int Frame, WrapRegion Region)[] anchoredWraps = [];
+        private (FrameArea? Frame, (int Frame, WrapRegion Region)[]? Wraps, TextArea? Area) areaCache;
+
+        /// <summary>
+        /// Where text wrap and the frame's shape let the lines of the current frame go: its <see cref="FrameArea.TextArea"/>
+        /// and the wraps of the anchored objects placed in it so far (02-item-anchored p4: the lines after the anchor
+        /// go round the box); null when nothing limits its columns.
+        /// </summary>
+        public TextArea? Area
+        {
+            get
+            {
+                var frame = Frame;
+                if (anchoredWraps.Length == 0)
+                {
+                    return frame.TextArea;
+                }
+                if (!ReferenceEquals(areaCache.Frame, frame) || !ReferenceEquals(areaCache.Wraps, anchoredWraps))
+                {
+                    var index = Math.Min(FrameIndex, frames.Count - 1);
+                    var placed = anchoredWraps.Where(wrap => wrap.Frame == index).Select(wrap => wrap.Region).ToList();
+                    areaCache = (frame, anchoredWraps, placed.Count == 0 ? frame.TextArea : new TextArea([.. frame.TextArea?.Regions ?? [], .. placed]));
+                }
+                return areaCache.Area;
+            }
+        }
+
+        /// <summary>Text wrap of an anchored object placed in the current frame: it wraps the lines placed after it.</summary>
+        public void AddWrap(WrapRegion region) => anchoredWraps = [.. anchoredWraps, (Math.Min(FrameIndex, frames.Count - 1), region)];
 
         private sealed record FilledColumn(int FrameIndex, int ColumnIndex, List<DrawOp> Ops, double UsedBottom, int FirstLine);
 
@@ -2026,7 +2062,7 @@ internal sealed partial class TextComposer
             int FrameIndex, int ColumnIndex, int ColumnOrdinal, bool Exhausted, bool AtColumnTop, double Baseline, double LastDescent,
             double PendingSpace, double UsedBottom, int ContentPage, int FilledColumns, int ColumnOps, int Lines, bool Overset,
             int ColumnLines, Bands Bands, double BandBottom, double SplitBottom, int Ids, (int Id, bool OneColumn)? LastSplit,
-            (double Baseline, double Top, int Next)? Pending);
+            (double Baseline, double Top, int Next)? Pending, (int Frame, WrapRegion Region)[] AnchoredWraps);
 
         public Flow(IReadOnlyList<FrameArea> frames, StoryLayout layout)
         {
@@ -2194,7 +2230,7 @@ internal sealed partial class TextComposer
                     continue;
                 }
                 var line = new Slot(0, column.Width, false);
-                if (Frame.TextArea is { } area)
+                if (Area is { } area)
                 {
                     // The band a line is tested over starts at the baseline before it, or at the column's top.
                     var rise = AtColumnTop ? baseline - column.Y : metrics.Leading + metrics.AboveLine;
@@ -2277,7 +2313,7 @@ internal sealed partial class TextComposer
         // The next stretch on the baseline of the line before, when text wrap left more than one there.
         private bool PlacePending(LineMetrics metrics, double least)
         {
-            if (pending is not { } rest || Frame.TextArea is not { } area || PendingSpace != 0 || metrics.AboveLine != 0)
+            if (pending is not { } rest || Area is not { } area || PendingSpace != 0 || metrics.AboveLine != 0)
             {
                 pending = null;
                 return false;
@@ -2568,7 +2604,7 @@ internal sealed partial class TextComposer
         }
 
         public State Save() => new(FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop, Baseline, LastDescent, PendingSpace, usedBottom,
-            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending);
+            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending, anchoredWraps);
 
         /// <summary>Goes back to <paramref name="state"/>, dropping everything laid out since.</summary>
         public void Restore(State state)
@@ -2583,7 +2619,7 @@ internal sealed partial class TextComposer
             Layout.Overset = state.Overset;
             (FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop) = (state.FrameIndex, state.ColumnIndex, state.ColumnOrdinal, state.Exhausted, state.AtColumnTop);
             (Baseline, LastDescent, PendingSpace, usedBottom, contentPage) = (state.Baseline, state.LastDescent, state.PendingSpace, state.UsedBottom, state.ContentPage);
-            (columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending) = (state.ColumnLines, state.Bands, state.BandBottom, state.SplitBottom, state.Ids, state.LastSplit, state.Pending);
+            (columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending, anchoredWraps) = (state.ColumnLines, state.Bands, state.BandBottom, state.SplitBottom, state.Ids, state.LastSplit, state.Pending, state.AnchoredWraps);
         }
 
         /// <summary>

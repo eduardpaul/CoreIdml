@@ -221,7 +221,14 @@ internal sealed record InlineObjectItem(XElement Element, Rect Bounds, double YO
 /// </summary>
 internal sealed record AnchorSettings(
     bool AboveLine, string AnchorPoint, string HorizontalAlignment, string HorizontalReferencePoint, string VerticalAlignment,
-    string VerticalReferencePoint, double XOffset, double YOffset, double SpaceAbove, bool Pinned, bool SpineRelative);
+    string VerticalReferencePoint, double XOffset, double YOffset, double SpaceAbove, bool Pinned, bool SpineRelative)
+{
+    /// <summary>
+    /// A custom-positioned object's text wrap, around its visible bounds (as <see cref="InlineObjectItem.Bounds"/>, before
+    /// it is placed); null for none.
+    /// </summary>
+    public WrapRegion? Wrap { get; init; }
+}
 
 /// <summary>A paragraph: its formatting, content, and the style of its paragraph mark (height of an empty line).</summary>
 internal sealed record ParagraphModel(ParagraphFormatting Format, IReadOnlyList<InlineItem> Items, RunStyle MarkStyle)

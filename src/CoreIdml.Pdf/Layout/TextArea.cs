@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using CoreIdml.Dom;
 
 namespace CoreIdml.Pdf.Layout;
@@ -60,6 +61,48 @@ internal sealed record WrapRegion(WrapMode Mode, Rect Box, Spacing Offset, WrapS
     public (double Left, double Right) Across => Mode == WrapMode.Inside
         ? (Box.Left, Box.Right)
         : (Box.Left - (Outlines is null ? Offset.Left : Offset.Top), Box.Right + (Outlines is null ? Offset.Right : Offset.Top));
+
+    /// <summary>
+    /// An item's <c>TextWrapPreference</c> (<paramref name="objectChain"/>: the item, then its object styles), or its
+    /// object style's when the item has none and the style controls text wrap (<c>EnableTextWrapAndOthers</c>).
+    /// </summary>
+    public static XElement? PreferenceOf(IReadOnlyList<XElement> objectChain) =>
+        objectChain[0].Element("TextWrapPreference")
+        ?? (AttributeResolver.StylesControl(objectChain, "EnableTextWrapAndOthers")
+            ? objectChain.Skip(1).Select(style => style.Element("TextWrapPreference")).FirstOrDefault(found => found is not null)
+            : null);
+
+    /// <summary>
+    /// What a <c>TextWrapPreference</c> asks for: its mode (an inverted wrap keeps text inside), side (towards and away
+    /// from the spine resolved by <paramref name="leftPage"/>: the right side of a left page is towards it, from memory)
+    /// and offsets, around an empty box; null for no wrap (<c>TextWrapMode="None"</c>).
+    /// </summary>
+    public static WrapRegion? Read(XElement? preference, bool leftPage)
+    {
+        var mode = preference?.Attribute("TextWrapMode")?.Value ?? "None";
+        if (preference is null || mode == "None")
+        {
+            return null;
+        }
+        var offset = preference.Element("Properties")?.Element("TextWrapOffset");
+        double Offset(string side) => Math.Max(0, Values.Number(offset?.Attribute(side)?.Value, 0));
+        var side = preference.Attribute("TextWrapSide")?.Value switch
+        {
+            "LeftSide" => WrapSide.Left,
+            "RightSide" => WrapSide.Right,
+            "LargestArea" => WrapSide.Largest,
+            "SideTowardsSpine" => leftPage ? WrapSide.Right : WrapSide.Left,
+            "SideAwayFromSpine" => leftPage ? WrapSide.Left : WrapSide.Right,
+            _ => WrapSide.Both,
+        };
+        var wrapMode = preference.Attribute("Inverse")?.Value == "true" ? WrapMode.Inside : mode switch
+        {
+            "JumpObjectTextWrap" => WrapMode.Jump,
+            "NextColumnTextWrap" => WrapMode.NextColumn,
+            _ => WrapMode.Around,
+        };
+        return new WrapRegion(wrapMode, default, new Spacing(Offset("Top"), Offset("Right"), Offset("Bottom"), Offset("Left")), side);
+    }
 }
 
 /// <summary>
