@@ -907,13 +907,15 @@ internal sealed partial class TextComposer
                 }
                 if (replan || plan is null || planned >= plan.Count || plannedStart != start || !Expected(plan[planned].Line, slot))
                 {
-                    // The paragraph has at most a line more than it has places to break.
-                    var breaks = 1;
+                    // The paragraph has at most a line more than it has places to break, and needs stretches about as wide as
+                    // its text (twice that is plenty: the plan sets the lines past the last stretch like it).
+                    var (breaks, length) = (1, 0.0);
                     for (var i = start; i < glyphs.Count && glyphs[i].Kind != GlyphKind.Table; i++)
                     {
                         breaks += glyphs[i].BreakAfter || glyphs[i].Kind == GlyphKind.Break ? 1 : 0;
+                        length += glyphs[i].Advance;
                     }
-                    var peeked = flow.Peek(lineMetrics, snapToGrid, least, Math.Min(MaxPlannedSlots, breaks));
+                    var peeked = flow.Peek(lineMetrics, snapToGrid, least, Math.Min(MaxPlannedSlots, breaks), 2 * length);
                     if (peeked.Count == 0)
                     {
                         peeked.Add(slot);
@@ -2345,15 +2347,18 @@ internal sealed partial class TextComposer
 
         /// <summary>
         /// Where the next lines with <paramref name="metrics"/> would go: the first at least <paramref name="least"/>
-        /// wide, then every stretch after it, on into the next columns, up to <paramref name="count"/>.
+        /// wide, then every stretch after it, on into the next columns, up to <paramref name="count"/> stretches or until
+        /// they are <paramref name="width"/> wide together.
         /// </summary>
-        public List<Slot> Peek(LineMetrics metrics, bool snapToGrid, double least, int count)
+        public List<Slot> Peek(LineMetrics metrics, bool snapToGrid, double least, int count, double width)
         {
             var state = Save();
             var slots = new List<Slot>();
-            while (slots.Count < count && Place(metrics, snapToGrid, slots.Count == 0 ? least : 0))
+            var total = 0.0;
+            while (slots.Count < count && total < width && Place(metrics, snapToGrid, slots.Count == 0 ? least : 0))
             {
                 slots.Add(Line);
+                total += Line.Width;
             }
             Restore(state);
             return slots;

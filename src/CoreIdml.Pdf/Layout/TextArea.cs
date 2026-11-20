@@ -275,7 +275,12 @@ internal sealed class TextArea(IReadOnlyList<WrapRegion> regions)
             var count = outline.Closed ? points.Length : points.Length - 1;
             for (var i = 0; i < count; i++)
             {
-                if (EdgeReach(points[i], points[(i + 1) % points.Length], distance, top, bottom) is { } reach)
+                var (a, b) = (points[i], points[(i + 1) % points.Length]);
+                if (Math.Min(a.Y, b.Y) > bottom + distance || Math.Max(a.Y, b.Y) < top - distance)
+                {
+                    continue;
+                }
+                if (EdgeReach(a, b, distance, top, bottom) is { } reach)
                 {
                     output.Add(reach);
                 }

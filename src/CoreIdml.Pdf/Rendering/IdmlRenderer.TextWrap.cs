@@ -13,6 +13,12 @@ internal sealed partial class IdmlRenderer
     // Text wrap only affects text beneath (Preferences > Composition, TextPreference@ZOrderTextWrap).
     private bool? wrapBeneathOnly;
 
+    // The hidden layers that suppress text wrap (Layer@IgnoreWrap), read once.
+    private HashSet<string>? unwrappingLayers;
+
+    private HashSet<string> UnwrappingLayers => unwrappingLayers ??=
+        document.Layers.All.Where(layer => !layer.Visible && layer.GetAttribute("IgnoreWrap") == "true").Select(layer => layer.Id).ToHashSet(StringComparer.Ordinal);
+
     // The opaque strips of placed images with alpha-channel contours, by graphic id (see AlphaShape).
     private readonly Dictionary<string, List<Rect>> alphaShapes = new(StringComparer.Ordinal);
 
@@ -136,8 +142,7 @@ internal sealed partial class IdmlRenderer
     private WrapRegion? WrapOf(PageItem item, CoreIdml.Matrix transform, bool leftPage, bool masterItem)
     {
         if (!item.Visible || item.Element.Ancestors().Any(ancestor => ancestor.Attribute("Visible")?.Value == "false")
-            || (item.LayerId is { } layerId && document.Layers.All.FirstOrDefault(layer => layer.Id == layerId) is { Visible: false } layer
-                && layer.GetAttribute("IgnoreWrap") == "true"))
+            || (item.LayerId is { } layerId && UnwrappingLayers.Contains(layerId)))
         {
             return null;
         }
