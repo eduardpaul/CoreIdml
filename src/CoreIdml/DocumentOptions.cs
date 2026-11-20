@@ -22,3 +22,10 @@ public sealed class DocumentOptions
     /// <summary>Uniform bleed around the page.</summary>
     public double Bleed { get; init; }
 }
+
+/// <summary>
+/// The document's baseline grid: lines every <paramref name="Increment"/> points (usually the body leading) from
+/// <paramref name="Start"/> points below the top of the page, or below the top margin when
+/// <paramref name="RelativeToTopMargin"/>.
+/// </summary>
+public sealed record BaselineGridOptions(double Start, double Increment, bool RelativeToTopMargin = false);

@@ -10,8 +10,10 @@ undeclared colour or style, or a disallowed value (`"fit": "cover"`), is an erro
 ## Units and coordinates
 
 - `unit` (top level): `pt` (default), `mm`, `cm` or `in`, for page sizes, margins, bleed, gutters, item positions
-  and sizes, `x2`/`y2`, `cornerRadius`, `inset`, `columnWidths`, `rowHeight`, `cellInset`.
-- **Always points**: font `size`, `leading`, `spaceBefore`, `spaceAfter`, indents, `strokeWeight`. `tracking`:
+  and sizes, `x2`/`y2`, `cornerRadius`, `inset`, `columnWidths`, `rowHeight`, `cellInset`, the baseline grid's
+  `start`.
+- **Always points**: font `size`, `leading`, `spaceBefore`, `spaceAfter`, indents, `strokeWeight`, the baseline
+  grid's `increment`, `splitGutter`. `tracking`:
   thousandths of an em. `tint`, `fillTint`, `strokeTint`, `opacity`: percent (100 = solid). `rotation`: degrees,
   counter-clockwise.
 - `x`/`y` is the item's top-left corner from the **page's** top-left, y **down**. Margins are not added: with
@@ -44,6 +46,7 @@ the spec, or already in the document for `idml_apply`) before use.
 | `facingPages` | `true` for spreads. Default `false`. |
 | `columns`, `columnGutter` | Margin columns (guides). Default 1 column, 12 pt gutter. |
 | `bleed` | Default 0. |
+| `baselineGrid` | `{ "increment": 14, "start": 36, "relativeTo": "page" }`: grid lines every `increment` points (make it the body leading) from `start` (in `unit`, default 36 pt) below the top of the page, or of the top margin with `"relativeTo": "topMargin"`. Paragraphs with `alignToBaselineGrid` put their baselines on it. |
 
 ## `colors`
 
@@ -81,6 +84,34 @@ Format fields:
 | `keepTogether` | `true`: never break the paragraph across columns or frames (short boxes, captions, addresses). |
 | `keepFirstLines`, `keepLastLines` | At least this many lines before and after a column break (orphans and widows; InDesign uses 2 and 2 when either is set). |
 | `startParagraph` | `nextColumn`, `nextFrame`, `nextPage`, `nextOddPage` or `nextEvenPage` (default `anywhere`): chapter openers. "Page" means the next frame of the story on that page, so thread the story through frames on those pages. |
+| `dropCapLines`, `dropCapCharacters`, `dropCapStyle` | A drop cap this many lines deep (0 removes it), of this many characters (default 1), in a character style (colour, font). See [Drop caps, nested and GREP styles](#drop-caps-nested-and-grep-styles). |
+| `nestedStyles` | Character styles applied in sequence from the paragraph's start, each through or up to a delimiter: a bold lead-in, a run-in heading. `[]` turns them off. |
+| `grepStyles` | Character styles on the text a GREP expression matches: prices, numbers, product names. `[]` turns them off. |
+| `alignToBaselineGrid`, `gridFirstLineOnly` | `true`: every baseline (or only the first line's) moves down to the next line of the document's baseline grid (`page.baselineGrid`). Lines in neighbouring columns then line up. |
+| `spanColumns` | A headline over multi-column text: `0` spans all the frame's columns, `N` the first N, `1` is a single column again. |
+| `splitColumns`, `splitGutter` | Set the paragraph in N sub-columns of its own column (`1`: none), `splitGutter` points apart (default 6). |
+
+### Drop caps, nested and GREP styles
+
+Declare the character styles first (in `characterStyles`), then refer to them from the paragraph style:
+
+```json
+"characterStyles": [ { "name": "Drop", "font": "Arial", "fontStyle": "Bold", "color": "Brand" }, { "name": "Lead", "fontStyle": "Bold" }, { "name": "Price", "color": "Brand" } ],
+"paragraphStyles": [
+  { "name": "Opener", "basedOn": "Body", "dropCapLines": 3, "dropCapStyle": "Drop",
+    "nestedStyles": [ { "style": "Lead", "through": "words", "count": 4 } ] },
+  { "name": "Item", "basedOn": "Body", "nestedStyles": [ { "style": "Lead", "upTo": ":" } ],
+    "grepStyles": [ { "style": "Price", "expression": "\\$[\\d.,]+" } ] }
+]
+```
+
+- A drop cap covers the first `dropCapCharacters` characters and drops through `dropCapLines` lines; its size follows
+  from the lines. `dropCapStyle` is stored as InDesign does, as a first nested style "through 1 drop cap".
+- Each nested style starts where the previous one ended and runs `through` (including) or `upTo` (excluding) the
+  `count`th delimiter: `words`, `characters`, `sentences`, `letters`, `digits`, `tabs`, `lineBreak`,
+  `endNestedStyle`, or one character such as `":"` or `"."`. Give exactly one of `through` and `upTo`.
+- GREP expressions are InDesign's (`\d`, `\w`, `[[:upper:]]`, `~=` en dash, ...); escape backslashes in JSON. Later
+  GREP styles win the attributes both set.
 
 ### Tabs
 
@@ -221,6 +252,6 @@ a text frame's `columns`, `columnGutter`, `inset`, `verticalAlign`. Put several 
 
 ## Not supported
 
-Master pages, paragraph rules, drop caps and text wrap (drawn when a document has them, but not authorable), polygons
+Master pages, paragraph rules and text wrap (drawn when a document has them, but not authorable), polygons
 and free paths, gradients, effects other than opacity (the preview and PDF draw gradients a document already has, but
 not other effects). Repeat a header on each page instead of a master; draw rules with a `line`.

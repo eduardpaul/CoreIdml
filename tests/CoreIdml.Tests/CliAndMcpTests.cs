@@ -762,10 +762,13 @@ public class CliAndMcpTests
 
         AssertFields(typeof(DocumentSpec), spec);
         AssertFields(typeof(PageSetupSpec), spec.GetProperty("page").GetProperty("properties"));
+        AssertFields(typeof(BaselineGridSpec), spec.GetProperty("page").GetProperty("properties").GetProperty("baselineGrid").GetProperty("properties"));
         AssertFields(typeof(ColorSpec), spec.GetProperty("colors").GetProperty("items").GetProperty("properties"));
         AssertFields(typeof(PageSpec), spec.GetProperty("pages").GetProperty("items").GetProperty("properties"));
         AssertFields(typeof(SpacingSpec), definitions.GetProperty("spacing").GetProperty("properties"));
         AssertFields(typeof(TextFormatSpec), definitions.GetProperty("format").GetProperty("properties"));
+        AssertFields(typeof(NestedStyleSpec), definitions.GetProperty("nestedStyle").GetProperty("properties"));
+        AssertFields(typeof(GrepStyleSpec), definitions.GetProperty("grepStyle").GetProperty("properties"));
         AssertFields(typeof(StyleSpec), definitions.GetProperty("style").GetProperty("properties"));
         AssertFields(typeof(ItemSpec), definitions.GetProperty("item").GetProperty("properties"));
         var paragraph = definitions.GetProperty("item").GetProperty("properties").GetProperty("paragraphs").GetProperty("items");

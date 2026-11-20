@@ -5,7 +5,8 @@ namespace CoreIdml.Json;
 public static partial class IdmlJson
 {
     private static readonly string[] TopFields = ["unit", "page", "colors", "paragraphStyles", "characterStyles", "pages"];
-    private static readonly string[] PageSetupFields = ["size", "width", "height", "landscape", "margins", "facingPages", "columns", "columnGutter", "bleed"];
+    private static readonly string[] PageSetupFields = ["size", "width", "height", "landscape", "margins", "facingPages", "columns", "columnGutter", "bleed", "baselineGrid"];
+    private static readonly string[] BaselineGridFields = ["start", "increment", "relativeTo"];
     private static readonly string[] SpacingFields = ["all", "top", "right", "bottom", "left"];
     private static readonly string[] ColorFields = ["name", "cmyk", "rgb", "hex"];
     private static readonly string[] CharacterFormatFields = ["font", "fontStyle", "size", "color", "tint", "underline", "strikeThrough", "tracking", "caps", "position"];
@@ -13,7 +14,8 @@ public static partial class IdmlJson
     [
         "leading", "align", "spaceBefore", "spaceAfter", "firstLineIndent", "leftIndent", "rightIndent",
         "list", "bullet", "bulletAfter", "numberFormat", "numberText", "listLevel", "startAt", "tabs",
-        "keepWithNext", "keepTogether", "keepFirstLines", "keepLastLines", "startParagraph",
+        "keepWithNext", "keepTogether", "keepFirstLines", "keepLastLines", "startParagraph", "dropCapLines", "dropCapCharacters",
+        "dropCapStyle", "nestedStyles", "grepStyles", "alignToBaselineGrid", "gridFirstLineOnly", "spanColumns", "splitColumns", "splitGutter",
     ];
     private static readonly string[] PageFields = ["index", "margins", "items"];
     private static readonly string[] CommonItemFields =
@@ -52,6 +54,14 @@ public static partial class IdmlJson
         ["fill"] = "leader", ["alignmentCharacter"] = "alignOn", ["decimalChar"] = "alignOn", ["pos"] = "position", ["x"] = "position",
         ["keepWithNextLines"] = "keepWithNext", ["keepLinesTogether"] = "keepTogether", ["keepAllLinesTogether"] = "keepTogether",
         ["orphans"] = "keepFirstLines", ["widows"] = "keepLastLines", ["startOn"] = "startParagraph",
+        ["dropCap"] = "dropCapLines", ["dropCaps"] = "dropCapLines", ["dropCapCharacterStyle"] = "dropCapStyle", ["nested"] = "nestedStyles",
+        ["grep"] = "expression", ["regex"] = "expression", ["pattern"] = "expression", ["grepStyle"] = "grepStyles", ["nestedStyle"] = "nestedStyles",
+        ["alignToGrid"] = "alignToBaselineGrid", ["baselineGridAlign"] = "alignToBaselineGrid", ["gridAlignment"] = "alignToBaselineGrid",
+        ["snapToBaselineGrid"] = "alignToBaselineGrid", ["firstLineOnly"] = "gridFirstLineOnly", ["gridAlignFirstLineOnly"] = "gridFirstLineOnly",
+        ["span"] = "spanColumns", ["spanAcrossColumns"] = "spanColumns", ["columnSpan"] = "spanColumns", ["split"] = "splitColumns",
+        ["splitColumnGutter"] = "splitGutter", ["delimiter"] = "through", ["until"] = "upTo", ["repetition"] = "count",
+        ["times"] = "count", ["baselineStart"] = "start", ["offset"] = "start", ["baselineDivision"] = "increment", ["division"] = "increment",
+        ["gridIncrement"] = "increment", ["relativeOption"] = "relativeTo", ["baseline"] = "baselineGrid",
     };
 
     /// <summary>
@@ -79,6 +89,10 @@ public static partial class IdmlJson
         {
             CheckFields(page, "page", PageSetupFields, warnings);
             CheckSpacing(page, "page", warnings);
+            if (Property(page, "baselineGrid") is { } grid && ExpectObject(grid, "page.baselineGrid", warnings))
+            {
+                CheckFields(grid, "page.baselineGrid", BaselineGridFields, warnings);
+            }
         }
         ForEach(root, "colors", warnings, (color, path) => CheckFields(color, path, ColorFields, warnings));
         ForEach(root, "characterStyles", warnings, (style, path) =>
@@ -87,6 +101,7 @@ public static partial class IdmlJson
         {
             CheckFields(style, path, ["name", "basedOn", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings);
             CheckTabs(style, path, warnings);
+            CheckCharacterStyleLists(style, path, warnings);
         });
         ForEach(root, "pages", warnings, (pageSpec, pagePath) =>
         {
@@ -119,6 +134,7 @@ public static partial class IdmlJson
         {
             CheckFields(paragraph, paragraphPath, ["text", "style", "runs", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings);
             CheckTabs(paragraph, paragraphPath, warnings);
+            CheckCharacterStyleLists(paragraph, paragraphPath, warnings);
             ForEach(paragraph, "runs", warnings, (run, runPath) =>
                 CheckFields(run, runPath, ["text", "style", .. CharacterFormatFields], warnings, ParagraphOnlyFields, "a run (set it on the paragraph)"),
                 paragraphPath);
@@ -137,6 +153,16 @@ public static partial class IdmlJson
                 warnings.Add($"{tabPath}: a tab stop needs a position; 0 is used.");
             }
         }, path);
+
+    private static readonly string[] NestedStyleFields = ["style", "through", "upTo", "count"];
+    private static readonly string[] GrepStyleFields = ["style", "expression"];
+
+    /// <summary>The fields of each entry of a paragraph's or paragraph style's <c>nestedStyles</c> and <c>grepStyles</c>.</summary>
+    private static void CheckCharacterStyleLists(JsonElement owner, string path, List<string> warnings)
+    {
+        ForEach(owner, "nestedStyles", warnings, (nested, nestedPath) => CheckFields(nested, nestedPath, NestedStyleFields, warnings), path);
+        ForEach(owner, "grepStyles", warnings, (grep, grepPath) => CheckFields(grep, grepPath, GrepStyleFields, warnings), path);
+    }
 
     private static void CheckSpacing(JsonElement owner, string path, List<string> warnings, string field = "margins")
     {

@@ -52,6 +52,79 @@ public enum StartParagraph
     NextEvenPage,
 }
 
+/// <summary>Where a paragraph sits across its frame's columns (Paragraph &gt; Span Columns, <c>SpanColumnType</c>).</summary>
+public enum ColumnSpan
+{
+    /// <summary>In its column, as usual.</summary>
+    SingleColumn,
+
+    /// <summary>Across several (or all) of the frame's columns: headlines over multi-column text.</summary>
+    SpanColumns,
+
+    /// <summary>In sub-columns of its own column.</summary>
+    SplitColumns,
+}
+
+/// <summary>
+/// What ends a nested style (<c>Delimiter</c>): one of InDesign's named delimiters (words, characters, ...) or a
+/// character. With <see cref="NestedStyle.Inclusive"/> the style runs through the delimiter, else up to it.
+/// </summary>
+public sealed record NestedStyleDelimiter
+{
+    private NestedStyleDelimiter(string value, bool isEnumeration)
+    {
+        Value = value;
+        IsEnumeration = isEnumeration;
+    }
+
+    /// <summary>The stored value: an enumeration name (<c>AnyWord</c>) or the character itself.</summary>
+    public string Value { get; }
+
+    /// <summary>True for a named delimiter (<c>type="enumeration"</c>), false for a character (<c>type="string"</c>).</summary>
+    public bool IsEnumeration { get; }
+
+    public static NestedStyleDelimiter Words { get; } = new("AnyWord", true);
+
+    public static NestedStyleDelimiter Characters { get; } = new("AnyCharacter", true);
+
+    public static NestedStyleDelimiter Sentences { get; } = new("Sentence", true);
+
+    public static NestedStyleDelimiter Letters { get; } = new("Letters", true);
+
+    public static NestedStyleDelimiter Digits { get; } = new("Digits", true);
+
+    public static NestedStyleDelimiter Tabs { get; } = new("Tabs", true);
+
+    public static NestedStyleDelimiter ForcedLineBreak { get; } = new("ForcedLineBreak", true);
+
+    /// <summary>The End Nested Style Here character (Type &gt; Insert Special Character &gt; Other).</summary>
+    public static NestedStyleDelimiter EndNestedStyle { get; } = new("EndNestedStyle", true);
+
+    /// <summary>The paragraph's drop cap: "through 1 drop cap" is how InDesign stores a drop cap's character style.</summary>
+    public static NestedStyleDelimiter DropCap { get; } = new("Dropcap", true);
+
+    /// <summary>A delimiter character (":", "." or any other one character).</summary>
+    public static NestedStyleDelimiter Character(string character)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(character);
+        if (!(character.Length == 1 && !char.IsSurrogate(character[0]) || character.Length == 2 && char.IsSurrogatePair(character[0], character[1])))
+        {
+            throw new ArgumentException($"A nested style delimiter is one character, not '{character}'.", nameof(character));
+        }
+        return new NestedStyleDelimiter(character, false);
+    }
+}
+
+/// <summary>
+/// A nested style (Paragraph Style Options &gt; Drop Caps and Nested Styles): <paramref name="CharacterStyle"/> from
+/// where the previous one ended through (or up to, when not <paramref name="Inclusive"/>) the
+/// <paramref name="Repetition"/>th <paramref name="Delimiter"/>, e.g. "Lead through 3 words".
+/// </summary>
+public sealed record NestedStyle(CharacterStyle CharacterStyle, NestedStyleDelimiter Delimiter, int Repetition = 1, bool Inclusive = true);
+
+/// <summary>A GREP style: <paramref name="CharacterStyle"/> on the paragraph's text that <paramref name="Expression"/> (InDesign's GREP) matches.</summary>
+public sealed record GrepStyle(CharacterStyle CharacterStyle, string Expression);
+
 /// <summary>How text after a tab lines up with its stop.</summary>
 public enum TabAlignment
 {
@@ -262,6 +335,48 @@ public sealed class ParagraphFormat : CharacterFormat
     /// </summary>
     public IReadOnlyList<TabStop>? TabStops { get; init; }
 
+    /// <summary>Lines the drop cap drops through (0 for none).</summary>
+    public int? DropCapLines { get; init; }
+
+    /// <summary>Characters the drop cap takes (InDesign's default 1 once <see cref="DropCapLines"/> is set).</summary>
+    public int? DropCapCharacters { get; init; }
+
+    /// <summary>
+    /// The drop cap's character style, stored as InDesign does: a first nested style "through 1 drop cap". Other
+    /// nested styles stay after it.
+    /// </summary>
+    public CharacterStyle? DropCapStyle { get; init; }
+
+    /// <summary>
+    /// Nested styles, in order, replacing the ones set before on the same paragraph or style (the drop cap's style, see
+    /// <see cref="DropCapStyle"/>, stays first); an empty list turns them off. Null keeps the style's.
+    /// </summary>
+    public IReadOnlyList<NestedStyle>? NestedStyles { get; init; }
+
+    /// <summary>GREP styles, in order (a later one wins what both set), replacing the ones set before; empty clears them.</summary>
+    public IReadOnlyList<GrepStyle>? GrepStyles { get; init; }
+
+    /// <summary>Align to Baseline Grid (<c>GridAlignment="AlignBaseline"</c>; false: <c>None</c>).</summary>
+    public bool? AlignToBaselineGrid { get; init; }
+
+    /// <summary>With <see cref="AlignToBaselineGrid"/>: only the first line of the paragraph snaps to the grid.</summary>
+    public bool? GridAlignFirstLineOnly { get; init; }
+
+    /// <summary>Span the frame's columns or split the paragraph's own column (Paragraph &gt; Span Columns).</summary>
+    public ColumnSpan? SpanColumnType { get; init; }
+
+    /// <summary>
+    /// Columns spanned (<see cref="ColumnSpan.SpanColumns"/>; 0 = all, InDesign's default) or sub-columns
+    /// (<see cref="ColumnSpan.SplitColumns"/>; default 2).
+    /// </summary>
+    public int? SpanSplitColumnCount { get; init; }
+
+    /// <summary>The gutter between split sub-columns (InDesign's default 6 pt).</summary>
+    public double? SplitColumnInsideGutter { get; init; }
+
+    /// <summary>Space between split sub-columns and the column's edges (default 0).</summary>
+    public double? SplitColumnOutsideGutter { get; init; }
+
     internal override void ApplyTo(XElement element)
     {
         base.ApplyTo(element);
@@ -332,6 +447,79 @@ public sealed class ParagraphFormat : CharacterFormat
                     new XElement("AlignmentCharacter", new XAttribute("type", "string"), stop.AlignOn),
                     new XElement("Leader", new XAttribute("type", "string"), stop.Leader),
                     new XElement("Position", new XAttribute("type", "unit"), IdmlXml.Format(stop.Position))))));
+        }
+        Set(element, "DropCapCharacters", DropCapCharacters?.ToString(CultureInfo.InvariantCulture));
+        Set(element, "DropCapLines", DropCapLines?.ToString(CultureInfo.InvariantCulture));
+        if (DropCapStyle is not null || NestedStyles is not null)
+        {
+            WriteNestedStyles(element);
+        }
+        if (GrepStyles is not null)
+        {
+            // <AllGREPStyles type="list"><ListItem type="record"><AppliedCharacterStyle type="object">...</AppliedCharacterStyle>
+            // <GrepExpression type="string">\d+</GrepExpression></ListItem></AllGREPStyles>, as 08-para-nested-grep-styles.
+            WriteList(element, "AllGREPStyles", "EmptyGrepStyles", GrepStyles.Select(grep => new XElement("ListItem", new XAttribute("type", "record"),
+                new XElement("AppliedCharacterStyle", new XAttribute("type", "object"), grep.CharacterStyle.Reference),
+                new XElement("GrepExpression", new XAttribute("type", "string"), grep.Expression))).ToList());
+        }
+        Set(element, "GridAlignment", AlignToBaselineGrid switch
+        {
+            true => "AlignBaseline",
+            false => "None",
+            null => null,
+        });
+        Set(element, "GridAlignFirstLineOnly", GridAlignFirstLineOnly);
+        if (SpanColumnType is { } span)
+        {
+            // SpanColumnType="SpanColumns" with <SpanSplitColumnCount type="enumeration">All</SpanSplitColumnCount> (or
+            // type="short" for a count) in Properties, as 06-frame-span-balance.
+            element.SetAttributeValue("SpanColumnType", span.ToString());
+            var count = SpanSplitColumnCount ?? (span == ColumnSpan.SplitColumns ? 2 : 0);
+            if (span != ColumnSpan.SingleColumn)
+            {
+                IdmlXml.SetProperty(element, "SpanSplitColumnCount", count > 0 ? "short" : "enumeration",
+                    count > 0 ? count.ToString(CultureInfo.InvariantCulture) : "All");
+            }
+        }
+        Set(element, "SplitColumnInsideGutter", SplitColumnInsideGutter);
+        Set(element, "SplitColumnOutsideGutter", SplitColumnOutsideGutter);
+    }
+
+    /// <summary>
+    /// <c>AllNestedStyles</c>: the drop cap's style first ("through 1 Dropcap", as 08-para-drop-caps stores it), then the
+    /// nested styles; whichever of the two is not given keeps its entries.
+    /// </summary>
+    private void WriteNestedStyles(XElement element)
+    {
+        static bool IsDropCap(XElement item) =>
+            item.Element("Delimiter") is { } delimiter && delimiter.Attribute("type")?.Value == "enumeration" && delimiter.Value == "Dropcap";
+        var existing = element.Element(IdmlXml.Properties)?.Element("AllNestedStyles")?.Elements("ListItem").ToList() ?? [];
+        var dropCap = DropCapStyle is { } style
+            ? [NestedItem(new NestedStyle(style, NestedStyleDelimiter.DropCap))]
+            : existing.Where(IsDropCap).Select(item => new XElement(item)).ToList();
+        var others = NestedStyles is { } nested
+            ? nested.Select(NestedItem).ToList()
+            : existing.Where(item => !IsDropCap(item)).Select(item => new XElement(item)).ToList();
+        WriteList(element, "AllNestedStyles", "EmptyNestedStyles", [.. dropCap, .. others]);
+    }
+
+    private static XElement NestedItem(NestedStyle style) => new("ListItem", new XAttribute("type", "record"),
+        new XElement("AppliedCharacterStyle", new XAttribute("type", "object"), style.CharacterStyle.Reference),
+        new XElement("Delimiter", new XAttribute("type", style.Delimiter.IsEnumeration ? "enumeration" : "string"), style.Delimiter.Value),
+        new XElement("Repetition", new XAttribute("type", "long"), style.Repetition.ToString(CultureInfo.InvariantCulture)),
+        new XElement("Inclusive", new XAttribute("type", "boolean"), style.Inclusive ? "true" : "false"));
+
+    /// <summary>
+    /// A list property with its <c>Empty...</c> flag as InDesign writes them: the list and <c>"false"</c>, or no list
+    /// and <c>"true"</c> (which also stops a based-on style's list from applying).
+    /// </summary>
+    private static void WriteList(XElement element, string name, string emptyFlag, List<XElement> items)
+    {
+        element.Element(IdmlXml.Properties)?.Element(name)?.Remove();
+        element.SetAttributeValue(emptyFlag, items.Count == 0 ? "true" : "false");
+        if (items.Count > 0)
+        {
+            IdmlXml.GetOrCreateProperties(element).Add(new XElement(name, new XAttribute("type", "list"), items));
         }
     }
 

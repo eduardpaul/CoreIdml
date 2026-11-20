@@ -40,6 +40,21 @@ public sealed class PageSetupSpec
     public double? ColumnGutter { get; set; }
 
     public double? Bleed { get; set; }
+
+    /// <summary>The document's baseline grid, for paragraphs with <see cref="TextFormatSpec.AlignToBaselineGrid"/>.</summary>
+    public BaselineGridSpec? BaselineGrid { get; set; }
+}
+
+public sealed class BaselineGridSpec
+{
+    /// <summary>Where the first grid line is, in DocumentSpec.Unit from the top of the page (or the top margin). Default 36 pt.</summary>
+    public double? Start { get; set; }
+
+    /// <summary>Points between grid lines: the body text's leading.</summary>
+    public double Increment { get; set; }
+
+    /// <summary>page (default) or topMargin: what <see cref="Start"/> counts from.</summary>
+    public string? RelativeTo { get; set; }
 }
 
 public sealed class SpacingSpec
@@ -150,6 +165,64 @@ public class TextFormatSpec
 
     /// <summary>anywhere (default), nextColumn, nextFrame, nextPage, nextOddPage or nextEvenPage.</summary>
     public string? StartParagraph { get; set; }
+
+    // ---- drop caps, nested and GREP styles, grid and columns (paragraphs and paragraph styles) ----
+
+    /// <summary>Lines the drop cap drops through (0 removes it).</summary>
+    public int? DropCapLines { get; set; }
+
+    /// <summary>Characters in the drop cap (default 1).</summary>
+    public int? DropCapCharacters { get; set; }
+
+    /// <summary>Character style of the drop cap (a nested style "through 1 drop cap", as InDesign stores it).</summary>
+    public string? DropCapStyle { get; set; }
+
+    /// <summary>Character styles applied in sequence from the paragraph's start; [] clears them.</summary>
+    public List<NestedStyleSpec>? NestedStyles { get; set; }
+
+    /// <summary>Character styles applied to the text a GREP expression matches; [] clears them.</summary>
+    public List<GrepStyleSpec>? GrepStyles { get; set; }
+
+    /// <summary>Put the baselines on the document's baseline grid.</summary>
+    public bool? AlignToBaselineGrid { get; set; }
+
+    /// <summary>With alignToBaselineGrid: only the first line snaps to the grid.</summary>
+    public bool? GridFirstLineOnly { get; set; }
+
+    /// <summary>Span this many of the frame's columns: 0 all of them, 1 back to a single column.</summary>
+    public int? SpanColumns { get; set; }
+
+    /// <summary>Split the paragraph's column into this many sub-columns (1: a single column).</summary>
+    public int? SplitColumns { get; set; }
+
+    /// <summary>Points between split sub-columns (default 6).</summary>
+    public double? SplitGutter { get; set; }
+}
+
+/// <summary>A nested style: <see cref="Style"/> through (or up to) the <see cref="Count"/>th delimiter.</summary>
+public sealed class NestedStyleSpec
+{
+    /// <summary>Character style.</summary>
+    public string Style { get; set; } = string.Empty;
+
+    /// <summary>The style ends after this delimiter: words, characters, sentences, letters, digits, tabs, lineBreak, endNestedStyle or one character.</summary>
+    public string? Through { get; set; }
+
+    /// <summary>The style ends before this delimiter (same values as <see cref="Through"/>).</summary>
+    public string? UpTo { get; set; }
+
+    /// <summary>How many delimiters (default 1).</summary>
+    public int? Count { get; set; }
+}
+
+/// <summary>A GREP style: <see cref="Style"/> on every match of <see cref="Expression"/>.</summary>
+public sealed class GrepStyleSpec
+{
+    /// <summary>Character style.</summary>
+    public string Style { get; set; } = string.Empty;
+
+    /// <summary>InDesign GREP, e.g. "\\d+" or "\\$[\\d.,]+".</summary>
+    public string Expression { get; set; } = string.Empty;
 }
 
 /// <summary>A tab stop.</summary>

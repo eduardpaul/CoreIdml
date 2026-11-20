@@ -74,6 +74,14 @@ public static partial class IdmlJson
             {
                 Add(path, valueError);
             }
+            if (paragraph)
+            {
+                CharacterStyle(format.DropCapStyle, path);
+                foreach (var style in (format.NestedStyles ?? []).Select(nested => nested.Style).Concat((format.GrepStyles ?? []).Select(grep => grep.Style)))
+                {
+                    CharacterStyle(style, path);
+                }
+            }
         }
 
         var characterStyleSpecs = spec.CharacterStyles ?? [];
@@ -276,8 +284,59 @@ public static partial class IdmlJson
         {
             return $"Unknown startParagraph '{start}'. Use anywhere, nextColumn, nextFrame, nextPage, nextOddPage or nextEvenPage.";
         }
+        if (format.DropCapLines is { } dropLines && dropLines is < 0 or > 25)
+        {
+            return $"dropCapLines {dropLines} is out of range. Use 0 (none) to 25.";
+        }
+        if (format.DropCapCharacters is { } dropCharacters && dropCharacters is < 0 or > 150)
+        {
+            return $"dropCapCharacters {dropCharacters} is out of range. Use 0 to 150.";
+        }
+        foreach (var nested in format.NestedStyles ?? [])
+        {
+            if ((nested.Through is null) == (nested.UpTo is null))
+            {
+                return $"Nested style '{nested.Style}' needs through or upTo (one of them).";
+            }
+            if ((nested.Through ?? nested.UpTo) is { } delimiter && TryDelimiter(delimiter) is null)
+            {
+                return $"Unknown nested style delimiter '{delimiter}'. Use words, characters, sentences, letters, digits, tabs, lineBreak, endNestedStyle or one character such as \":\".";
+            }
+            if (nested.Count is < 1)
+            {
+                return $"Nested style count {nested.Count} is out of range. Use 1 or more.";
+            }
+        }
+        foreach (var grep in format.GrepStyles ?? [])
+        {
+            if (string.IsNullOrEmpty(grep.Expression))
+            {
+                return $"GREP style '{grep.Style}' needs an expression.";
+            }
+        }
+        if (format.SpanColumns is not null && format.SplitColumns is not null)
+        {
+            return "A paragraph either spans columns (spanColumns) or splits its column (splitColumns), not both.";
+        }
+        if (format.SpanColumns is { } span && span is < 0 or > 40)
+        {
+            return $"spanColumns {span} is out of range. Use 0 (all columns), 1 (a single column) or up to 40.";
+        }
+        if (format.SplitColumns is { } split && split is < 1 or > 40)
+        {
+            return $"splitColumns {split} is out of range. Use 1 (a single column) to 40.";
+        }
+        if (format.SplitGutter is < 0)
+        {
+            return $"splitGutter {format.SplitGutter} is negative.";
+        }
         return null;
     }
+
+    private static string? BaselineGridError(BaselineGridSpec grid) =>
+        grid.Increment <= 0 ? $"baselineGrid increment {grid.Increment} must be positive: the body text's leading in points."
+        : IsTopMarginOrigin(grid.RelativeTo) is null ? $"Unknown baselineGrid relativeTo '{grid.RelativeTo}'. Use page or topMargin."
+        : null;
 
     private static bool IsOneCharacter(string text) =>
         text.Length == 1 && !char.IsSurrogate(text[0]) || text.Length == 2 && char.IsSurrogatePair(text[0], text[1]);

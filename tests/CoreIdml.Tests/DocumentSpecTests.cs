@@ -348,6 +348,139 @@ public class DocumentSpecTests
         Assert.Contains("paragraphStyles[0]: unknown field 'listType', ignored (did you mean 'list'?).", warnings);
     }
 
+    [Fact]
+    public void Drop_caps_nested_and_grep_styles_are_written_as_InDesign_stores_them()
+    {
+        var spec = """
+        {
+          "characterStyles": [ { "name": "Drop", "color": "Black" }, { "name": "Lead", "fontStyle": "Bold" }, { "name": "Num", "fontStyle": "Italic" } ],
+          "paragraphStyles": [
+            { "name": "Opener", "dropCapLines": 3, "dropCapStyle": "Drop",
+              "nestedStyles": [ { "style": "Lead", "through": "words", "count": 3 }, { "style": "Num", "upTo": ":" } ],
+              "grepStyles": [ { "style": "Num", "expression": "\\d+" } ] }
+          ],
+          "pages": [ { "items": [ { "type": "text", "name": "t", "paragraphs": [ { "text": "x", "style": "Opener", "nestedStyles": [] } ] } ] } ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        // 08-para-drop-caps and 08-para-nested-grep-styles: the drop cap's character style is a first nested style
+        // "through 1 Dropcap"; the lists are typed records with their Empty... flag false.
+        var opener = document.Styles.FindParagraphStyle("Opener")!.Element;
+        Assert.Equal("3", opener.Attribute("DropCapLines")!.Value);
+        Assert.Equal("1", opener.Attribute("DropCapCharacters")!.Value);
+        Assert.Equal("false", opener.Attribute("EmptyNestedStyles")!.Value);
+        Assert.Equal("false", opener.Attribute("EmptyGrepStyles")!.Value);
+        var nested = opener.Element("Properties")!.Element("AllNestedStyles")!;
+        Assert.Equal("list", nested.Attribute("type")!.Value);
+        Assert.Equal(
+            [
+                "CharacterStyle/Drop|enumeration:Dropcap|1|true",
+                "CharacterStyle/Lead|enumeration:AnyWord|3|true",
+                "CharacterStyle/Num|string::|1|false",
+            ],
+            nested.Elements("ListItem").Select(item =>
+                $"{item.Element("AppliedCharacterStyle")!.Value}|{item.Element("Delimiter")!.Attribute("type")!.Value}:{item.Element("Delimiter")!.Value}|{item.Element("Repetition")!.Value}|{item.Element("Inclusive")!.Value}"));
+        Assert.Equal(["record"], nested.Elements("ListItem").Select(item => item.Attribute("type")!.Value).Distinct());
+        Assert.Equal(["object", "long", "boolean"], ((string[])["AppliedCharacterStyle", "Repetition", "Inclusive"]).Select(name => nested.Element("ListItem")!.Element(name)!.Attribute("type")!.Value));
+        var grep = opener.Element("Properties")!.Element("AllGREPStyles")!.Element("ListItem")!;
+        Assert.Equal("CharacterStyle/Num", grep.Element("AppliedCharacterStyle")!.Value);
+        Assert.Equal(@"\d+", grep.Element("GrepExpression")!.Value);
+        Assert.Equal("string", grep.Element("GrepExpression")!.Attribute("type")!.Value);
+        // A paragraph's empty list turns the style's nested styles off for it, as InDesign marks an empty list.
+        var range = ((TextFrame)document.AllPageItems.Single(item => item.Name == "t")).Story.Element.Descendants("ParagraphStyleRange").Single();
+        Assert.Equal("true", range.Attribute("EmptyNestedStyles")!.Value);
+        Assert.Null(range.Element("Properties")?.Element("AllNestedStyles"));
+    }
+
+    [Fact]
+    public void A_drop_cap_style_given_later_keeps_the_nested_styles()
+    {
+        using var document = IdmlJson.CreateDocument("""
+            { "characterStyles": [ { "name": "Drop" }, { "name": "Lead" } ],
+              "paragraphStyles": [ { "name": "P", "nestedStyles": [ { "style": "Lead", "through": "." } ] } ] }
+            """);
+        IdmlJson.Apply(document, """{ "paragraphStyles": [ { "name": "P", "dropCapLines": 2, "dropCapStyle": "Drop" } ] }""");
+
+        var items = document.Styles.FindParagraphStyle("P")!.Element.Element("Properties")!.Element("AllNestedStyles")!.Elements("ListItem");
+        Assert.Equal(["CharacterStyle/Drop", "CharacterStyle/Lead"], items.Select(item => item.Element("AppliedCharacterStyle")!.Value));
+        Assert.Equal(["Dropcap", "."], items.Select(item => item.Element("Delimiter")!.Value));
+    }
+
+    [Fact]
+    public void Grid_alignment_column_spans_and_the_baseline_grid_are_written_as_InDesign_stores_them()
+    {
+        var spec = """
+        {
+          "unit": "mm",
+          "page": { "baselineGrid": { "start": 20, "increment": 14, "relativeTo": "topMargin" } },
+          "paragraphStyles": [
+            { "name": "Body", "alignToBaselineGrid": true, "gridFirstLineOnly": true },
+            { "name": "Head", "spanColumns": 0 },
+            { "name": "Two", "spanColumns": 2 },
+            { "name": "Split", "splitColumns": 3, "splitGutter": 8 },
+            { "name": "Free", "alignToBaselineGrid": false, "spanColumns": 1 }
+          ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        // 06-frame-baseline-grid: GridPreference in Preferences.xml, GridAlignment on the paragraph style.
+        Assert.Equal(new BaselineGridOptions(Units.FromUnit(20, "mm"), 14, RelativeToTopMargin: true), document.BaselineGrid);
+        XElement Style(string name) => document.Styles.FindParagraphStyle(name)!.Element;
+        Assert.Equal("AlignBaseline", Style("Body").Attribute("GridAlignment")!.Value);
+        Assert.Equal("true", Style("Body").Attribute("GridAlignFirstLineOnly")!.Value);
+        Assert.Equal("None", Style("Free").Attribute("GridAlignment")!.Value);
+        // 06-frame-span-balance: SpanColumnType attribute, SpanSplitColumnCount in Properties ("All" or a short).
+        string Count(string name) => $"{Style(name).Element("Properties")!.Element("SpanSplitColumnCount")!.Attribute("type")!.Value}:{Style(name).Element("Properties")!.Element("SpanSplitColumnCount")!.Value}";
+        Assert.Equal("SpanColumns", Style("Head").Attribute("SpanColumnType")!.Value);
+        Assert.Equal("enumeration:All", Count("Head"));
+        Assert.Equal("short:2", Count("Two"));
+        Assert.Equal("SplitColumns", Style("Split").Attribute("SpanColumnType")!.Value);
+        Assert.Equal("short:3", Count("Split"));
+        Assert.Equal("8", Style("Split").Attribute("SplitColumnInsideGutter")!.Value);
+        Assert.Equal("SingleColumn", Style("Free").Attribute("SpanColumnType")!.Value);
+    }
+
+    [Theory]
+    [InlineData("""{ "dropCapLines": 30 }""", "dropCapLines 30 is out of range. Use 0 (none) to 25.")]
+    [InlineData("""{ "nestedStyles": [ { "style": "C", "through": "paragraphs" } ] }""", "Unknown nested style delimiter 'paragraphs'. Use words, characters, sentences, letters, digits, tabs, lineBreak, endNestedStyle or one character such as \":\".")]
+    [InlineData("""{ "nestedStyles": [ { "style": "C", "through": "words", "upTo": "." } ] }""", "Nested style 'C' needs through or upTo (one of them).")]
+    [InlineData("""{ "nestedStyles": [ { "style": "C", "through": "words", "count": 0 } ] }""", "Nested style count 0 is out of range. Use 1 or more.")]
+    [InlineData("""{ "grepStyles": [ { "style": "C" } ] }""", "GREP style 'C' needs an expression.")]
+    [InlineData("""{ "spanColumns": 2, "splitColumns": 2 }""", "A paragraph either spans columns (spanColumns) or splits its column (splitColumns), not both.")]
+    [InlineData("""{ "splitColumns": 0 }""", "splitColumns 0 is out of range. Use 1 (a single column) to 40.")]
+    [InlineData("""{ "dropCapStyle": "Missing" }""", "Unknown character style 'Missing'.")]
+    public void Paragraph_style_values_name_the_ones_allowed(string fields, string message)
+    {
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument(
+            $$"""{ "characterStyles": [ { "name": "C" } ], "paragraphStyles": [ { "name": "L", {{fields[1..^1]}} } ] }"""));
+
+        Assert.Equal(message, exception.Message);
+    }
+
+    [Fact]
+    public void Nested_grep_and_grid_fields_are_checked()
+    {
+        var warnings = IdmlJson.CheckSpec("""
+            { "page": { "baselineGrid": { "increment": 12, "division": 12 } },
+              "paragraphStyles": [ { "name": "P", "dropCap": 2, "alignToGrid": true, "nestedStyles": [ { "style": "C", "delimiter": "words" } ],
+                "grepStyles": [ { "style": "C", "regex": "\\d" } ] } ],
+              "characterStyles": [ { "name": "C", "dropCapLines": 2 } ] }
+            """);
+
+        Assert.Contains("page.baselineGrid: unknown field 'division', ignored (did you mean 'increment'?).", warnings);
+        Assert.Contains("paragraphStyles[0]: unknown field 'dropCap', ignored (did you mean 'dropCapLines'?).", warnings);
+        Assert.Contains("paragraphStyles[0]: unknown field 'alignToGrid', ignored (did you mean 'alignToBaselineGrid'?).", warnings);
+        Assert.Contains("paragraphStyles[0].nestedStyles[0]: unknown field 'delimiter', ignored (did you mean 'through'?).", warnings);
+        Assert.Contains("paragraphStyles[0].grepStyles[0]: unknown field 'regex', ignored (did you mean 'expression'?).", warnings);
+        Assert.Contains("characterStyles[0]: 'dropCapLines' does not apply to a character style; it is ignored.", warnings);
+        Assert.Equal("baselineGrid increment 0 must be positive: the body text's leading in points.",
+            Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument("""{ "page": { "baselineGrid": { "start": 10 } } }""")).Message);
+    }
+
     private static XElement Item(IdmlDocument document, string name) =>
         document.AllPageItems.Single(item => item.Name == name).Element;
 }

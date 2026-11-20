@@ -76,6 +76,36 @@ public sealed partial class IdmlDocument : IDisposable
 
     public bool FacingPages => DocumentPreference?.Attribute("FacingPages")?.Value == "true";
 
+    /// <summary>
+    /// The document's baseline grid (Preferences &gt; Grids, <c>GridPreference</c>): paragraphs aligned to it put their
+    /// baselines on its lines. Setting it changes start, increment and origin, and leaves the other grid settings alone.
+    /// </summary>
+    public BaselineGridOptions BaselineGrid
+    {
+        get
+        {
+            var grid = Package.TryGetXml(PreferencesPath)?.Root?.Element("GridPreference");
+            return new BaselineGridOptions(
+                IdmlXml.ParseDouble(grid?.Attribute("BaselineStart")?.Value) ?? 36,
+                IdmlXml.ParseDouble(grid?.Attribute("BaselineDivision")?.Value) ?? 12,
+                grid?.Attribute("BaselineGridRelativeOption")?.Value == "TopOfMarginOfBaselineGridRelativeOption");
+        }
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (value.Increment <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "The baseline grid increment must be positive.");
+            }
+            var root = Package.GetXml(PreferencesPath).Root!;
+            var grid = root.Element("GridPreference") ?? throw new IdmlException("The document has no GridPreference.");
+            grid.SetAttributeValue("BaselineStart", IdmlXml.Format(value.Start));
+            grid.SetAttributeValue("BaselineDivision", IdmlXml.Format(value.Increment));
+            grid.SetAttributeValue("BaselineGridRelativeOption",
+                value.RelativeToTopMargin ? "TopOfMarginOfBaselineGridRelativeOption" : "TopOfPageOfBaselineGridRelativeOption");
+        }
+    }
+
     /// <summary>Spreads in document order.</summary>
     public IReadOnlyList<Spread> Spreads =>
         ManifestPaths("Spread").Select(path => new Spread(this, path, RootChild(path, "Spread"))).ToList();

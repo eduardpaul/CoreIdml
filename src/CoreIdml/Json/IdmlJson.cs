@@ -69,7 +69,25 @@ public static partial class IdmlJson
         });
         try
         {
-            Render(document, spec, reuseExistingPages: true, sizeError is null ? null : [new SpecError("page", sizeError, IdmlErrorKind.InvalidOperation)]);
+            // Errors of the page setup are reported with the spec's other errors.
+            List<SpecError> setupErrors = [];
+            if (sizeError is not null)
+            {
+                setupErrors.Add(new SpecError("page", sizeError, IdmlErrorKind.InvalidOperation));
+            }
+            if (setup.BaselineGrid is { } grid)
+            {
+                if (BaselineGridError(grid) is { } gridError)
+                {
+                    setupErrors.Add(new SpecError("page.baselineGrid", gridError, IdmlErrorKind.InvalidOperation));
+                }
+                else
+                {
+                    document.BaselineGrid = new BaselineGridOptions(
+                        grid.Start is { } start ? Units.FromUnit(start, unit) : 36, grid.Increment, IsTopMarginOrigin(grid.RelativeTo) == true);
+                }
+            }
+            Render(document, spec, reuseExistingPages: true, setupErrors);
         }
         catch
         {
@@ -449,6 +467,58 @@ public static partial class IdmlJson
         KeepFirstLines = spec.KeepFirstLines is { } firstLines ? firstLines is >= 1 and <= 50 ? firstLines : throw new IdmlException(ParagraphValueError(spec)!) : null,
         KeepLastLines = spec.KeepLastLines is { } lastLines ? lastLines is >= 1 and <= 50 ? lastLines : throw new IdmlException(ParagraphValueError(spec)!) : null,
         StartParagraph = spec.StartParagraph is { } start ? TryStartParagraph(start) ?? throw new IdmlException(ParagraphValueError(spec)!) : null,
+        DropCapLines = spec.DropCapLines is { } dropLines ? dropLines is >= 0 and <= 25 ? dropLines : throw new IdmlException(ParagraphValueError(spec)!) : null,
+        // InDesign's dialog starts a drop cap with one character.
+        DropCapCharacters = spec.DropCapCharacters is { } dropCharacters
+            ? dropCharacters is >= 0 and <= 150 ? dropCharacters : throw new IdmlException(ParagraphValueError(spec)!)
+            : spec.DropCapLines is > 0 ? 1 : null,
+        DropCapStyle = spec.DropCapStyle is { } dropCapStyle ? RequireCharacterStyle(document, dropCapStyle) : null,
+        NestedStyles = spec.NestedStyles?.Select(nested => new NestedStyle(
+            RequireCharacterStyle(document, nested.Style),
+            TryDelimiter(nested.Through ?? nested.UpTo ?? string.Empty) is { } delimiter && (nested.Through is null) != (nested.UpTo is null)
+                ? delimiter
+                : throw new IdmlException(ParagraphValueError(spec)!),
+            nested.Count is { } count ? count >= 1 ? count : throw new IdmlException(ParagraphValueError(spec)!) : 1,
+            Inclusive: nested.Through is not null)).ToList(),
+        GrepStyles = spec.GrepStyles?.Select(grep => new GrepStyle(
+            RequireCharacterStyle(document, grep.Style),
+            grep.Expression is { Length: > 0 } expression ? expression : throw new IdmlException(ParagraphValueError(spec)!))).ToList(),
+        AlignToBaselineGrid = spec.AlignToBaselineGrid ?? (spec.GridFirstLineOnly is true ? true : null),
+        GridAlignFirstLineOnly = spec.GridFirstLineOnly,
+        SpanColumnType = (spec.SpanColumns, spec.SplitColumns) switch
+        {
+            (not null, not null) => throw new IdmlException(ParagraphValueError(spec)!),
+            ({ } span, null) => span is >= 0 and <= 40 ? span == 1 ? ColumnSpan.SingleColumn : ColumnSpan.SpanColumns : throw new IdmlException(ParagraphValueError(spec)!),
+            (null, { } split) => split is >= 1 and <= 40 ? split == 1 ? ColumnSpan.SingleColumn : ColumnSpan.SplitColumns : throw new IdmlException(ParagraphValueError(spec)!),
+            _ => null,
+        },
+        SpanSplitColumnCount = spec.SpanColumns is > 1 ? spec.SpanColumns : spec.SplitColumns is > 1 ? spec.SplitColumns : null,
+        SplitColumnInsideGutter = spec.SplitGutter is { } splitGutter ? splitGutter >= 0 ? splitGutter : throw new IdmlException(ParagraphValueError(spec)!) : null,
+    };
+
+    /// <summary>A nested style's delimiter: one of the names agents write, or one character.</summary>
+    private static NestedStyleDelimiter? TryDelimiter(string delimiter) => delimiter.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant() switch
+    {
+        "words" or "word" => NestedStyleDelimiter.Words,
+        "characters" or "character" or "chars" => NestedStyleDelimiter.Characters,
+        "sentences" or "sentence" => NestedStyleDelimiter.Sentences,
+        "letters" or "letter" => NestedStyleDelimiter.Letters,
+        "digits" or "digit" => NestedStyleDelimiter.Digits,
+        "tabs" or "tab" => NestedStyleDelimiter.Tabs,
+        "linebreak" or "forcedlinebreak" => NestedStyleDelimiter.ForcedLineBreak,
+        "endnestedstyle" => NestedStyleDelimiter.EndNestedStyle,
+        _ when delimiter == "\t" => NestedStyleDelimiter.Tabs,
+        _ when delimiter == "\n" => NestedStyleDelimiter.ForcedLineBreak,
+        _ when IsOneCharacter(delimiter) => NestedStyleDelimiter.Character(delimiter),
+        _ => null,
+    };
+
+    /// <summary>Whether a baseline grid counts from the top margin (true) or the page (false); null when unknown.</summary>
+    private static bool? IsTopMarginOrigin(string? relativeTo) => relativeTo?.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant() switch
+    {
+        null or "page" or "topofpage" => false,
+        "topmargin" or "margin" or "topofmargin" or "margins" => true,
+        _ => null,
     };
 
     private static StartParagraph? TryStartParagraph(string start) => start.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant() switch
@@ -523,7 +593,9 @@ public static partial class IdmlJson
         || spec.List is not null || spec.Bullet is not null || spec.BulletAfter is not null || spec.NumberFormat is not null
         || spec.NumberText is not null || spec.ListLevel is not null || spec.StartAt is not null || spec.Tabs is not null
         || spec.KeepWithNext is not null || spec.KeepTogether is not null || spec.KeepFirstLines is not null || spec.KeepLastLines is not null
-        || spec.StartParagraph is not null;
+        || spec.StartParagraph is not null || spec.DropCapLines is not null || spec.DropCapCharacters is not null || spec.DropCapStyle is not null
+        || spec.NestedStyles is not null || spec.GrepStyles is not null || spec.AlignToBaselineGrid is not null || spec.GridFirstLineOnly is not null
+        || spec.SpanColumns is not null || spec.SplitColumns is not null || spec.SplitGutter is not null;
 
     private static Justification? ParseJustification(string? align) =>
         align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));

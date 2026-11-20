@@ -70,6 +70,10 @@ Common mistakes:
   spaces. A right stop at the frame's inner width with `"leader": "."` makes a table of contents line.
 - Headings in threaded or multi-column text: `"keepWithNext": 1` on the heading style, so no heading ends a column
   alone; `"startParagraph": "nextPage"` starts chapters on a new page.
+- Typographic touches belong on the paragraph style, not in the text: `dropCapLines` with a `dropCapStyle`, a bold
+  lead-in with `nestedStyles` (`{"style": "Lead", "through": "words", "count": 3}`), coloured prices or numbers with
+  `grepStyles`, a headline across a multi-column frame with `"spanColumns": 0`, columns that line up with
+  `page.baselineGrid` and `"alignToBaselineGrid": true`. Declare the character styles they name first.
 
 For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds into it (`x: -3`, `y: -3` in mm, 6 mm
 wider and taller than the page); use `cmyk` colours; keep text inside the margins. `idml_to_pdf` with
@@ -77,7 +81,7 @@ wider and taller than the page); use `cmyk` colours; keep text inside the margin
 
 The preview and PDF engine draws opacity, blend modes, shadows, glows and feathers (not bevel, emboss or satin, and
 shadows of text leave the text out); the spec writes only opacity and has no gradients, master pages,
-paragraph rules, drop caps, text wrap or free paths. Design without them. When an existing document uses bevel, emboss
+paragraph rules, text wrap or free paths. Design without them. When an existing document uses bevel, emboss
 or satin, say the preview leaves them out and InDesign will show them (gradients and text wrap in a document are drawn; a wrap that
 follows an image's detected edges or Photoshop path is not).
 

@@ -65,6 +65,45 @@ export interface TextFormat {
   keepLastLines?: number;
   /** `anywhere` (default), `nextColumn`, `nextFrame`, `nextPage`, `nextOddPage` or `nextEvenPage`. */
   startParagraph?: string;
+  /** Paragraphs and paragraph styles: drop cap this many lines deep (0 removes it). */
+  dropCapLines?: number;
+  /** Characters in the drop cap; default 1. */
+  dropCapCharacters?: number;
+  /** Character style of the drop cap. */
+  dropCapStyle?: string;
+  /** Character styles in sequence from the paragraph's start (a bold lead-in); `[]` clears them. */
+  nestedStyles?: NestedStyleSpec[];
+  /** Character styles on the text GREP expressions match; `[]` clears them. */
+  grepStyles?: GrepStyleSpec[];
+  /** Put the baselines on the document's baseline grid (`page.baselineGrid`). */
+  alignToBaselineGrid?: boolean;
+  /** With `alignToBaselineGrid`: only the first line snaps to the grid. */
+  gridFirstLineOnly?: boolean;
+  /** Span the frame's columns: 0 all, N the first N, 1 back to a single column. */
+  spanColumns?: number;
+  /** Split the paragraph's column into N sub-columns (1: none). */
+  splitColumns?: number;
+  /** Points between split sub-columns; default 6. */
+  splitGutter?: number;
+}
+
+/** A nested style: a character style through (or up to) the `count`th delimiter. Give `through` or `upTo`. */
+export interface NestedStyleSpec {
+  /** Character style. */
+  style: string;
+  /** `words`, `characters`, `sentences`, `letters`, `digits`, `tabs`, `lineBreak`, `endNestedStyle`, or one character. */
+  through?: string;
+  /** Same values; the style ends before the delimiter. */
+  upTo?: string;
+  /** Default 1. */
+  count?: number;
+}
+
+/** A GREP style: a character style on every match of an InDesign GREP expression. */
+export interface GrepStyleSpec {
+  /** Character style. */
+  style: string;
+  expression: string;
 }
 
 /** A tab stop. */
@@ -105,6 +144,16 @@ export interface PageSetupSpec {
   columns?: number;
   columnGutter?: number;
   bleed?: number;
+  /** The document baseline grid, for paragraphs with `alignToBaselineGrid`. */
+  baselineGrid?: BaselineGridSpec;
+}
+
+/** Grid lines every `increment` points (the body leading) from `start` (in the spec's unit; default 36 pt) below the top of the page or the top margin. */
+export interface BaselineGridSpec {
+  start?: number;
+  increment: number;
+  /** `page` (default) or `topMargin`. */
+  relativeTo?: string;
 }
 
 export interface RunSpec extends TextFormat {
