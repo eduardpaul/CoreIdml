@@ -87,6 +87,9 @@ internal sealed record ParagraphFormatting
 
     public HyphenationSettings Hyphenation { get; init; } = new(false, 2, 2, 5, true);
 
+    /// <summary>Word spacing, letter spacing, glyph scaling and single-word justification.</summary>
+    public JustificationSettings Spacing { get; init; } = JustificationSettings.Default;
+
     /// <summary>Align to Baseline Grid (<c>GridAlignment="AlignBaseline"</c>): the paragraph's baselines snap to the frame's grid.</summary>
     public bool AlignToBaselineGrid { get; init; }
 

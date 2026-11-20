@@ -8,11 +8,12 @@ namespace CoreIdml.Pdf.Layout;
 
 /// <summary>
 /// Lays out story text into threaded frames and columns, the way InDesign's single-line composer would:
-/// greedy line breaking at spaces and hyphens, leading (fixed or Auto = 120%), first-baseline offset, space
-/// before/after (no space before at the top of a column), indents, tabs, alignment and justification (word spacing),
+/// line breaking at spaces and hyphens, one line at a time (<see cref="FitLine"/>), leading (fixed or Auto = 120%),
+/// first-baseline offset, space before/after (no space before at the top of a column), indents, tabs, alignment and
+/// justification (word spacing, letter spacing and glyph scaling within the paragraph's limits, <see cref="Justifier"/>),
 /// vertical justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line,
 /// laying the text out again from there), and inline tables (rows flow across columns and frames, header rows repeat).
-/// Not done: the paragraph composer, optical kerning, ligatures, text wrap, anchored objects.
+/// Not done: the paragraph composer, optical kerning, text wrap, anchored objects.
 /// Deterministic: same input, same output.
 /// </summary>
 internal sealed class TextComposer
@@ -188,6 +189,8 @@ internal sealed class TextComposer
         public string Text = string.Empty;
         public double Advance;
         public double Natural;
+        // The width of a word space in this glyph's font and size: the unit of letter spacing.
+        public double Band;
         public double Size;
         public double Rise;
         public RunStyle Style = null!;
@@ -295,7 +298,33 @@ internal sealed class TextComposer
                 ligature.Advance += ligature.Font.Kerning(ligature.Glyph, next.Glyph) * ligature.Size * ligature.Style.HorizontalScale;
             }
         }
+        // Desired word and letter spacing (Paragraph > Justification) are the natural spacing of every line, whatever
+        // its alignment.
+        var spacing = format.Spacing;
+        if (spacing.ChangesNaturalSpacing)
+        {
+            foreach (var glyph in result)
+            {
+                ApplyDesiredSpacing(glyph, spacing);
+                if (glyph.Unbroken is { } unbroken)
+                {
+                    ApplyDesiredSpacing(unbroken, spacing);
+                }
+            }
+        }
         return result;
+    }
+
+    private static void ApplyDesiredSpacing(Shaped glyph, JustificationSettings spacing)
+    {
+        if (Stretches(glyph))
+        {
+            glyph.Advance += glyph.Natural * (spacing.DesiredWordSpacing - 1);
+        }
+        if (glyph.Kind is GlyphKind.Normal or GlyphKind.Space)
+        {
+            glyph.Advance += glyph.Band * spacing.DesiredLetterSpacing;
+        }
     }
 
     private void ShapeText(string text, RunStyle style, List<Shaped> output, HyphenationSettings? hyphenation = null)
@@ -323,6 +352,8 @@ internal sealed class TextComposer
         }
         var nextHyphen = 0;
         var firstShaped = output.Count;
+        // The space band (letter spacing's unit) per point of size.
+        var band = (style.Font.TryMap(' ', out var bandGlyph) ? style.Font.Advance(bandGlyph) : 0.25) * style.HorizontalScale;
         for (var i = 0; i < text.Length; i++)
         {
             var index = i;
@@ -368,6 +399,13 @@ internal sealed class TextComposer
                 {
                     glyph = spaceGlyph;
                 }
+                else if (codePoint == 0x2011 && font.TryMap('-', out var hyphenGlyph))
+                {
+                    // A non-breaking hyphen the font lacks prints as its hyphen (07-char-language-nobreak p3: InDesign
+                    // sets "twenty‑three" in Liberation Serif, which has no U+2011, with the 4.33 pt hyphen at 13 pt).
+                    glyph = hyphenGlyph;
+                    value = "-";
+                }
                 else if (!style.FontIsSubstitute)
                 {
                     // The document's own font cannot show it: InDesign prints nothing and takes no space (it only
@@ -392,6 +430,7 @@ internal sealed class TextComposer
                 Text = value,
                 Advance = advance,
                 Natural = natural,
+                Band = band * size,
                 Size = size,
                 Rise = rise,
                 Style = style,
@@ -542,6 +581,7 @@ internal sealed class TextComposer
             Text = string.Concat(parts.Select(glyph => glyph.Text)),
             Advance = natural + (style.Tracking / 1000 * first.Size),
             Natural = natural,
+            Band = first.Band,
             Size = first.Size,
             Rise = first.Rise,
             Style = first.Style,
@@ -670,80 +710,186 @@ internal sealed class TextComposer
         return columns;
     }
 
-    /// <summary>Greedy fit: the end index (exclusive) of the line starting at <paramref name="start"/>.</summary>
+    /// <summary>
+    /// Single-line composition: the end index (exclusive) of the line starting at <paramref name="start"/>, and
+    /// whether a forced line break ends it. Every break the line reaches within its spacing limits is a candidate.
+    /// Justified text takes the cheapest by <see cref="LineCost"/> (the later one on a tie), so it may compress word
+    /// spaces down to the minimum to take one more word, or hyphenate, when that sets the line closer to its desired
+    /// spacing than breaking earlier: InDesign's single-line composer in 08-para-hyphenation-justification p5 sets
+    /// line 2 at 90% to fit "all" rather than at 134% without it, and hyphenates "ac-" at 91% rather than leaving
+    /// line 3 at 174%. Ragged text keeps its desired spacing (the minimum and maximum apply to justified text only)
+    /// and takes the last break that fits, hyphenating only when the last word break would leave more than the
+    /// hyphenation zone empty.
+    /// </summary>
     private static (int End, bool Forced) FitLine(List<Shaped> glyphs, int start, double available, ParagraphFormatting format, double indent)
     {
-        double x = 0, content = 0;
-        var lastBreak = -1;
-        // The last break at a space (or hard hyphen) and the line it would give, to weigh against hyphenating.
-        var lastWordBreak = -1;
-        double wordBreakContent = 0, spaceWidth = 0;
-        var wordBreakSpaces = 0;
-        var spaces = 0;
-        for (var i = start; i < glyphs.Count; i++)
+        var justified = IsJustified(format.Justification);
+        var line = new LineMeasure();
+        var (best, bestForced, bestCost) = (-1, false, double.MaxValue);
+        // Ragged text: what the last word break would leave empty at the end of the line.
+        var wordBreakGap = double.PositiveInfinity;
+        var i = start;
+        for (; i < glyphs.Count; i++)
         {
             var glyph = glyphs[i];
-            switch (glyph.Kind)
+            if (glyph.Kind == GlyphKind.Table)
             {
-                case GlyphKind.Break:
-                    return (i + 1, true);
-                case GlyphKind.Table:
-                    return (i, false);
-                case GlyphKind.Tab:
-                    // Right, centre and decimal stops count the text after them, so a right tab at the column's edge
-                    // (a table of contents) keeps its page number on the line.
-                    glyph.Advance = Math.Max(0.1, TabAdvance(glyphs, i, x, format, indent, available).Advance);
-                    break;
-            }
-            var width = x + glyph.Advance;
-            var contentWidth = glyph.Kind == GlyphKind.Space ? content : width;
-            if (glyph.Kind == GlyphKind.SoftHyphen)
-            {
-                contentWidth = content;
-            }
-            if (contentWidth > available + Epsilon && i > start)
-            {
-                if (lastBreak >= start && glyphs[lastBreak].Kind == GlyphKind.SoftHyphen && lastWordBreak >= start
-                    && !NeedsHyphen(format, available - wordBreakContent, wordBreakSpaces, spaceWidth))
+                if (i > start)
                 {
-                    return (lastWordBreak + 1, false);
+                    Consider(i, forced: false, hyphen: false, last: true);
                 }
-                return (lastBreak >= start ? lastBreak + 1 : i, false);
+                return best >= 0 ? (best, bestForced) : (i, false);
             }
-            x = width;
-            content = contentWidth;
-            if (glyph.Kind == GlyphKind.Space)
+            if (glyph.Kind == GlyphKind.Tab)
             {
-                spaces++;
-                spaceWidth = glyph.Advance;
+                // Right, centre and decimal stops count the text after them, so a right tab at the column's edge
+                // (a table of contents) keeps its page number on the line.
+                glyph.Advance = Math.Max(0.1, TabAdvance(glyphs, i, line.X, format, indent, available).Advance);
             }
-            if (glyph.BreakAfter && (glyph.Kind != GlyphKind.SoftHyphen || content + HyphenWidth(glyph) <= available + Epsilon))
+            if (i > start && line.Overflows(glyph, available, format, justified))
             {
-                lastBreak = i;
-                if (glyph.Kind != GlyphKind.SoftHyphen)
-                {
-                    lastWordBreak = i;
-                    wordBreakContent = content;
-                    wordBreakSpaces = Math.Max(0, spaces - 1);
-                }
+                break;
+            }
+            line.Add(glyph);
+            if (glyph.Kind == GlyphKind.Break)
+            {
+                Consider(i + 1, forced: true, hyphen: false, last: false);
+                return best >= 0 ? (best, bestForced) : (i + 1, true);
+            }
+            if (glyph.BreakAfter)
+            {
+                Consider(i + 1, forced: false, hyphen: glyph.Kind == GlyphKind.SoftHyphen, last: false);
             }
         }
-        return (glyphs.Count, false);
+        if (i >= glyphs.Count)
+        {
+            Consider(glyphs.Count, forced: false, hyphen: false, last: true);
+        }
+        // Nothing fits (a word wider than the column): break inside it, where it runs out of room.
+        return best >= 0 ? (best, bestForced) : (Math.Max(i, start + 1), false);
+
+        void Consider(int end, bool forced, bool hyphen, bool last)
+        {
+            var space = hyphen ? line.WithHyphen(HyphenWidth(glyphs[end - 1])) : line.Space;
+            if (line.Tightest(space, format, justified) > available + Epsilon)
+            {
+                return;
+            }
+            double cost;
+            if (justified && !line.HasTab)
+            {
+                cost = LineCost(space, available, format, forced, last) + (hyphen ? HyphenPenalty : 0);
+            }
+            else
+            {
+                if (hyphen && wordBreakGap <= format.Hyphenation.Zone)
+                {
+                    return;
+                }
+                if (!hyphen)
+                {
+                    wordBreakGap = available - (space.Width * format.Spacing.DesiredGlyphScaling);
+                }
+                cost = 0;
+            }
+            if (cost <= bestCost)
+            {
+                (best, bestForced, bestCost) = (end, forced, cost);
+            }
+        }
+    }
+
+    /// <summary>What a hyphen adds to the cost of a justified line (about as much as word spaces at their maximum).</summary>
+    private const double HyphenPenalty = 100;
+
+    /// <summary>
+    /// How much more compressing a line costs than stretching it as far. InDesign's justified text in the references is
+    /// stretched about five times as often as it is compressed (in 08-para-drop-caps, -hyphenation-justification,
+    /// 07-char-language-nobreak and 08-para-alignment-indents, 32 compressed lines to 214 stretched), yet its
+    /// single-line composer still sets line 2 of 08-para-hyphenation-justification p5 at 90% (cost 12.5 times this)
+    /// rather than at 134% (109): any weight below 8.7 keeps that; 4 measured best over the doc-samples.
+    /// </summary>
+    private const double ShrinkWeight = 4;
+
+    private static bool IsJustified(string justification) =>
+        justification is "LeftJustified" or "CenterJustified" or "RightJustified" or "FullyJustified";
+
+    /// <summary>
+    /// The cost of setting a line of a justified paragraph: 100 r³ for a line set a share r of the way from its desired
+    /// spacing to its limits (TeX's badness), <see cref="ShrinkWeight"/> times that when it is compressed, nothing for a
+    /// last line that fits (it is not stretched, except in <c>FullyJustified</c> paragraphs), and a cost no ordinary
+    /// line reaches for a line that must stretch and has nothing that may (a single word without single-word
+    /// justification).
+    /// </summary>
+    private static double LineCost(LineSpace space, double available, ParagraphFormatting format, bool forced, bool last)
+    {
+        var stretch = !last || forced || format.Justification == "FullyJustified";
+        var ratio = Justifier.Solve(space, available, format.Spacing, stretch, shrink: true).Ratio;
+        return double.IsInfinity(ratio) ? 1e12 : 100 * Math.Abs(ratio * ratio * ratio) * (ratio < 0 ? ShrinkWeight : 1);
     }
 
     /// <summary>
-    /// Whether breaking at the last space would leave the line so loose that hyphenating is better: justified text
-    /// when word spaces would grow past 133% (InDesign's default maximum word spacing), ragged text when the gap
-    /// exceeds the hyphenation zone (36 pt by default).
+    /// A line being read: its pen position, its width up to the last glyph that is not a space, and what justification
+    /// may change in it (<see cref="LineSpace"/>).
     /// </summary>
-    private static bool NeedsHyphen(ParagraphFormatting format, double gap, int spaces, double spaceWidth)
+    private struct LineMeasure
     {
-        var justified = format.Justification is "LeftJustified" or "CenterJustified" or "RightJustified" or "FullyJustified";
-        if (justified)
+        private double content;
+        private double wordSpace;
+        private double letterSpace;
+        // Spaces after the last glyph that is not one: they count only once a glyph follows them.
+        private double pendingWord;
+        private double pendingLetter;
+        // The space band of the last glyph: letter spacing follows it only when another glyph comes after it.
+        private double lastBand;
+
+        public double X { get; private set; }
+
+        public bool HasTab { get; private set; }
+
+        public readonly LineSpace Space => new(content, wordSpace, letterSpace);
+
+        /// <summary>The line ending in a hyphen <paramref name="width"/> wide.</summary>
+        public readonly LineSpace WithHyphen(double width) => new(content + width, wordSpace, letterSpace + lastBand);
+
+        /// <summary>The tightest width <paramref name="space"/> can be set at: compressed only in justified text.</summary>
+        public readonly double Tightest(LineSpace space, ParagraphFormatting format, bool justified) =>
+            HasTab ? space.Width
+            : justified ? Justifier.TightestWidth(space, format.Spacing)
+            : space.Width * format.Spacing.DesiredGlyphScaling;
+
+        /// <summary>Whether <paramref name="glyph"/> no longer fits on the line, however tightly it is set.</summary>
+        public readonly bool Overflows(Shaped glyph, double available, ParagraphFormatting format, bool justified)
         {
-            return spaces == 0 || gap / spaces > spaceWidth * 0.33;
+            if (glyph.Kind is GlyphKind.Space or GlyphKind.SoftHyphen or GlyphKind.Break)
+            {
+                return false;
+            }
+            var space = new LineSpace(X + glyph.Advance, wordSpace + pendingWord, letterSpace + pendingLetter + lastBand);
+            return (HasTab || glyph.Kind == GlyphKind.Tab ? space.Width : Tightest(space, format, justified)) > available + Epsilon;
         }
-        return gap > format.Hyphenation.Zone;
+
+        public void Add(Shaped glyph)
+        {
+            X += glyph.Advance;
+            switch (glyph.Kind)
+            {
+                case GlyphKind.Space:
+                    pendingWord += Stretches(glyph) ? glyph.Natural : 0;
+                    pendingLetter += glyph.Band;
+                    break;
+                case GlyphKind.SoftHyphen or GlyphKind.Break:
+                    break;
+                default:
+                    HasTab |= glyph.Kind == GlyphKind.Tab;
+                    content = X;
+                    wordSpace += pendingWord;
+                    letterSpace += pendingLetter + lastBand;
+                    lastBand = glyph.Kind == GlyphKind.Normal ? glyph.Band : 0;
+                    (pendingWord, pendingLetter) = (0, 0);
+                    break;
+            }
+        }
     }
 
     private static double HyphenWidth(Shaped soft) =>
@@ -871,22 +1017,39 @@ internal sealed class TextComposer
         // Tab alignment (right/centre stops shift the text that follows them).
         ApplyTabAlignment(visible, format, indent, available);
 
-        var width = visible.Sum(glyph => glyph.Advance);
         var justification = format.Justification;
-        var justify = justification == "FullyJustified"
-            || (justification is "LeftJustified" or "CenterJustified" or "RightJustified" && (!isLast || forced));
+        var justify = justification == "FullyJustified" || (IsJustified(justification) && (!isLast || forced));
         var align = justification switch
         {
             "CenterAlign" or "CenterJustified" => "center",
             "RightAlign" or "RightJustified" or "AwayFromBindingSide" => "right",
             _ => "left",
         };
-        var extraPerSpace = 0.0;
-        var spaces = visible.Count(Stretches);
-        if (justify && spaces > 0 && width < available && !visible.Any(glyph => glyph.Kind == GlyphKind.Tab))
+        // Justification: word spacing, letter spacing and glyph scaling within the paragraph's limits (Justifier). A line
+        // with tabs keeps its spacing (its tab stops place it). A justified line holding a single word is letter spaced
+        // across, or aligned as Single Word Justification says.
+        var space = MeasureLine(visible);
+        if (justify && space.WordSpace <= 0 && format.Spacing.SingleWordJustification != "FullyJustified")
         {
-            extraPerSpace = (available - width) / spaces;
-            width = available;
+            justify = false;
+            align = format.Spacing.SingleWordJustification switch
+            {
+                "CenterAlign" => "center",
+                "RightAlign" => "right",
+                _ => "left",
+            };
+        }
+        var spacing = visible.Any(glyph => glyph.Kind == GlyphKind.Tab)
+            ? new LineSpacing(0, 0, 1, 0)
+            : Justifier.Solve(space, available, format.Spacing, stretch: justify, shrink: IsJustified(justification));
+        var lastLetter = visible.Count - 1;
+        double Advance(Shaped glyph, int index) => glyph.Kind == GlyphKind.Tab ? glyph.Advance
+            : glyph.Object is not null ? glyph.Advance + (index < lastLetter ? glyph.Band * spacing.Letter : 0)
+            : (glyph.Advance + (Stretches(glyph) ? glyph.Natural * spacing.Word : 0) + (index < lastLetter ? glyph.Band * spacing.Letter : 0)) * spacing.Scale;
+        var width = 0.0;
+        for (var i = 0; i < visible.Count; i++)
+        {
+            width += Advance(visible[i], i);
         }
         var column = flow.Column;
         var x = column.X + indent + align switch
@@ -905,7 +1068,7 @@ internal sealed class TextComposer
         {
             if (runFirst is not null && run.Count > 0)
             {
-                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()) { VerticalScale = runFirst.Style.VerticalScale, Gradient = runFirst.Style.FillGradient });
+                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale * spacing.Scale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()) { VerticalScale = runFirst.Style.VerticalScale, Gradient = runFirst.Style.FillGradient });
                 var runWidth = run.Sum(glyph => glyph.Advance);
                 if (runFirst.Style.Underline && runFirst.Style.Fill is { } color)
                 {
@@ -923,23 +1086,24 @@ internal sealed class TextComposer
         }
 
         var markerLength = 0;
-        foreach (var glyph in visible)
+        for (var index = 0; index < visible.Count; index++)
         {
+            var glyph = visible[index];
             if (glyph.Marker && markerLength == lineText.Length)
             {
                 markerLength += glyph.Kind == GlyphKind.Tab ? 1 : glyph.Text.Length;
             }
-            var advance = glyph.Advance + (Stretches(glyph) ? extraPerSpace : 0);
+            var advance = Advance(glyph, index);
             if (glyph.Kind == GlyphKind.Tab)
             {
                 FlushRun();
                 // InDesign writes a tab as a space glyph where it starts: invisible, but text extraction (copy, search,
                 // accessibility) then sees a word break there, also when a leader or the next column follows closely.
-                if (glyph.Font.TryMap(' ', out var space))
+                if (glyph.Font.TryMap(' ', out var spaceGlyph))
                 {
-                    var spaceWidth = glyph.Font.Advance(space) * glyph.Size * glyph.Style.HorizontalScale;
+                    var spaceWidth = glyph.Font.Advance(spaceGlyph) * glyph.Size * glyph.Style.HorizontalScale;
                     flow.Add(new GlyphRunOp(glyph.Font, glyph.Size, glyph.Style.HorizontalScale, glyph.Style.Fill, x, baseline - glyph.Rise,
-                        [new PlacedGlyph(space, " ", spaceWidth, spaceWidth)]) { VerticalScale = glyph.Style.VerticalScale, Gradient = glyph.Style.FillGradient });
+                        [new PlacedGlyph(spaceGlyph, " ", spaceWidth, spaceWidth)]) { VerticalScale = glyph.Style.VerticalScale, Gradient = glyph.Style.FillGradient });
                 }
                 if (glyph.Leader is { Length: > 0 } leader)
                 {
@@ -967,7 +1131,7 @@ internal sealed class TextComposer
                 runStart = x;
             }
             runFirst ??= glyph;
-            run.Add(new PlacedGlyph(glyph.Glyph, glyph.Text, advance, glyph.Natural));
+            run.Add(new PlacedGlyph(glyph.Glyph, glyph.Text, advance, glyph.Natural * spacing.Scale));
             lineText.Append(glyph.Text);
             x += advance;
         }
@@ -980,6 +1144,20 @@ internal sealed class TextComposer
     /// spaces (em, en, thin, ... often after a list's bullet) keep their width.
     /// </summary>
     private static bool Stretches(Shaped glyph) => glyph.Kind == GlyphKind.Space && glyph.Text is " " or " ";
+
+    /// <summary>What justification may change in the glyphs of a line set as they are (see <see cref="LineSpace"/>).</summary>
+    private static LineSpace MeasureLine(List<Shaped> visible)
+    {
+        double width = 0, wordSpace = 0, letterSpace = 0;
+        for (var i = 0; i < visible.Count; i++)
+        {
+            var glyph = visible[i];
+            width += glyph.Advance;
+            wordSpace += Stretches(glyph) ? glyph.Natural : 0;
+            letterSpace += i < visible.Count - 1 && glyph.Kind is GlyphKind.Normal or GlyphKind.Space ? glyph.Band : 0;
+        }
+        return new LineSpace(width, wordSpace, letterSpace);
+    }
 
     private static void ApplyTabAlignment(List<Shaped> line, ParagraphFormatting format, double indent, double available)
     {

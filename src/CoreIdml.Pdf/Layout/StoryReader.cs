@@ -594,6 +594,11 @@ internal sealed class StoryReader
                 (int)Values.Number(Get("HyphenateWordsLongerThan"), 5),
                 Get("HyphenateCapitalizedWords") != "false",
                 Values.Number(Get("HyphenationZone"), 36)),
+            Spacing = JustificationSettings.FromPercentages(
+                Values.Number(Get("MinimumWordSpacing"), 80), Values.Number(Get("DesiredWordSpacing"), 100), Values.Number(Get("MaximumWordSpacing"), 133),
+                Values.Number(Get("MinimumLetterSpacing"), 0), Values.Number(Get("DesiredLetterSpacing"), 0), Values.Number(Get("MaximumLetterSpacing"), 0),
+                Values.Number(Get("MinimumGlyphScaling"), 100), Values.Number(Get("DesiredGlyphScaling"), 100), Values.Number(Get("MaximumGlyphScaling"), 100),
+                Get("SingleWordJustification") ?? "FullyJustified"),
             // The other GridAlignment values (AlignEmTop, AlignEmCenter, ...) align to a CJK layout grid, not done.
             AlignToBaselineGrid = Get("GridAlignment") == "AlignBaseline",
             GridAlignFirstLineOnly = Get("GridAlignFirstLineOnly") == "true",
