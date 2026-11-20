@@ -12,7 +12,7 @@ namespace CoreIdml.Pdf.Layout;
 internal sealed class StoryReader
 {
     private static readonly HashSet<string> Transparent =
-        ["ParagraphStyleRange", "CharacterStyleRange", "XMLElement", "HyperlinkTextSource", "HyperlinkTextDestination", "Change", "TextVariableInstance", "Story"];
+        ["ParagraphStyleRange", "CharacterStyleRange", "XMLElement", "HyperlinkTextSource", "HyperlinkTextDestination", "Change", "Story"];
 
     private static readonly HashSet<string> Skipped =
         ["Properties", "Footnote", "Note", "XMLAttribute", "XMLComment", "XMLInstruction", "DTD", "StoryPreference", "InCopyExportOption",
@@ -55,7 +55,10 @@ internal sealed class StoryReader
             {
                 items.InsertRange(0, marker);
             }
-            paragraphs.Add(new ParagraphModel(range is null ? new ParagraphFormatting() : FormatOf(range), items, markStyle));
+            paragraphs.Add(new ParagraphModel(range is null ? new ParagraphFormatting() : FormatOf(range), items, markStyle)
+            {
+                ParagraphStyle = range?.Attribute("AppliedParagraphStyle")?.Value,
+            });
             items = [];
             currentRange = null;
             firstText = null;
@@ -85,6 +88,12 @@ internal sealed class StoryReader
                     case "Table":
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
                         items.Add(new TableItem(child, StyleOf(child)));
+                        break;
+                    case "TextVariableInstance":
+                        currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        firstText ??= child;
+                        lastStyle = StyleOf(child);
+                        items.Add(new TextVariableItem(child, lastStyle));
                         break;
                     case "Cell" or "Row" or "Column":
                         break;
@@ -215,7 +224,7 @@ internal sealed class StoryReader
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
                         EndParagraph(child);
                         break;
-                    case "Table":
+                    case "Table" or "TextVariableInstance":
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
                         hasItems = true;
                         break;
@@ -300,11 +309,12 @@ internal sealed class StoryReader
     private static void AddContent(XElement content, RunStyle style, List<InlineItem> items)
     {
         var text = new StringBuilder();
+        var run = content.Ancestors("CharacterStyleRange").FirstOrDefault();
         void Flush()
         {
             if (text.Length > 0)
             {
-                items.Add(new TextItem(text.ToString(), style));
+                items.Add(new TextItem(text.ToString(), style) { CharacterStyle = run?.Attribute("AppliedCharacterStyle")?.Value });
                 text.Clear();
             }
         }
@@ -335,8 +345,19 @@ internal sealed class StoryReader
                     switch (instruction.Data.Trim())
                     {
                         case "18":
+                            // Current, next and previous page numbers share the code; the run's PageNumberType
+                            // tells them apart (11-long-markers-variables, jump lines).
                             Flush();
-                            items.Add(new PageNumberItem(style));
+                            items.Add(new PageNumberItem(style, run?.Attribute("PageNumberType")?.Value switch
+                            {
+                                "NextPageNumber" => PageMarker.Next,
+                                "PreviousPageNumber" => PageMarker.Previous,
+                                _ => PageMarker.Current,
+                            }));
+                            break;
+                        case "19":
+                            Flush();
+                            items.Add(new PageNumberItem(style, PageMarker.Section));
                             break;
                         case "8":
                             Flush();

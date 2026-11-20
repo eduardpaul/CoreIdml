@@ -278,13 +278,17 @@ are told apart only by `PageNumberType="NextPageNumber"` or `"PreviousPageNumber
 `CharacterStyleRange`. `<?ACE 19?>` is the section marker. A renderer that ignores `PageNumberType` prints the current
 page: `11-long-markers-variables` now catches it, with jump lines that read "Continued on page 4" and "Continued on
 page 6" (p2, p4) and "Continued from page 2" and "Continued from page 4" (p4, p6). The next page is the page of the
-story's next frame, not page + 1.
+story's next frame, not page + 1. The jump lines are frames of their own stories that overlap the threaded frame by
+1 pt; the marker follows the thread of the frame it touches.
 
 **Stored text that is not the printed text.** `TextVariableInstance@ResultText` is what InDesign last composed. On
-master pages, running-header variables store a placeholder (`<Header First>`), not the text of any page; the value
-must be computed per page. Output Date and Modification Date carry the generation date (20 November 2026). File Name
-is `source.indd`. Drawing `ResultText` as is (gap 5 in the feature matrix) is right for body variables and wrong for
-running headers on masters.
+master pages, running-header variables store a placeholder (`first: <Running Header First>`), not the text of any
+page, and the last page number stores `section: 1` where every page prints `section: 6`; both are computed per page.
+A page with no heading repeats the previous page's header (p3 shows p2's, p5 shows p4's); p1, before any heading,
+prints nothing for the variable, not even its text before (the PDF has a zero-width U+FEFF there). Output Date and
+Modification Date carry the generation date (20 November 2026), so drawing their `ResultText` matches. File Name
+is `source.indd`. InDesign never breaks a variable: on p1 the file path does not fit, and InDesign squeezes the whole
+line (word spaces down to 0.1 pt, letters 0.4 pt closer) instead of breaking before it.
 
 **Liquid-resized documents.** In the `01-doc-liquid-to-*` folders some labels were moved off the page by the rule
 (p2 or p3 have no label). Test the resize engine by item: our resize of `01-doc-liquid` against InDesign's resized
@@ -403,7 +407,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 
 | Sample | Checks | Pass when | Watch out |
 | --- | --- | --- | --- |
-| `11-long-markers-variables` | D, B | Every variable and marker word as in the reference: dates, custom text, chapter, last page, file name, running headers per page, character-style header, live caption (image name and metadata), jump lines (4, 6 / 2, 4), section marker. | Running headers on masters are computed, not `ResultText`; next/previous follow the story's frames (section 4). |
+| `11-long-markers-variables` | D, B | Every variable and marker word as in the reference: dates, custom text, chapter, last page, file name, running headers per page, character-style header, live caption (image name and metadata), jump lines (4, 6 / 2, 4), section marker. | Running headers on masters are computed, not `ResultText`; next/previous follow the story's frames (section 4). Now drawn: p2-p6 every generated word within 1 pt (the rest of p2, p4, p6 is body composition); p1 misses only the squeezed file-path line. |
 | `11-long-footnotes-endnotes` | D, F | Reference numbers in the text, footnotes at the column foot (including 2 columns), restart per page, endnotes in their frame. | Footnotes shrink the column: everything after them moves until this works. |
 | `11-long-links-bookmarks` | E | Link annotations with the URL or page/anchor destination over the right text; outline with the bookmarks of the reference. | Text already renders; this is structure only. |
 | `11-long-toc-index` | D | TOC and index stories render as stored. | Stored text; no regeneration expected. |

@@ -98,13 +98,45 @@ internal abstract record InlineItem(RunStyle Style)
     public bool Generated { get; init; }
 }
 
-internal sealed record TextItem(string Text, RunStyle Style) : InlineItem(Style);
+internal sealed record TextItem(string Text, RunStyle Style) : InlineItem(Style)
+{
+    /// <summary>The run's <c>AppliedCharacterStyle</c>, which running-header variables match.</summary>
+    public string? CharacterStyle { get; init; }
+}
 
 internal sealed record TabItem(RunStyle Style, bool RightIndentTab = false) : InlineItem(Style);
 
 internal sealed record LineBreakItem(RunStyle Style) : InlineItem(Style);
 
-internal sealed record PageNumberItem(RunStyle Style) : InlineItem(Style);
+/// <summary>Which page marker a <c>&lt;?ACE 18?&gt;</c> or <c>&lt;?ACE 19?&gt;</c> is.</summary>
+internal enum PageMarker
+{
+    /// <summary>The current page's number (<c>&lt;?ACE 18?&gt;</c>).</summary>
+    Current,
+
+    /// <summary>
+    /// <c>&lt;?ACE 18?&gt;</c> in a run with <c>PageNumberType="NextPageNumber"</c>: the page of the next frame of the
+    /// story thread (a jump line, "Continued on page 4").
+    /// </summary>
+    Next,
+
+    /// <summary><c>&lt;?ACE 18?&gt;</c> in a run with <c>PageNumberType="PreviousPageNumber"</c>: the previous frame's page.</summary>
+    Previous,
+
+    /// <summary>The section's <c>Marker</c> text (<c>&lt;?ACE 19?&gt;</c>).</summary>
+    Section,
+}
+
+internal sealed record PageNumberItem(RunStyle Style, PageMarker Marker = PageMarker.Current) : InlineItem(Style);
+
+/// <summary>
+/// A text variable (<c>TextVariableInstance</c>): its text is computed per page where it depends on the page
+/// (<see cref="FrameMarkers.Variable"/>), else it is the <c>ResultText</c> InDesign stored.
+/// </summary>
+internal sealed record TextVariableItem(XElement Instance, RunStyle Style) : InlineItem(Style)
+{
+    public string ResultText => Instance.Attribute("ResultText")?.Value ?? string.Empty;
+}
 
 internal sealed record TableItem(XElement Table, RunStyle Style) : InlineItem(Style);
 
@@ -116,7 +148,11 @@ internal sealed record TableItem(XElement Table, RunStyle Style) : InlineItem(St
 internal sealed record InlineObjectItem(XElement Element, Rect Bounds, double YOffset, RunStyle Style) : InlineItem(Style);
 
 /// <summary>A paragraph: its formatting, content, and the style of its paragraph mark (height of an empty line).</summary>
-internal sealed record ParagraphModel(ParagraphFormatting Format, IReadOnlyList<InlineItem> Items, RunStyle MarkStyle);
+internal sealed record ParagraphModel(ParagraphFormatting Format, IReadOnlyList<InlineItem> Items, RunStyle MarkStyle)
+{
+    /// <summary>The paragraph's <c>AppliedParagraphStyle</c>, which running-header variables match.</summary>
+    public string? ParagraphStyle { get; init; }
+}
 
 /// <summary>Something to paint, in the coordinates of the frame (or cell) it was laid out in.</summary>
 internal abstract record DrawOp
@@ -160,7 +196,11 @@ internal sealed record PageItemOp(XElement Element, Matrix Placement) : DrawOp
 /// Where a story is laid out: one entry per threaded frame, columns in the frame's inner coordinates.
 /// <paramref name="BaselineGrid"/> is the grid that grid-aligned paragraphs snap to (null: none, as in table cells).
 /// </summary>
-internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, string VerticalJustification, string FirstBaselineOffset, double MinimumFirstBaselineOffset, string PageName, BaselineGrid? BaselineGrid = null);
+internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, string VerticalJustification, string FirstBaselineOffset, double MinimumFirstBaselineOffset, string PageName, BaselineGrid? BaselineGrid = null)
+{
+    /// <summary>What the frame's next/previous page markers, section markers and text variables print.</summary>
+    public FrameMarkers Markers { get; init; } = FrameMarkers.None;
+}
 
 /// <summary>
 /// A baseline grid in a frame's inner coordinates: lines at <see cref="Start"/>, then every <see cref="Increment"/>
@@ -180,6 +220,16 @@ internal readonly record struct BaselineGrid(double Start, double Increment)
 }
 
 /// <summary>
+/// The page-dependent text of a frame: the page names its next and previous page markers print (null: the current
+/// page), its section marker, and the text of its variables (<see cref="Variable"/> returns null for a variable that
+/// prints its stored <c>ResultText</c>).
+/// </summary>
+internal sealed record FrameMarkers(string? NextPage, string? PreviousPage, string SectionMarker, Func<XElement, string?>? Variable)
+{
+    public static readonly FrameMarkers None = new(null, null, string.Empty, null);
+}
+
+/// <summary>
 /// A laid-out line (for tests and reports). <see cref="Text"/> includes a list marker at its start;
 /// <see cref="MarkerLength"/> is how many of its characters that marker takes.
 /// </summary>
@@ -194,6 +244,12 @@ internal sealed class StoryLayout
     public Dictionary<string, List<DrawOp>> OpsByFrame { get; } = new(StringComparer.Ordinal);
 
     public List<LineInfo> Lines { get; } = [];
+
+    /// <summary>The paragraphs composed, in story order.</summary>
+    public IReadOnlyList<ParagraphModel> Paragraphs { get; set; } = [];
+
+    /// <summary>For each of <see cref="Paragraphs"/>, the index of the frame its first line went in; -1 when it did not fit.</summary>
+    public List<int> ParagraphFrames { get; } = [];
 
     /// <summary>Text did not fit in the frames (InDesign would show the red overset marker).</summary>
     public bool Overset { get; set; }

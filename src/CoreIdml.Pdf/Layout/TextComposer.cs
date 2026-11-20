@@ -46,9 +46,12 @@ internal sealed class TextComposer
             return layout;
         }
         var flow = new Flow(frames, layout);
+        layout.Paragraphs = paragraphs;
         for (var index = 0; index < paragraphs.Count && !flow.Exhausted; index++)
         {
+            var lines = layout.Lines.Count;
             LayoutParagraph(paragraphs[index], flow, isFirst: index == 0);
+            layout.ParagraphFrames.Add(layout.Lines.Count > lines ? layout.Lines[lines].FrameIndex : -1);
             if (flow.Exhausted)
             {
                 layout.Overset = true;
@@ -94,7 +97,7 @@ internal sealed class TextComposer
         public InlineObjectItem? Object;
     }
 
-    private List<Shaped> Shape(ParagraphModel paragraph, string pageName)
+    private List<Shaped> Shape(ParagraphModel paragraph, FrameArea frame)
     {
         var result = new List<Shaped>();
         foreach (var item in paragraph.Items)
@@ -106,7 +109,21 @@ internal sealed class TextComposer
                     ShapeText(text.Text, text.Style, result, text.Generated ? null : paragraph.Format.Hyphenation);
                     break;
                 case PageNumberItem number:
-                    ShapeText(pageName, number.Style, result);
+                    ShapeText(number.Marker switch
+                    {
+                        PageMarker.Next => frame.Markers.NextPage ?? frame.PageName,
+                        PageMarker.Previous => frame.Markers.PreviousPage ?? frame.PageName,
+                        PageMarker.Section => frame.Markers.SectionMarker,
+                        _ => frame.PageName,
+                    }, number.Style, result);
+                    break;
+                case TextVariableItem variable:
+                    ShapeText(frame.Markers.Variable?.Invoke(variable.Instance) ?? variable.ResultText, variable.Style, result);
+                    // InDesign sets a variable as one character: it never breaks across lines.
+                    for (var i = first; i < result.Count - 1; i++)
+                    {
+                        result[i].BreakAfter = false;
+                    }
                     break;
                 case TabItem tab:
                     result.Add(new Shaped { Kind = GlyphKind.Tab, Style = tab.Style, Font = tab.Style.Font, Size = tab.Style.Size, Tab = tab });
@@ -348,7 +365,7 @@ internal sealed class TextComposer
     private void LayoutParagraph(ParagraphModel paragraph, Flow flow, bool isFirst)
     {
         var format = paragraph.Format;
-        var glyphs = Shape(paragraph, flow.PageName);
+        var glyphs = Shape(paragraph, flow.Frame);
         flow.PendingSpace += isFirst ? 0 : format.SpaceBefore;
         var index = 0;
         var firstLine = true;
@@ -780,7 +797,10 @@ internal sealed class TextComposer
             var inset = CellInsets(cell);
             var innerWidth = Math.Max(1, width - inset.Left - inset.Right);
             var area = new FrameArea("cell", [new Rect(0, 0, innerWidth, 1e6)], "TopAlign",
-                resolver.Cell(cell, "FirstBaselineOffset") ?? "AscentOffset", Values.Number(resolver.Cell(cell, "MinimumFirstBaselineOffset"), 0), flow.PageName);
+                resolver.Cell(cell, "FirstBaselineOffset") ?? "AscentOffset", Values.Number(resolver.Cell(cell, "MinimumFirstBaselineOffset"), 0), flow.PageName)
+            {
+                Markers = flow.Frame.Markers,
+            };
             var text = Compose(cell, [area]);
             // InDesign measures cell content to the last baseline (descenders may enter the bottom inset): a row
             // stored by InDesign at its composed height then keeps that height here too.

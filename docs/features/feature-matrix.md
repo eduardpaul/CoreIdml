@@ -207,8 +207,8 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Feature | IDML | Agent | Preview | Notes |
 | --- | --- | --- | --- | --- |
 | Current page number | `<?ACE 18?>` | ❌ | ✅ | Per page on masters. |
-| Next and previous page number, section marker **[new]** | other `ACE` markers | ❌ | ❌ † | "Continued on page N" lines are empty. |
-| Text variables **[new]** | `TextVariableInstance@ResultText` | ❌ | ❌ | Running heads, dates, file names and chapter numbers are blank. Partly in the masters plan ("text variables' `ResultText`"). |
+| Next and previous page number, section marker | `<?ACE 18?>` with `PageNumberType="NextPageNumber"`/`"PreviousPageNumber"`, `<?ACE 19?>` | ❌ | ✅ | Next/previous print the page of the next/previous frame of the thread: the frame's own, else the threaded frame it overlaps or touches (a jump line); with no thread to follow, the current page. The section marker prints `Section@Marker` of the page's section (masters: of the page they are drawn on). In [TextVariables.cs](../../src/CoreIdml.Pdf/Rendering/TextVariables.cs). Checked against `11-long-markers-variables` (jump lines 4, 6 / 2, 4; "Part A"), `01-doc-sections-numbering` and `07-char-special-characters` p5. |
+| Text variables | `TextVariableInstance`, `TextVariable` in designmap | ❌ | ✅ | Running headers (paragraph or character style, first or last on page, text before/after, change case, delete end punctuation) and the last page number (document or section scope) are computed per page; a page without a match repeats the previous page's header, and before the first match nothing prints. Every other variable (dates, file name, custom text, chapter number, live captions, cross-reference variables) prints the `ResultText` InDesign stored, so Output Date is the date InDesign saved. A variable never breaks across lines. `11-long-markers-variables` p2-p6: every header, folio and jump-line word within 1 pt. Not done: InDesign squeezes a line whose variable does not fit (p1, the file path); we break before it. `TextMeasurer` measures stored `ResultText` and the current page for next/previous markers. |
 | Footnotes **[new]** | `Footnote` in a story | 🟡 | ❌ | Agent can read and change their text (`scope: footnote`); neither the reference number nor the footnote is drawn. Endnotes likewise. |
 | Hyperlinks, cross-references | `HyperlinkTextSource`, `Hyperlink` | ❌ | 🟡 | The text is drawn; the PDF has no link annotations. |
 | Bookmarks | `Bookmark` | ❌ | ❌ | No PDF outline. |
@@ -245,7 +245,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 2 | ~~**Tracked changes**~~ | Drawn | S | See the row under long documents; `11-long-tracked-changes` matches InDesign except one hyphenation on p4. |
 | 3 | ~~**Table alternating fills, table style region cell styles**~~ | Drawn | S–M | See the table and table style rows; spec `alternateFill`. |
 | 4 | **Keep options, widows and orphans, start in next frame** | Headings orphaned | M | In `Flow.Place`; needs look-ahead of N lines. Changes overset results. |
-| 5 | **Text variables, next/previous page number** | Blank | S | Draw `ResultText`; compute page markers like the current page number. |
+| 5 | ~~**Text variables, next/previous page number**~~ | Drawn | S | See the rows under long documents; `11-long-markers-variables` matches InDesign within 1 pt except the squeezed file-path line on p1. |
 | 6 | ~~**Tab leaders, decimal tabs**~~ | Drawn | S | See the tab rows under paragraph formatting; `08-para-tabs` matches InDesign within 1 pt on every page. |
 | 7 | **Footnotes** | Missing | L | Reference numbers inline, footnote area at the bottom of the column shrinking the column. |
 | 8 | **Text stroke, skew, underline options** | Solid, upright, thin | S | Text render mode 2, a skew in `Tm`, underline weight/offset/colour. |

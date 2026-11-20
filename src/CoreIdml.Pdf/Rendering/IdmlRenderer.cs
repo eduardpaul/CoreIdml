@@ -28,6 +28,10 @@ internal sealed partial class IdmlRenderer : IDisposable
     private readonly List<string> missingImages = [];
     private readonly List<string> warnings = [];
     private PdfDocumentBuilder? pdf;
+    // Page-dependent markers and variables, for the document being rendered.
+    private TextVariables? variables;
+    // The document page being drawn: master text is composed for it.
+    private Page? drawingPage;
 
     private PdfDocumentBuilder Pdf => pdf ?? throw new InvalidOperationException("Render has not started.");
 
@@ -105,7 +109,8 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         // Large PNGs are decoded and compressed on other cores while the text is composed.
         Pdf.PrefetchPngs(PlacedPngs(selected));
-        ComposeStories();
+        variables = new TextVariables(document);
+        ComposeStories(variables);
         for (var done = 0; done < selected.Count;)
         {
             options.CancellationToken.ThrowIfCancellationRequested();
@@ -169,12 +174,13 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     // ---- text ----------------------------------------------------------------------------------------
 
-    private void ComposeStories()
+    private void ComposeStories(TextVariables pageText)
     {
         var framesByStory = document.Spreads
             .SelectMany(spread => spread.AllPageItems)
             .OfType<TextFrame>()
             .GroupBy(frame => frame.StoryId, StringComparer.Ordinal);
+        var composed = new List<(Story Story, IReadOnlyList<TextFrame> Frames)>();
         foreach (var group in framesByStory)
         {
             var story = document.FindStory(group.Key);
@@ -184,20 +190,43 @@ internal sealed partial class IdmlRenderer : IDisposable
             }
             // The group holds the story's frames in document order, as Story.Frames would find them.
             var ordered = Story.ThreadOrder([.. group]);
-            var areas = ordered.Select(frame => FrameArea(frame, frame.Page?.Name ?? "1")).ToList();
-            var layout = composer.Compose(story.Element, areas);
-            storyLayouts[story.Id] = layout;
-            foreach (var (frameId, ops) in layout.OpsByFrame)
-            {
-                frameOps[frameId] = ops;
-            }
+            ComposeStory(story, ordered);
+            composed.Add((story, ordered));
+        }
+        // Running headers print text from the composed pages: compose the stories holding one again, now that the
+        // pages are known.
+        pageText.UseLayouts(composed.Select(entry => (entry.Frames, storyLayouts[entry.Story.Id])));
+        foreach (var (story, ordered) in composed.Where(entry => pageText.HasRunningHeader(entry.Story.Element)))
+        {
+            ComposeStory(story, ordered);
         }
     }
 
-    /// <summary>Composes a master-page story for one document page (page numbers differ per page).</summary>
+    private void ComposeStory(Story story, IReadOnlyList<TextFrame> ordered)
+    {
+        foreach (var frame in ordered)
+        {
+            frameOps.Remove(frame.Id);
+        }
+        var areas = ordered.Select(frame => FrameArea(frame, frame.Page?.Name ?? "1") with { Markers = Markers(frame, frame.Page) }).ToList();
+        var layout = composer.Compose(story.Element, areas);
+        storyLayouts[story.Id] = layout;
+        foreach (var (frameId, ops) in layout.OpsByFrame)
+        {
+            frameOps[frameId] = ops;
+        }
+    }
+
+    private FrameMarkers Markers(TextFrame frame, Page? page) => variables?.For(frame, page) ?? FrameMarkers.None;
+
+    /// <summary>
+    /// Composes a master-page story for the document page being drawn (page numbers, section markers and variables
+    /// differ per page).
+    /// </summary>
     private List<DrawOp> MasterFrameOps(TextFrame frame, MasterSpread master, string pageName)
     {
-        var key = frame.Id + "@" + pageName;
+        var pageKey = "@" + (drawingPage?.Id ?? pageName);
+        var key = frame.Id + pageKey;
         if (frameOps.TryGetValue(key, out var cached))
         {
             return cached;
@@ -209,7 +238,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         var chain = master.AllPageItems.OfType<TextFrame>().Where(f => f.StoryId == frame.StoryId).ToList();
         var ordered = Story.ThreadOrder(chain);
-        var layout = composer.Compose(story.Element, ordered.Select(f => FrameArea(f, pageName)).ToList());
+        var layout = composer.Compose(story.Element, ordered.Select(f => FrameArea(f, pageName) with { Markers = Markers(f, drawingPage) }).ToList());
         // Reported like a page story; overset on any page it is drawn on counts.
         if (layout.Overset || !storyLayouts.ContainsKey(story.Id))
         {
@@ -217,7 +246,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         foreach (var (frameId, ops) in layout.OpsByFrame)
         {
-            frameOps[frameId + "@" + pageName] = ops;
+            frameOps[frameId + pageKey] = ops;
         }
         return frameOps.TryGetValue(key, out var result) ? result : [];
     }
@@ -336,6 +365,7 @@ internal sealed partial class IdmlRenderer : IDisposable
 
     private void RenderPage(Page page)
     {
+        drawingPage = page;
         var size = page.Size;
         var origin = page.SpreadBounds;
         var content = new ContentBuilder();
@@ -924,7 +954,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         frameOps[key] = [];
         if (document.FindStory(frame.StoryId) is { } story)
         {
-            var layout = composer.Compose(story.Element, [FrameArea(frame, pageName)]);
+            var layout = composer.Compose(story.Element, [FrameArea(frame, pageName) with { Markers = Markers(frame, drawingPage) }]);
             frameOps[key] = layout.OpsByFrame.GetValueOrDefault(frame.Id) ?? [];
         }
         return frameOps[key];
