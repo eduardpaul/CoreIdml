@@ -61,7 +61,7 @@ Writing to a path is atomic: a failed or cancelled export leaves no partial file
 
 It approximates InDesign rather than reproducing it: the line breaker is greedy (InDesign's default is the paragraph
 composer), hyphenation covers English (TeX patterns) and Spanish (rules) only, kerning is the font's pair kerning,
-and there are no OpenType features, text wrap, gradients, effects or placed EPS/AI graphics. Missing fonts change line
+and there are no OpenType features, text wrap, effects or placed EPS/AI graphics. Missing fonts change line
 breaks, so give the export the document's fonts.
 
 ## PDF to IDML

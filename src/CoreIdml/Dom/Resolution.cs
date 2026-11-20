@@ -372,6 +372,30 @@ public sealed record ResolvedColor(ColorSpaceKind Space, IReadOnlyList<double> C
     };
 }
 
+/// <summary>The kind of a gradient swatch (<c>Gradient@Type</c>).</summary>
+public enum GradientType
+{
+    Linear,
+    Radial,
+}
+
+/// <summary>
+/// A stop of a gradient swatch to add (<see cref="SwatchCatalog.AddGradient"/>): a colour swatch, its location in
+/// percent (0-100) and, from the second stop on, the midpoint between the previous stop and this one in percent of
+/// that span (13-87, as InDesign allows; 50 is an even blend).
+/// </summary>
+public sealed record GradientStop(Swatch Color, double Location, double Midpoint = 50);
+
+/// <summary>
+/// A gradient stop: its colour, its location along the gradient (0..1) and the midpoint between the previous stop and
+/// this one (0..1 of that span, where the two colours mix half and half; 0.5 is an even blend). <see cref="SpotInk"/>
+/// names the spot ink the colour prints on, or is null for a process colour.
+/// </summary>
+public sealed record ResolvedGradientStop(ResolvedColor Color, double Location, double Midpoint, string? SpotInk);
+
+/// <summary>A gradient swatch resolved to device colours (see <see cref="SwatchCatalog.ResolveGradient"/>).</summary>
+public sealed record ResolvedGradient(GradientType Type, IReadOnlyList<ResolvedGradientStop> Stops);
+
 /// <summary>One anchor of a page item path with its Bézier direction handles (inner coordinates).</summary>
 public readonly record struct PathPoint(Point Anchor, Point LeftDirection, Point RightDirection);
 

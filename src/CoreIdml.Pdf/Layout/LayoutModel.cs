@@ -20,6 +20,9 @@ internal sealed record RunStyle
 
     public ResolvedColor? Fill { get; init; } = new(ColorSpaceKind.Cmyk, [0, 0, 0, 1]);
 
+    /// <summary>The gradient the text is filled with (then <see cref="Fill"/> is null).</summary>
+    public TextGradient? FillGradient { get; init; }
+
     /// <summary>Tracking in 1/1000 em.</summary>
     public double Tracking { get; init; }
 
@@ -190,10 +193,20 @@ internal sealed record GlyphRunOp(FontFace Font, double Size, double HorizontalS
     /// <summary>Vertical glyph scale, 1 = 100%.</summary>
     public double VerticalScale { get; init; } = 1;
 
+    /// <summary>The gradient the glyphs are filled with, instead of <see cref="Color"/>.</summary>
+    public TextGradient? Gradient { get; init; }
+
     public double Width => Glyphs.Sum(glyph => glyph.Advance);
 
     public override DrawOp Offset(double dx, double dy) => this with { X = X + dx, Y = Y + dy };
 }
+
+/// <summary>
+/// A gradient text fill: the swatch and the run's <c>GradientFillStart</c>, <c>GradientFillLength</c> and
+/// <c>GradientFillAngle</c>. Text keeps InDesign's default length of −1, which spans the text frame (see
+/// <c>IdmlRenderer.GradientSpace</c>).
+/// </summary>
+internal sealed record TextGradient(ResolvedGradient Gradient, Point Start, double Length, double Angle);
 
 internal sealed record RectOp(Rect Rect, ResolvedColor Color) : DrawOp
 {

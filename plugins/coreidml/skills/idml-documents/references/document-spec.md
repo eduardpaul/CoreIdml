@@ -222,5 +222,5 @@ a text frame's `columns`, `columnGutter`, `inset`, `verticalAlign`. Put several 
 ## Not supported
 
 Master pages, paragraph rules, drop caps, polygons and free paths, gradients, effects other than opacity, text wrap
-(the preview and PDF do not draw the last three). Repeat a header on each page instead of a master; draw rules
+(the preview and PDF draw gradients a document already has, but not the last two). Repeat a header on each page instead of a master; draw rules
 with a `line`.

@@ -1,6 +1,9 @@
 # Gradients and effects
 
-Status: **plan, not implemented.** Written against commit `691f87a`; the files it then marked **(wip)** were committed in `dc5bbf4` (1.1.0), so their line numbers may have moved. Overview, order, milestones and open questions: [README.md](README.md).
+Status: **gradients (6a's shading and pattern part, 6b's rendering) done**, checked against `03-color-gradients`;
+the facts marked "(memory)" below were checked there (start and length are in inner coordinates, radial is centred on
+the start with radius = length; InDesign's midpoint encoding is in `Writing/GradientShading.cs`). Not done: spec and
+MCP authoring (`AddGradient` is DOM only), the radial highlight, and all effects (6c). The rest is the plan, written against commit `691f87a`; the files it then marked **(wip)** were committed in `dc5bbf4` (1.1.0), so their line numbers may have moved. Overview, order, milestones and open questions: [README.md](README.md).
 
 
 ## IDML

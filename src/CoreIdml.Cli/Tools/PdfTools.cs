@@ -29,7 +29,7 @@ internal static partial class PdfTools
         {
             Name = "idml_to_pdf",
             Title = "Export PDF",
-            Description = "Export a PDF with this library's own composer and fonts (approximates InDesign). Returns the PDF path, missing fonts and their replacements (stories, pages), missing images, overset stories and the frames they overflow (oversetFrames). Not drawn (kept in the .idml): gradients, effects other than opacity, text wrap, placed EPS/AI.",
+            Description = "Export a PDF with this library's own composer and fonts (approximates InDesign). Returns the PDF path, missing fonts and their replacements (stories, pages), missing images, overset stories and the frames they overflow (oversetFrames). Not drawn (kept in the .idml): effects other than opacity, text wrap, placed EPS/AI.",
             InputSchema = Schema.Read(
                 """ "outPath":{"type":"string","description":"Default: the .idml path with .pdf"},""" +
                 """ "pages":{"type":"array","items":{"type":"integer","minimum":0},"description":"0-based; default all"},""" +
@@ -100,7 +100,7 @@ internal static partial class PdfTools
     {
         Name = "idml_render_page",
         Title = "Preview a page",
-        Description = "Render one page as a PNG image (via this library's PDF engine) to look at the layout, with that page's report: missing fonts and images, overset stories and their frames. Keep dpi at or below 150 for big pages. Not drawn (kept in the .idml): gradients, effects other than opacity, text wrap, placed EPS/AI.",
+        Description = "Render one page as a PNG image (via this library's PDF engine) to look at the layout, with that page's report: missing fonts and images, overset stories and their frames. Keep dpi at or below 150 for big pages. Not drawn (kept in the .idml): effects other than opacity, text wrap, placed EPS/AI.",
         InputSchema = Schema.Read(
             """ "pageIndex":{"type":"integer","minimum":0,"description":"Default 0"},"dpi":{"type":"number","minimum":10,"maximum":300,"description":"Default 100"},""" +
             FontProperties + "," + LinkProperties),

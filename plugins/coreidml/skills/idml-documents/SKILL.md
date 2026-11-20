@@ -74,15 +74,15 @@ Common mistakes:
 For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds into it (`x: -3`, `y: -3` in mm, 6 mm
 wider and taller than the page); use `cmyk` colours; keep text inside the margins.
 
-The preview and PDF engine does not draw gradients, effects other than opacity, or text wrap; the spec has no master
-pages, paragraph rules, drop caps or free paths. Design without them. When an existing document uses them, say the
-preview leaves them out and InDesign will show them.
+The preview and PDF engine does not draw effects other than opacity or text wrap; the spec has no gradients, master
+pages, paragraph rules, drop caps or free paths. Design without them. When an existing document uses effects or text
+wrap, say the preview leaves them out and InDesign will show them (gradients in a document are drawn).
 
 ## Reporting back
 
 - The full path of every file written, and that the original is untouched (or changed, if asked).
 - What changed (from the tools' diff), and what still does not fit, is missing or could not be done.
-- CoreIdml's PDF approximates InDesign's (greedy line breaking; no gradients, effects or text wrap). For print, the
+- CoreIdml's PDF approximates InDesign's (greedy line breaking; no effects or text wrap). For print, the
   `.idml` is the deliverable: the user exports from InDesign.
 
 ## Ready-made tasks

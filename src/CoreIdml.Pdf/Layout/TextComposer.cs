@@ -905,7 +905,7 @@ internal sealed class TextComposer
         {
             if (runFirst is not null && run.Count > 0)
             {
-                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()) { VerticalScale = runFirst.Style.VerticalScale });
+                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()) { VerticalScale = runFirst.Style.VerticalScale, Gradient = runFirst.Style.FillGradient });
                 var runWidth = run.Sum(glyph => glyph.Advance);
                 if (runFirst.Style.Underline && runFirst.Style.Fill is { } color)
                 {
@@ -939,7 +939,7 @@ internal sealed class TextComposer
                 {
                     var spaceWidth = glyph.Font.Advance(space) * glyph.Size * glyph.Style.HorizontalScale;
                     flow.Add(new GlyphRunOp(glyph.Font, glyph.Size, glyph.Style.HorizontalScale, glyph.Style.Fill, x, baseline - glyph.Rise,
-                        [new PlacedGlyph(space, " ", spaceWidth, spaceWidth)]) { VerticalScale = glyph.Style.VerticalScale });
+                        [new PlacedGlyph(space, " ", spaceWidth, spaceWidth)]) { VerticalScale = glyph.Style.VerticalScale, Gradient = glyph.Style.FillGradient });
                 }
                 if (glyph.Leader is { Length: > 0 } leader)
                 {
@@ -1063,7 +1063,7 @@ internal sealed class TextComposer
         if (glyphs.Count > 0)
         {
             var head = unit[0];
-            flow.Add(new GlyphRunOp(head.Font, head.Size, head.Style.HorizontalScale, head.Style.Fill, start, baseline - head.Rise, glyphs) { VerticalScale = head.Style.VerticalScale });
+            flow.Add(new GlyphRunOp(head.Font, head.Size, head.Style.HorizontalScale, head.Style.Fill, start, baseline - head.Rise, glyphs) { VerticalScale = head.Style.VerticalScale, Gradient = head.Style.FillGradient });
         }
     }
 

@@ -495,12 +495,17 @@ internal sealed class StoryReader
         {
             size = 12;
         }
-        var fill = document.Swatches.ResolveColor(Get("FillColor") ?? "Color/Black");
+        var fillReference = Get("FillColor") ?? "Color/Black";
+        var fill = document.Swatches.ResolveColor(fillReference);
         var tint = Values.Number(Get("FillTint"), -1);
         if (fill is not null && tint >= 0)
         {
             fill = fill.WithTint(tint);
         }
+        var start = Values.List(Get("GradientFillStart"));
+        var gradient = fill is null && document.Swatches.ResolveGradient(fillReference) is { } resolved
+            ? new TextGradient(resolved, start.Length == 2 ? new Point(start[0], start[1]) : default, Values.Number(Get("GradientFillLength"), -1), Values.Number(Get("GradientFillAngle"), 0))
+            : null;
         var leadingValue = Get("Leading");
         double? leading = leadingValue is null || leadingValue == "Auto" ? null : Values.Number(leadingValue);
         var kerning = Get("KerningMethod") ?? "$ID/Metrics";
@@ -510,6 +515,7 @@ internal sealed class StoryReader
             FontIsSubstitute = !fonts.IsAvailable(family, fontStyle),
             Size = size,
             Fill = fill,
+            FillGradient = gradient,
             Tracking = Values.Number(Get("Tracking"), 0),
             HorizontalScale = Math.Max(0.01, Values.Number(Get("HorizontalScale"), 100) / 100),
             VerticalScale = Math.Max(0.01, Values.Number(Get("VerticalScale"), 100) / 100),

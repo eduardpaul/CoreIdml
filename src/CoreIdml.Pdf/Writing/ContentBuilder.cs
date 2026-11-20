@@ -5,12 +5,22 @@ using static CoreIdml.Pdf.Writing.PdfObjectWriter;
 
 namespace CoreIdml.Pdf.Writing;
 
-/// <summary>Builds a page content stream (PDF operators) with invariant number formatting.</summary>
+/// <summary>
+/// Builds a page content stream (PDF operators) with invariant number formatting, and tracks the current
+/// transformation matrix through <see cref="Save"/>, <see cref="Restore"/> and <see cref="Transform"/>.
+/// </summary>
 internal sealed class ContentBuilder
 {
     private readonly StringBuilder builder = new();
+    private readonly Stack<CoreIdml.Matrix> savedMatrices = new();
 
     public int Length => builder.Length;
+
+    /// <summary>
+    /// The current transformation matrix: user space to the page's default space. Pattern matrices are given in the
+    /// default space, so a pattern that follows the user space is its own matrix followed by this one.
+    /// </summary>
+    public CoreIdml.Matrix CurrentMatrix { get; private set; } = CoreIdml.Matrix.Identity;
 
     public byte[] ToBytes() => Encoding.Latin1.GetBytes(builder.ToString());
 
@@ -20,12 +30,32 @@ internal sealed class ContentBuilder
         return this;
     }
 
-    public ContentBuilder Save() => Raw("q");
+    public ContentBuilder Save()
+    {
+        savedMatrices.Push(CurrentMatrix);
+        return Raw("q");
+    }
 
-    public ContentBuilder Restore() => Raw("Q");
+    public ContentBuilder Restore()
+    {
+        if (savedMatrices.Count > 0)
+        {
+            CurrentMatrix = savedMatrices.Pop();
+        }
+        return Raw("Q");
+    }
 
-    public ContentBuilder Transform(CoreIdml.Matrix m) =>
-        Raw($"{Number(m.A)} {Number(m.B)} {Number(m.C)} {Number(m.D)} {Number(m.Tx)} {Number(m.Ty)} cm");
+    public ContentBuilder Transform(CoreIdml.Matrix m)
+    {
+        CurrentMatrix = m.Then(CurrentMatrix);
+        return Raw($"{Number(m.A)} {Number(m.B)} {Number(m.C)} {Number(m.D)} {Number(m.Tx)} {Number(m.Ty)} cm");
+    }
+
+    /// <summary>Paints a shading resource over the current clip (<c>sh</c>).</summary>
+    public ContentBuilder PaintShading(string name) => Raw(Name(name) + " sh");
+
+    /// <summary>Selects a pattern resource as the fill or stroke colour.</summary>
+    public ContentBuilder PatternColor(string name, bool stroke) => Raw(stroke ? $"/Pattern CS {Name(name)} SCN" : $"/Pattern cs {Name(name)} scn");
 
     public ContentBuilder MoveTo(double x, double y) => Raw($"{Number(x)} {Number(y)} m");
 

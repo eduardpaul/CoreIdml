@@ -71,7 +71,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Spot colours | `Color@Model="Spot"` | ❌ | 🟡 | Drawn with their process values; no Separation colour space in the PDF. |
 | Tint swatches, tints | `Tint`, `FillTint`, `StrokeTint` | ✅ | ✅ | `fillTint`, `strokeTint`, text `tint`. |
 | Mixed inks **[new]** | `MixedInk`, `MixedInkGroup` | ❌ | ❌ | Resolve to nothing: the item is drawn without fill. |
-| Gradients **[plan]** | `Gradient`, `GradientFill*`, `GradientStroke*` | ❌ | ❌ | Warns "Gradient ... is not rendered" ([IdmlRenderer.cs:452](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.cs#L452)); the item has no fill. |
+| Gradients **[plan]** | `Gradient`, `GradientFill*`, `GradientStroke*` | DOM only | ✅ | Linear and radial fills (axial and radial shadings clipped to the path) and strokes (shading patterns), placed by start, length and angle in the item's inner coordinates; stops, midpoints, CMYK, RGB, Lab and spot stops ([GradientShading.cs](../../src/CoreIdml.Pdf/Writing/GradientShading.cs)), written as InDesign writes them. `03-color-gradients` matches its reference. `SwatchCatalog.AddGradient` creates one; the spec and the tools do not. Not drawn: the radial highlight (`GradientFillHilite*`). Spot stops are their process values (no DeviceN). |
 | Stroke weight, colour | `StrokeWeight`, `StrokeColor` | ✅ | ✅ | |
 | Stroke type: solid, dashed, dotted | `StrokeType` | ✅ | ✅ | Canned dashes scale with weight; custom `StrokeDashAndGap` read. |
 | Other stroke styles **[new]** | `StrokeType` (Thick-Thin, Wavy, Striped, custom stroke styles) | ❌ | 🟡 | Drawn as a single solid line. |
@@ -141,7 +141,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Baseline shift, horizontal and vertical scale | `BaselineShift`, `HorizontalScale`, `VerticalScale` | DOM only | ✅ | Not in the spec or `idml_define_style`. |
 | Skew (false italic) **[new]** | `Skew` | ❌ | ❌ † | |
 | Text stroke (outlined text) **[new]** | `StrokeColor`, `StrokeWeight` on text | ❌ | ❌ | Glyphs are only filled ([IdmlRenderer.cs:904](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.cs#L904)). Outlined display type renders as solid. |
-| Gradient text | `FillColor="Gradient/..."` on text | ❌ | ❌ | Part of the gradients plan (stretch goal). |
+| Gradient text | `FillColor="Gradient/..."` on text | ❌ | 🟡 | Text filled with a gradient is drawn through a shading pattern spanning the text frame, as in InDesign's PDF (`03-color-gradients` p4, `07-char-outlined-text` p4). A gradient text stroke is not (text strokes are not drawn). |
 | Standard ligatures | `Ligatures` | — | ✅ | From the font's GSUB `liga`; a font without `liga` that has the fi and fl characters (U+FB01, U+FB02) uses them, as InDesign does (Liberation in doc-samples: "fi" one glyph, "ff" two). Same ligatures as InDesign on every doc-samples page checked. Embedded subsets carry no `cmap` (as InDesign's): with one, pdf_oxide chose glyphs through the text and drew fi as f and i. |
 | Other OpenType features **[new]** | `OTFFigureStyle`, `OTFFraction`, `OTFDiscretionaryLigature`, `OTFSwash`, `OTFContextualAlternate`, ... | ❌ | ❌ † | Old-style and tabular figures, fractions and swashes fall back to the default glyphs. |
 | No break | `NoBreak` | ❌ | ❌ † | Words joined with No Break can still be split. |
@@ -267,7 +267,7 @@ merged cells; delete rows and add or delete columns; groups; placed PDFs; object
 1. Make (or ask someone with InDesign to make) a small document with the feature, and export IDML plus PDF.
 2. `idml_render_page` the IDML and compare with the PDF page. Fonts first: see the comparison notes in
    [docs/reference](../reference).
-3. `idml_to_pdf` warnings name some unsupported features (gradients, placed EPS/AI); most rows marked ❌ are silent.
+3. `idml_to_pdf` warnings name some unsupported features (placed EPS/AI); most rows marked ❌ are silent.
 
 When a row changes, update this table with the code, and the "Not supported" section of
 `plugins/coreidml/skills/idml-documents/references/document-spec.md`.

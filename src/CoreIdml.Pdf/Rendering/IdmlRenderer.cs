@@ -506,7 +506,17 @@ internal sealed partial class IdmlRenderer : IDisposable
         var closed = contours.Count > 0 && contours.All(contour => !contour.IsOpen);
 
         // Fill.
-        if (closed && ResolveColor(element, "FillColor", "FillTint") is { } fill)
+        if (closed && Gradient(item, "Fill") is { } gradientFill)
+        {
+            // Clipped to the path, the shading painted in the gradient's space (InDesign writes the same).
+            content.Save();
+            AppendPath(item, contours, content);
+            content.Clip(evenOdd: contours.Count > 1);
+            content.Transform(gradientFill.Space);
+            content.PaintShading(Pdf.Shading(gradientFill.Shading));
+            content.Restore();
+        }
+        else if (closed && ResolveColor(element, "FillColor", "FillTint") is { } fill)
         {
             AppendPath(item, contours, content);
             content.FillColor(fill).Fill(evenOdd: contours.Count > 1);
@@ -591,14 +601,78 @@ internal sealed partial class IdmlRenderer : IDisposable
         var color = document.Swatches.ResolveColor(reference);
         if (color is null)
         {
-            if (reference.StartsWith("Gradient/", StringComparison.Ordinal))
-            {
-                warnings.Add($"Gradient {reference} is not rendered (item {element.Attribute("Self")?.Value}).");
-            }
             return null;
         }
         var tint = Values.Number(resolver.Item(element, tintName), -1);
         return tint >= 0 ? color.WithTint(tint) : color;
+    }
+
+    /// <summary>
+    /// The gradient an item's fill or stroke (<paramref name="part"/> "Fill" or "Stroke") paints with, as a shading
+    /// and the matrix from its unit space to the item's inner coordinates; null when the colour is not a gradient.
+    /// </summary>
+    private (GradientShading Shading, CoreIdml.Matrix Space)? Gradient(PageItem item, string part)
+    {
+        var element = item.Element;
+        var reference = resolver.Item(element, part + "Color");
+        if (reference is null || !reference.StartsWith("Gradient/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        if (document.Swatches.ResolveGradient(reference) is not { } gradient)
+        {
+            warnings.Add($"Gradient {reference} has a stop colour that cannot be drawn (item {element.Attribute("Self")?.Value}): not rendered.");
+            return null;
+        }
+        var start = Values.List(resolver.Item(element, "Gradient" + part + "Start"));
+        var space = GradientSpace(
+            gradient.Type,
+            start.Length == 2 ? new Point(start[0], start[1]) : default,
+            Values.Number(resolver.Item(element, "Gradient" + part + "Length"), -1),
+            Values.Number(resolver.Item(element, "Gradient" + part + "Angle"), 0),
+            item.InnerBounds);
+        return (GradientShading.From(gradient), space);
+    }
+
+    /// <summary>
+    /// The matrix from a shading's unit space (axial along x from 0 to 1, radial of radius 1 round the origin) to an
+    /// item's inner coordinates. As in 03-color-gradients, <c>GradientFillStart</c> is in the item's inner coordinates
+    /// (the start of a linear gradient, the centre of a radial one), <c>GradientFillLength</c> is the length (radius)
+    /// and <c>GradientFillAngle</c> turns it counter-clockwise on the page (y points down, so the axis is (cos a,
+    /// −sin a)): InDesign writes the item at angle 30 with start (217.67, 201) and length 166.67 as the matrix
+    /// [144.34 83.33 83.33 −144.34 222.67 586] in its y-up page space. A length of 0 or −1 (text, object style
+    /// defaults, items never given a gradient position) spans <paramref name="bounds"/>: a linear gradient runs
+    /// across the bounds along the angle (03-color-gradients p4 and 07-char-outlined-text p4 fill text with patterns
+    /// spanning the frame's width at angle 0); a radial one is centred with a radius of half the larger side, which is
+    /// what InDesign stored for the squares, circle and hexagon of 03-color-gradients p3 (not checked on other shapes).
+    /// </summary>
+    internal static CoreIdml.Matrix GradientSpace(GradientType type, Point start, double length, double angle, Rect bounds)
+    {
+        // The unit axis (dx, dy) in y-down coordinates.
+        var radians = angle * Math.PI / 180;
+        var (dx, dy) = (Math.Cos(radians), -Math.Sin(radians));
+        if (length <= 0)
+        {
+            var center = bounds.Center;
+            if (type == GradientType.Radial)
+            {
+                start = center;
+                length = Math.Max(bounds.Width, bounds.Height) / 2;
+            }
+            else
+            {
+                // The bounds' extent along the axis, through the centre.
+                var half = (Math.Abs(dx) * bounds.Width / 2) + (Math.Abs(dy) * bounds.Height / 2);
+                start = new Point(center.X - (dx * half), center.Y - (dy * half));
+                length = 2 * half;
+            }
+        }
+        if (length <= 0)
+        {
+            length = 1;
+        }
+        // x along the axis, y perpendicular to it (a radial shading is round in both).
+        return new CoreIdml.Matrix(length * dx, length * dy, -length * dy, length * dx, start.X, start.Y);
     }
 
     private void AppendPath(PageItem item, IReadOnlyList<PathContour> contours, ContentBuilder content)
@@ -693,13 +767,27 @@ internal sealed partial class IdmlRenderer : IDisposable
     {
         var element = item.Element;
         var weight = Values.Number(resolver.Item(element, "StrokeWeight"), 0);
-        if (weight <= 0 || contours.Count == 0 || ResolveColor(element, "StrokeColor", "StrokeTint") is not { } color)
+        if (weight <= 0 || contours.Count == 0)
+        {
+            return;
+        }
+        var gradient = Gradient(item, "Stroke");
+        var color = gradient is null ? ResolveColor(element, "StrokeColor", "StrokeTint") : null;
+        if (gradient is null && color is null)
         {
             return;
         }
         var alignment = resolver.Item(element, "StrokeAlignment") ?? "CenterAlignment";
         content.Save();
-        content.StrokeColor(color);
+        if (gradient is { } paint)
+        {
+            // A shading pattern, as InDesign writes gradient strokes; its matrix is in the page's default space.
+            content.PatternColor(Pdf.Pattern(paint.Shading, paint.Space.Then(content.CurrentMatrix)), stroke: true);
+        }
+        else
+        {
+            content.StrokeColor(color!);
+        }
         content.LineCap((resolver.Item(element, "EndCap") ?? "ButtEndCap") switch { "RoundEndCap" => 1, "ProjectingEndCap" => 2, _ => 0 });
         content.LineJoin((resolver.Item(element, "EndJoin") ?? "MiterEndJoin") switch { "RoundEndJoin" => 1, "BevelEndJoin" => 2, _ => 0 });
         content.MiterLimit(Values.Number(resolver.Item(element, "MiterLimit"), 4));
@@ -1027,15 +1115,15 @@ internal sealed partial class IdmlRenderer : IDisposable
                     content.Restore();
                     break;
                 case GlyphRunOp run:
-                    DrawGlyphs(run, content);
+                    DrawGlyphs(run, content, frame.InnerBounds);
                     break;
             }
         }
     }
 
-    private void DrawGlyphs(GlyphRunOp run, ContentBuilder content)
+    private void DrawGlyphs(GlyphRunOp run, ContentBuilder content, Rect frameBounds)
     {
-        if (run.Glyphs.Count == 0 || run.Color is null)
+        if (run.Glyphs.Count == 0 || (run.Color is null && run.Gradient is null))
         {
             return;
         }
@@ -1059,7 +1147,16 @@ internal sealed partial class IdmlRenderer : IDisposable
             array.Append(font.Hex(pending));
         }
         array.Append("] TJ");
-        content.FillColor(run.Color);
+        if (run.Gradient is { } gradient)
+        {
+            // A shading pattern laid over the frame, as InDesign fills gradient text (03-color-gradients p4).
+            var space = GradientSpace(gradient.Gradient.Type, gradient.Start, gradient.Length, gradient.Angle, frameBounds);
+            content.PatternColor(Pdf.Pattern(GradientShading.From(gradient.Gradient), space.Then(content.CurrentMatrix)), stroke: false);
+        }
+        else
+        {
+            content.FillColor(run.Color!);
+        }
         content.Raw("BT");
         content.Raw($"/{font.Name} {Number(run.Size)} Tf");
         if (Math.Abs(run.HorizontalScale - 1) > 1e-6)

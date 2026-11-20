@@ -83,7 +83,7 @@ Every "(memory)" item below maps to one of these documents.
 | 2. Paragraph rules | Attributes known (style defaults) | None (kept on round trip) | None | None | Decoration only, plus `KeepRuleAboveInFrame` | Not planned | **S–M** |
 | 3. Text wrap | Known (all `None`); 4 document prefs | None | None | n/a | **None. The largest change** (line segments, baseline probing) | n/a | **L** |
 | 4. Polygons and paths | Known; real data | Reads contours. Creates only rectangles, ovals and 2-point lines | rectangle, ellipse, line | Béziers and compound paths done. Gaps: open paths not filled, no arrowheads | n/a | Rectangles and 2-point lines only | **M** |
-| 5a. Gradients | Swatch known; `GradientFill*` attributes on every item | Listed as swatches; resolve to null | None | Not drawn (warns); no Shading or Pattern in the writer | (text gradients later) | None | **M** + **M** PDF infra |
+| 5a. Gradients | Known and checked against `03-color-gradients` | `ResolveGradient`, `AddGradient` | None | **Done**: linear and radial fills and strokes (shadings, shading patterns), midpoints, spot stops. Gap: radial highlight | Gradient text fill done; text stroke not drawn | None | **M** + **M** PDF infra |
 | 5b. Effects | Known from `Preferences.xml` | Opacity only (wip) | Opacity only | Opacity only (`ca`/`CA`); no blend modes, soft masks or groups | n/a | None | Tier 1 **S–M**, tier 2 **L** |
 | 6. Drop caps | Attributes known (defaults) | None | None | Through glyph ops (nothing new) | **None.** Per-line indents, sizing | Not planned | **M** |
 

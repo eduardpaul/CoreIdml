@@ -11,7 +11,8 @@ namespace CoreIdml.Pdf.Writing;
 
 /// <summary>
 /// Assembles a PDF: pages with content streams, shared resources (fonts embedded as subsets on finish, images
-/// written once per source, opacity states). All pages share one resource dictionary.
+/// written once per source, opacity states, gradient shadings and shading patterns). All pages share one resource
+/// dictionary.
 /// </summary>
 internal sealed class PdfDocumentBuilder : IDisposable
 {
@@ -25,6 +26,9 @@ internal sealed class PdfDocumentBuilder : IDisposable
     private readonly Dictionary<string, string> graphicStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> graphicStateObjects = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FormResource?> forms = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> shadingObjects = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, string> shadingNames = [];
+    private readonly Dictionary<string, (string Name, int Number)> patterns = new(StringComparer.Ordinal);
     private readonly PdfPageImporter pageImporter;
     private readonly Dictionary<string, Task<PreparedImage?>> prefetched = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource prefetchCancellation = new();
@@ -95,6 +99,50 @@ internal sealed class PdfDocumentBuilder : IDisposable
             graphicStateObjects[name] = number;
         }
         return name;
+    }
+
+    /// <summary>The resource name for a shading painted with <c>sh</c>, writing it on first use.</summary>
+    public string Shading(GradientShading shading)
+    {
+        var number = ShadingObject(shading);
+        if (!shadingNames.TryGetValue(number, out var name))
+        {
+            name = "Sh" + (shadingNames.Count + 1).ToString(CultureInfo.InvariantCulture);
+            shadingNames[number] = name;
+        }
+        return name;
+    }
+
+    /// <summary>
+    /// The resource name for a shading pattern (PatternType 2) whose <paramref name="matrix"/> maps the shading's unit
+    /// gradient space to the page's default space (not the current one), for strokes and other paths filled through
+    /// <c>scn</c>/<c>SCN</c>.
+    /// </summary>
+    public string Pattern(GradientShading shading, CoreIdml.Matrix matrix)
+    {
+        var shadingNumber = ShadingObject(shading);
+        var matrixText = $"[{Number(matrix.A)} {Number(matrix.B)} {Number(matrix.C)} {Number(matrix.D)} {Number(matrix.Tx)} {Number(matrix.Ty)}]";
+        var key = shadingNumber.ToString(CultureInfo.InvariantCulture) + " " + matrixText;
+        if (!patterns.TryGetValue(key, out var pattern))
+        {
+            pattern = ("P" + (patterns.Count + 1).ToString(CultureInfo.InvariantCulture), writer.Reserve());
+            writer.WriteObject(pattern.Number, $"<</Type /Pattern /PatternType 2 /Shading {Ref(shadingNumber)} /Matrix {matrixText}>>");
+            patterns[key] = pattern;
+        }
+        return pattern.Name;
+    }
+
+    /// <summary>The object number of a shading dictionary; identical shadings are written once.</summary>
+    private int ShadingObject(GradientShading shading)
+    {
+        var dictionary = shading.ToPdf();
+        if (!shadingObjects.TryGetValue(dictionary, out var number))
+        {
+            number = writer.Reserve();
+            writer.WriteObject(number, dictionary);
+            shadingObjects[dictionary] = number;
+        }
+        return number;
     }
 
     /// <summary>
@@ -402,6 +450,24 @@ internal sealed class PdfDocumentBuilder : IDisposable
         {
             resources.Append(" /ExtGState <<");
             foreach (var (name, number) in graphicStateObjects)
+            {
+                resources.Append(CultureInfo.InvariantCulture, $" /{name} {Ref(number)}");
+            }
+            resources.Append(">>");
+        }
+        if (shadingNames.Count > 0)
+        {
+            resources.Append(" /Shading <<");
+            foreach (var (number, name) in shadingNames)
+            {
+                resources.Append(CultureInfo.InvariantCulture, $" /{name} {Ref(number)}");
+            }
+            resources.Append(">>");
+        }
+        if (patterns.Count > 0)
+        {
+            resources.Append(" /Pattern <<");
+            foreach (var (name, number) in patterns.Values)
             {
                 resources.Append(CultureInfo.InvariantCulture, $" /{name} {Ref(number)}");
             }

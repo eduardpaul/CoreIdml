@@ -95,6 +95,57 @@ public sealed class SwatchCatalog
         return new Swatch(reference, name);
     }
 
+    /// <summary>
+    /// Adds (or replaces) a gradient swatch, "Gradient/&lt;name&gt;", with at least two stops. Apply it as an item's fill or
+    /// stroke; its position comes from the item's <c>GradientFillStart</c>, <c>GradientFillLength</c> and
+    /// <c>GradientFillAngle</c> (the stroke equivalents for strokes), and a length of 0 spans the item.
+    /// </summary>
+    public Swatch AddGradient(string name, GradientType type, params IReadOnlyList<GradientStop> stops)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(stops);
+        if (stops.Count < 2)
+        {
+            throw new ArgumentException("A gradient needs at least two stops.", nameof(stops));
+        }
+        var reference = "Gradient/" + IdmlXml.EscapeSelfName(name);
+        var element = new XElement("Gradient",
+            new XAttribute("Self", reference),
+            new XAttribute("Type", type.ToString()),
+            new XAttribute("Name", name),
+            new XAttribute("ColorEditable", "true"),
+            new XAttribute("ColorRemovable", "true"),
+            new XAttribute("Visible", "true"),
+            new XAttribute("SwatchCreatorID", "7937"));
+        var id = IdmlXml.EscapeSelfName(name).Replace(' ', '_');
+        for (var i = 0; i < stops.Count; i++)
+        {
+            var stop = new XElement("GradientStop",
+                new XAttribute("Self", $"{id}GradientStop{i.ToString(CultureInfo.InvariantCulture)}"),
+                new XAttribute("StopColor", stops[i].Color.Reference),
+                new XAttribute("Location", IdmlXml.Format(Clamp(stops[i].Location, 100))));
+            if (i > 0)
+            {
+                stop.Add(new XAttribute("Midpoint", IdmlXml.Format(Math.Clamp(stops[i].Midpoint, 13, 87))));
+            }
+            element.Add(stop);
+        }
+        var root = document.GraphicRoot;
+        if (root.Elements("Gradient").FirstOrDefault(gradient => gradient.Attribute("Self")?.Value == reference) is { } existing)
+        {
+            existing.ReplaceWith(element);
+        }
+        else if ((root.Elements("Gradient").LastOrDefault() ?? root.Elements("Swatch").LastOrDefault() ?? root.Elements("Color").LastOrDefault()) is { } anchor)
+        {
+            anchor.AddAfterSelf(element);
+        }
+        else
+        {
+            root.AddFirst(element);
+        }
+        return new Swatch(reference, name);
+    }
+
     private static double Clamp(double value, double max) => Math.Round(Math.Clamp(value, 0, max), 4);
 
     /// <summary>
@@ -119,6 +170,63 @@ public sealed class SwatchCatalog
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// The type and resolved stops of a gradient swatch ("Gradient/..."), stops in order of location. Null when the
+    /// reference is not a gradient or a stop colour does not resolve (see <see cref="ResolveColor"/>).
+    /// </summary>
+    public ResolvedGradient? ResolveGradient(string? reference)
+    {
+        if (string.IsNullOrEmpty(reference) || !reference.StartsWith("Gradient/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        var element = document.GraphicRoot.Elements("Gradient").FirstOrDefault(e => e.Attribute("Self")?.Value == reference);
+        if (element is null)
+        {
+            return null;
+        }
+        var stops = new List<ResolvedGradientStop>();
+        foreach (var stop in element.Elements("GradientStop"))
+        {
+            var colorReference = stop.Attribute("StopColor")?.Value;
+            if (ResolveColor(colorReference) is not { } color)
+            {
+                return null;
+            }
+            stops.Add(new ResolvedGradientStop(
+                color,
+                Math.Clamp((IdmlXml.ParseDouble(stop.Attribute("Location")?.Value) ?? 0) / 100, 0, 1),
+                Math.Clamp((IdmlXml.ParseDouble(stop.Attribute("Midpoint")?.Value) ?? 50) / 100, 0, 1),
+                SpotInk(colorReference)));
+        }
+        if (stops.Count == 0)
+        {
+            return null;
+        }
+        var type = element.Attribute("Type")?.Value == "Radial" ? GradientType.Radial : GradientType.Linear;
+        return new ResolvedGradient(type, stops.OrderBy(stop => stop.Location).ToList());
+    }
+
+    /// <summary>The spot ink a colour or tint prints on (its swatch name), or null for process colours.</summary>
+    private string? SpotInk(string? reference)
+    {
+        for (var depth = 0; reference is not null && depth < 8; depth++)
+        {
+            var element = document.GraphicRoot.Elements().FirstOrDefault(e => e.Attribute("Self")?.Value == reference);
+            switch (element?.Name.LocalName)
+            {
+                case "Color":
+                    return element.Attribute("Model")?.Value == "Spot" ? element.Attribute("Name")?.Value ?? reference : null;
+                case "Tint":
+                    reference = element.Attribute("BaseColor")?.Value;
+                    break;
+                default:
+                    return null;
+            }
+        }
+        return null;
     }
 
     private static ResolvedColor? ParseColor(XElement color)
