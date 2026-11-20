@@ -94,6 +94,27 @@ public sealed class ParagraphComposerTests
     }
 
     [Fact]
+    public void A_narrow_justified_column_spreads_its_looseness_rather_than_set_a_line_that_is_largely_white()
+    {
+        // 08-para-hyphenation-justification p1 (hyphenation off, 11 pt in 118.8 pt lines): InDesign's lines, each adding at
+        // most 17% of its width in word space, where capping the badness alone set "told me all" adding 60%.
+        const string text = "Mr. Bennet replied that he had not. “But it is,” returned she; “for Mrs. Long has just been here, "
+            + "and she told me all about it.” Mr. Bennet made no answer. Extraordinarily accomplished neighbourhoods Netherfield.";
+        var document = IdmlDocument.Create(new DocumentOptions { PageSize = PageSizes.A4 });
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat
+        {
+            FontFamily = "Liberation Serif", PointSize = 11, Leading = 14, Justification = Justification.LeftJustified, Hyphenation = false, Language = Languages.EnglishUs,
+        });
+        var frame = document.Pages[0].AddText(new Rect(0, 0, 118.8, 500), text, style);
+        Assert.Equal(
+            [
+                "Mr. Bennet replied that", "he had not. “But it is,”", "returned she; “for Mrs.", "Long has just been here,",
+                "and she told me all about", "it.” Mr. Bennet made no", "answer. Extraordinarily", "accomplished", "neighbourhoods", "Netherfield.",
+            ],
+            Layout(document, frame).Lines.Select(line => line.Text.TrimEnd()));
+    }
+
+    [Fact]
     public void Justified_lines_fill_the_column_and_keep_every_word()
     {
         var lines = Lines("HL Composer", Justification.LeftJustified, 160, hyphenation: true);

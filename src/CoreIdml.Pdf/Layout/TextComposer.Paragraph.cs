@@ -10,7 +10,14 @@ namespace CoreIdml.Pdf.Layout;
 /// <item>justified: 100 r³ (see <see cref="Justifier"/> for r), compression weighted <see cref="ShrinkWeight"/>, and
 /// stretching past the maximum capped at <see cref="StretchCap"/>: a line far too loose is no worse than one merely too
 /// loose (08-para-hyphenation-justification p1 to p3, 120 pt columns: InDesign sets "Mr. Bennet replied that" at 303%
-/// rather than "... that he" at 134% followed by a line at 233%). Compressing past the minimum costs
+/// rather than "... that he" at 134% followed by a line at 233%). What the cap does not see is how much of the line
+/// is white: a line of words whose stretching adds more than <see cref="LooseLineShare"/> of its width costs
+/// <see cref="LooseLineCost"/> times the excess more. A few word spaces may stretch far when the line is still mostly
+/// type (that 303% line adds 14% of its width, as does "Extraordinarily accom-" at 700%), but InDesign spreads the
+/// looseness over more lines rather than set one that is largely white (08-para-hyphenation-justification p2 sets
+/// eight lines adding 6 to 17% each rather than "told me all" adding 60%; p1, p3, 08-para-drop-caps p1 to p5 alike).
+/// A line holding one word keeps the capped badness (single-word justification letter spaces it across).
+/// Compressing past the minimum costs
 /// <see cref="OvershrinkCost"/> more, about what stretching a line to r = 2.5 (183% by default) costs: InDesign
 /// compresses past the minimum rather than set a loose line or a line more (08-para-alignment-indents p1 justifies all
 /// lines in four with one at 70%, not five with one at 161%, but with the last line left aligned stretches the first
@@ -52,6 +59,16 @@ internal sealed partial class TextComposer
 
     /// <summary>The badness at which a stretched line counts as just loose (r ≈ 3.1, 200% word spacing by default).</summary>
     private const double StretchCap = 3000;
+
+    /// <summary>The share of a justified line's width that stretching may add before it costs more than the cap.</summary>
+    private const double LooseLineShare = 0.13;
+
+    /// <summary>
+    /// What each share of the width added past <see cref="LooseLineShare"/> adds to a justified line's badness (333 per
+    /// percent). Shares of 12 to 13.5% and 333 per percent set eleven doc-samples pages better and none worse; 10.5% or
+    /// 1000 per percent set 08-para-hyphenation-justification p4 worse, 100 per percent 08-para-drop-caps p4.
+    /// </summary>
+    private const double LooseLineCost = 33333;
 
     /// <summary>
     /// What compressing a justified line past its minimum adds to its badness. Of the costs from 0 to 10000, 1000 to 1500
@@ -185,6 +202,11 @@ internal sealed partial class TextComposer
                     else if (ratio >= 0)
                     {
                         badness = Math.Min(100 * ratio * ratio * ratio, StretchCap);
+                        if (ratio > 0 && space.WordSpace > 0)
+                        {
+                            var added = (width - (space.Width * format.Spacing.DesiredGlyphScaling)) / width;
+                            badness += LooseLineCost * Math.Max(0, added - LooseLineShare);
+                        }
                     }
                     else
                     {
