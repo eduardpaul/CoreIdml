@@ -109,6 +109,29 @@ public class TextFormatSpec
 
     /// <summary>normal, superscript, subscript.</summary>
     public string? Position { get; set; }
+
+    // ---- bullets and numbering (paragraphs and paragraph styles) ----
+
+    /// <summary>bullet, numbered or none. InDesign draws the bullet or number; it is not part of the text.</summary>
+    public string? List { get; set; }
+
+    /// <summary>The bullet character (default •).</summary>
+    public string? Bullet { get; set; }
+
+    /// <summary>Text after the bullet (default a tab). InDesign metacharacters work: ^t tab, ^m em space, ^&gt; en space.</summary>
+    public string? BulletAfter { get; set; }
+
+    /// <summary>1 (default), 01, 001, 0001, a, A, i, I, or InDesign's own names ("1, 2, 3, 4...").</summary>
+    public string? NumberFormat { get; set; }
+
+    /// <summary>The number's text: ^# is the number, ^1 to ^9 that level's number, a tab or ^t a tab. Default "^#.\t".</summary>
+    public string? NumberText { get; set; }
+
+    /// <summary>1 to 9: a level restarts after any paragraph of a higher level.</summary>
+    public int? ListLevel { get; set; }
+
+    /// <summary>On a paragraph: restart the numbering at this number. On a style: the number lists start at.</summary>
+    public int? StartAt { get; set; }
 }
 
 public sealed class StyleSpec : TextFormatSpec

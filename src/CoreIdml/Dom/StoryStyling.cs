@@ -8,7 +8,14 @@ namespace CoreIdml.Dom;
 /// A paragraph of a story's body (tables, footnotes and notes excluded): its text, paragraph style, and the range of
 /// content-run indices (see <see cref="Story.ContentRuns"/>) it covers; -1 when it holds no text.
 /// </summary>
-public sealed record StoryParagraph(int Index, string Text, string? ParagraphStyle, int FirstRun, int LastRun);
+public sealed record StoryParagraph(int Index, string Text, string? ParagraphStyle, int FirstRun, int LastRun)
+{
+    /// <summary>
+    /// "bullet" or "numbered" when InDesign draws a bullet or number in front of the paragraph (it is not in
+    /// <see cref="Text"/>); null otherwise.
+    /// </summary>
+    public string? List { get; init; }
+}
 
 /// <summary>
 /// Applying paragraph and character styles to existing text. Styles are applied the way InDesign does by default:
@@ -25,12 +32,26 @@ public static class StoryStyling
         var paragraphs = new List<StoryParagraph>();
         var text = new StringBuilder();
         string? style = null;
+        XElement? range = null;
+        AttributeResolver? resolver = null;
         int first = -1, last = -1, runIndex = -1;
         void Close()
         {
-            paragraphs.Add(new StoryParagraph(paragraphs.Count, text.ToString(), style, first, last));
+            string? list = null;
+            if (range is not null)
+            {
+                resolver ??= new AttributeResolver(story.Document);
+                list = resolver.Paragraph(range, "BulletsAndNumberingListType") switch
+                {
+                    "BulletList" => "bullet",
+                    "NumberedList" => "numbered",
+                    _ => null,
+                };
+            }
+            paragraphs.Add(new StoryParagraph(paragraphs.Count, text.ToString(), style, first, last) { List = list });
             text.Clear();
             style = null;
+            range = null;
             first = last = -1;
         }
         foreach (var element in story.Element.Descendants())
@@ -56,7 +77,8 @@ public static class StoryStyling
             {
                 continue;
             }
-            style ??= StyleCatalog.DisplayNameFromReference(element.Ancestors("ParagraphStyleRange").FirstOrDefault()?.Attribute("AppliedParagraphStyle")?.Value);
+            range ??= element.Ancestors("ParagraphStyleRange").FirstOrDefault();
+            style ??= StyleCatalog.DisplayNameFromReference(range?.Attribute("AppliedParagraphStyle")?.Value);
             if (name == "Br")
             {
                 Close();

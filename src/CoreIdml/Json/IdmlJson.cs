@@ -426,6 +426,40 @@ public static partial class IdmlJson
         Tracking = spec.Tracking,
         Capitalization = ParseCaps(spec.Caps),
         Position = ParsePosition(spec.Position),
+        ListType = spec.List is { } list ? TryListType(list) ?? throw new IdmlException(ListError(spec)!) : null,
+        BulletCharacter = spec.Bullet is { } bullet ? IsOneCharacter(bullet) ? bullet : throw new IdmlException(ListError(spec)!) : null,
+        BulletTextAfter = spec.BulletAfter,
+        NumberingFormat = spec.NumberFormat is { } numberFormat ? TryNumberingFormat(numberFormat) ?? throw new IdmlException(ListError(spec)!) : null,
+        NumberingExpression = spec.NumberText,
+        NumberingLevel = spec.ListLevel is { } level ? level is >= 1 and <= 9 ? level : throw new IdmlException(ListError(spec)!) : null,
+        NumberingStartAt = spec.StartAt,
+        // On a paragraph, startAt restarts the numbering there; on a style it only sets where lists start (making the
+        // style restart would number every paragraph of it the same).
+        NumberingContinue = spec.StartAt is not null && spec is not StyleSpec ? false : null,
+    };
+
+    private static ListType? TryListType(string list) => list.ToLowerInvariant() switch
+    {
+        "bullet" or "bullets" or "bulleted" => ListType.Bullet,
+        "numbered" or "number" or "numbers" => ListType.Numbered,
+        "none" or "nolist" => ListType.None,
+        _ => null,
+    };
+
+    /// <summary>InDesign's name of a numbering format, from the short form ("i") or the name itself.</summary>
+    private static string? TryNumberingFormat(string format) => format.Trim() switch
+    {
+        "1" => NumberingFormats.Arabic,
+        "01" => NumberingFormats.ArabicTwoDigits,
+        "001" => NumberingFormats.ArabicThreeDigits,
+        "0001" => NumberingFormats.ArabicFourDigits,
+        "I" => NumberingFormats.UpperRoman,
+        "i" => NumberingFormats.LowerRoman,
+        "A" => NumberingFormats.UpperLetters,
+        "a" => NumberingFormats.LowerLetters,
+        NumberingFormats.Arabic or NumberingFormats.ArabicTwoDigits or NumberingFormats.ArabicThreeDigits or NumberingFormats.ArabicFourDigits
+            or NumberingFormats.UpperRoman or NumberingFormats.LowerRoman or NumberingFormats.UpperLetters or NumberingFormats.LowerLetters => format.Trim(),
+        _ => null,
     };
 
     private static CharacterFormat ToCharacterFormat(IdmlDocument document, TextFormatSpec spec) => new()
@@ -452,7 +486,9 @@ public static partial class IdmlJson
         spec.Font is not null || spec.FontStyle is not null || spec.Size is not null || spec.Leading is not null || spec.Color is not null
         || spec.Tint is not null || spec.Align is not null || spec.SpaceBefore is not null || spec.SpaceAfter is not null
         || spec.FirstLineIndent is not null || spec.LeftIndent is not null || spec.RightIndent is not null || spec.Underline is not null
-        || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null;
+        || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null
+        || spec.List is not null || spec.Bullet is not null || spec.BulletAfter is not null || spec.NumberFormat is not null
+        || spec.NumberText is not null || spec.ListLevel is not null || spec.StartAt is not null;
 
     private static Justification? ParseJustification(string? align) =>
         align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));

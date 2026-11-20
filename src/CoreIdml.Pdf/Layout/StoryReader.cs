@@ -42,15 +42,23 @@ internal sealed class StoryReader
         var paragraphs = new List<ParagraphModel>();
         var items = new List<InlineItem>();
         XElement? currentRange = null;
+        // Where the paragraph's text starts: its list marker takes this character's formatting.
+        XElement? firstText = null;
         RunStyle? lastStyle = null;
+        var markers = new ListMarkers(this, container.Name.LocalName == "Story" ? CarriedInto(container) : null);
 
         void EndParagraph(XElement? markSource)
         {
             var range = currentRange ?? markSource?.AncestorsAndSelf("ParagraphStyleRange").FirstOrDefault();
             var markStyle = markSource is not null ? StyleOf(markSource) : lastStyle ?? (range is not null ? StyleOf(range) : DefaultStyle());
+            if (range is not null && markers.Marker(range, firstText ?? markSource ?? range) is { } marker)
+            {
+                items.InsertRange(0, marker);
+            }
             paragraphs.Add(new ParagraphModel(range is null ? new ParagraphFormatting() : FormatOf(range), items, markStyle));
             items = [];
             currentRange = null;
+            firstText = null;
         }
 
         void Walk(XElement element)
@@ -62,6 +70,10 @@ internal sealed class StoryReader
                 {
                     case "Content":
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        if (firstText is null && child.Nodes().Any())
+                        {
+                            firstText = child;
+                        }
                         var style = StyleOf(child);
                         lastStyle = style;
                         AddContent(child, style, items);
@@ -102,6 +114,131 @@ internal sealed class StoryReader
             EndParagraph(null);
         }
         return paragraphs;
+    }
+
+    // ---- lists continued across stories ----------------------------------------------------------------
+
+    // Counters each story starts with, by story id, for the lists that continue across stories; null until needed.
+    private Dictionary<string, Dictionary<string, ListMarkers.ListState>>? carriedByStory;
+
+    /// <summary>
+    /// The counters <paramref name="story"/> starts with for the lists that continue across stories
+    /// (<c>NumberingList@ContinueNumbersAcrossStories="true"</c>): what the stories before it left. Null when the
+    /// document has no such list. Stories are ordered by their first frame: page, then top, then left.
+    /// </summary>
+    private Dictionary<string, ListMarkers.ListState>? CarriedInto(XElement story)
+    {
+        if (carriedByStory is null)
+        {
+            carriedByStory = new Dictionary<string, Dictionary<string, ListMarkers.ListState>>(StringComparer.Ordinal);
+            var continued = document.DesignMap.Elements("NumberingList")
+                .Where(list => list.Attribute("ContinueNumbersAcrossStories")?.Value == "true")
+                .Select(list => list.Attribute("Self")?.Value)
+                .OfType<string>()
+                .ToHashSet(StringComparer.Ordinal);
+            if (continued.Count > 0)
+            {
+                var stories = document.Stories.ToDictionary(s => s.Id, s => s.Element, StringComparer.Ordinal);
+                var carried = new Dictionary<string, ListMarkers.ListState>(StringComparer.Ordinal);
+                foreach (var id in StoriesInLayoutOrder())
+                {
+                    if (!stories.TryGetValue(id, out var element))
+                    {
+                        continue;
+                    }
+                    carriedByStory[id] = carried;
+                    var markers = new ListMarkers(this, carried);
+                    CountParagraphs(element, markers);
+                    carried = markers.Carried(continued);
+                }
+            }
+        }
+        var storyId = story.Attribute("Self")?.Value;
+        return storyId is not null && carriedByStory.TryGetValue(storyId, out var state) ? state : null;
+    }
+
+    /// <summary>Ids of the stories shown on document pages, ordered by their first frame: page, then top, then left.</summary>
+    private List<string> StoriesInLayoutOrder()
+    {
+        var pageIndex = document.Pages.Select((page, index) => (page.Id, index)).ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
+        var first = new Dictionary<string, (int Page, double Top, double Left)>(StringComparer.Ordinal);
+        foreach (var frame in document.Spreads.SelectMany(spread => spread.AllPageItems).OfType<TextFrame>())
+        {
+            if (frame.StoryId.Length == 0)
+            {
+                continue;
+            }
+            var page = frame.Page;
+            var bounds = frame.Bounds;
+            var key = (page is not null && pageIndex.TryGetValue(page.Id, out var index) ? index : int.MaxValue, Math.Round(bounds.Top, 3), Math.Round(bounds.Left, 3));
+            if (!first.TryGetValue(frame.StoryId, out var known) || key.CompareTo(known) < 0)
+            {
+                first[frame.StoryId] = key;
+            }
+        }
+        return first.OrderBy(pair => pair.Value).ThenBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key).ToList();
+    }
+
+    /// <summary>Advances <paramref name="markers"/> through the paragraphs of a story, as <see cref="Read"/> splits them.</summary>
+    private void CountParagraphs(XElement container, ListMarkers markers)
+    {
+        XElement? currentRange = null;
+        var hasItems = false;
+        var count = 0;
+
+        void EndParagraph(XElement? markSource)
+        {
+            if ((currentRange ?? markSource?.AncestorsAndSelf("ParagraphStyleRange").FirstOrDefault()) is { } range)
+            {
+                markers.Count(range);
+            }
+            count++;
+            hasItems = false;
+            currentRange = null;
+        }
+
+        void Walk(XElement element)
+        {
+            foreach (var child in element.Elements())
+            {
+                var name = child.Name.LocalName;
+                switch (name)
+                {
+                    case "Content":
+                        currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        hasItems |= child.Value.Length > 0 || child.Nodes().OfType<XProcessingInstruction>().Any();
+                        break;
+                    case "Br":
+                        currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        EndParagraph(child);
+                        break;
+                    case "Table":
+                        currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        hasItems = true;
+                        break;
+                    case "Cell" or "Row" or "Column":
+                        break;
+                    case "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "TextFrame" or "Group":
+                        if (InlineObject(child) is not null)
+                        {
+                            currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                            hasItems = true;
+                        }
+                        break;
+                    case var _ when Skipped.Contains(name):
+                        break;
+                    default:
+                        Walk(child);
+                        break;
+                }
+            }
+        }
+
+        Walk(container);
+        if (hasItems || count == 0 || currentRange is not null)
+        {
+            EndParagraph(null);
+        }
     }
 
     /// <summary>
@@ -221,10 +358,52 @@ internal sealed class StoryReader
             return cached;
         }
         // Every attribute resolves along the same chain (run, character style, paragraph, paragraph style).
-        var chain = resolver.TextChain(run);
+        var style = Build(resolver.TextChain(run), run, null, null);
+        runStyles[run] = style;
+        return style;
+    }
+
+    private readonly Dictionary<(XElement, string?, string?, string?), RunStyle> markerStyles = [];
+
+    /// <summary>
+    /// The formatting of a list's bullet or number: the text at <paramref name="firstText"/> under the list's
+    /// character style (<paramref name="characterStyle"/>), in the bullet's own font when it has one.
+    /// </summary>
+    public RunStyle MarkerStyle(XElement firstText, string? characterStyle, string? family, string? fontStyle)
+    {
+        var run = firstText.AncestorsAndSelf("CharacterStyleRange").FirstOrDefault()
+            ?? firstText.AncestorsAndSelf("ParagraphStyleRange").FirstOrDefault();
+        if (run is null)
+        {
+            return DefaultStyle();
+        }
+        var key = (run, characterStyle, family, fontStyle);
+        if (!markerStyles.TryGetValue(key, out var style))
+        {
+            var listStyle = resolver.StyleChain(characterStyle);
+            style = listStyle.Count == 0 && family is null
+                ? StyleOf(firstText)
+                : Build([.. listStyle, .. resolver.TextChain(run)], run, family, fontStyle);
+            markerStyles[key] = style;
+        }
+        return style;
+    }
+
+    /// <summary>
+    /// A paragraph property stored as an element with attributes (<c>BulletChar</c>, <c>NumberingRestartPolicies</c>):
+    /// the paragraph's own, else its style chain's.
+    /// </summary>
+    public XElement? ParagraphProperty(XElement range, string name) =>
+        range.Element("Properties")?.Element(name)
+        ?? resolver.StyleChain(range.Attribute("AppliedParagraphStyle")?.Value)
+            .Select(style => style.Element("Properties")?.Element(name))
+            .FirstOrDefault(element => element is not null);
+
+    private RunStyle Build(IReadOnlyList<XElement> chain, XElement run, string? familyOverride, string? fontStyleOverride)
+    {
         string? Get(string name) => AttributeResolver.First(chain, name);
-        var family = Get("AppliedFont") ?? "Minion Pro";
-        var fontStyle = Get("FontStyle") ?? "Regular";
+        var family = familyOverride ?? Get("AppliedFont") ?? "Minion Pro";
+        var fontStyle = fontStyleOverride ?? (familyOverride is not null ? "Regular" : null) ?? Get("FontStyle") ?? "Regular";
         var size = Values.Number(Get("PointSize"), 12);
         if (size <= 0)
         {
@@ -239,7 +418,7 @@ internal sealed class StoryReader
         var leadingValue = Get("Leading");
         double? leading = leadingValue is null || leadingValue == "Auto" ? null : Values.Number(leadingValue);
         var kerning = Get("KerningMethod") ?? "$ID/Metrics";
-        var style = new RunStyle
+        return new RunStyle
         {
             Font = fonts.Resolve(family, fontStyle, PostScriptName(family, fontStyle), run.AncestorsAndSelf("Story").FirstOrDefault()?.Attribute("Self")?.Value),
             FontIsSubstitute = !fonts.IsAvailable(family, fontStyle),
@@ -259,8 +438,6 @@ internal sealed class StoryReader
             AutoLeading = Values.Number(Get("AutoLeading"), 120) / 100,
             Language = Get("AppliedLanguage"),
         };
-        runStyles[run] = style;
-        return style;
     }
 
     private Dictionary<(string, string), string>? postScriptNames;

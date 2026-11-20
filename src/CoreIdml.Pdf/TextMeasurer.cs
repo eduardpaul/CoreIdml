@@ -76,7 +76,7 @@ public sealed class TextMeasurer : IDisposable
             + full.LastDescent;
         var overflowPoints = Math.Max(0, bottom - (column.Y + column.Height));
         // The composer only counts whole paragraphs that did not start; count the characters of the lines that did not fit.
-        var oversetCharacters = Math.Max(layout.OversetCharacters, full.Lines.Skip(layout.Lines.Count).Sum(line => line.Text.Length));
+        var oversetCharacters = Math.Max(layout.OversetCharacters, full.Lines.Skip(layout.Lines.Count).Sum(line => line.Text.Length - line.MarkerLength));
         return new StoryFit(
             story.Id, true, oversetCharacters, layout.Lines.Count,
             Math.Max(0, full.Lines.Count - layout.Lines.Count), Math.Round(overflowPoints, 3), frameFits);

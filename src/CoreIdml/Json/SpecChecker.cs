@@ -9,7 +9,11 @@ public static partial class IdmlJson
     private static readonly string[] SpacingFields = ["all", "top", "right", "bottom", "left"];
     private static readonly string[] ColorFields = ["name", "cmyk", "rgb", "hex"];
     private static readonly string[] CharacterFormatFields = ["font", "fontStyle", "size", "color", "tint", "underline", "strikeThrough", "tracking", "caps", "position"];
-    private static readonly string[] ParagraphOnlyFields = ["leading", "align", "spaceBefore", "spaceAfter", "firstLineIndent", "leftIndent", "rightIndent"];
+    private static readonly string[] ParagraphOnlyFields =
+    [
+        "leading", "align", "spaceBefore", "spaceAfter", "firstLineIndent", "leftIndent", "rightIndent",
+        "list", "bullet", "bulletAfter", "numberFormat", "numberText", "listLevel", "startAt",
+    ];
     private static readonly string[] PageFields = ["index", "margins", "items"];
     private static readonly string[] CommonItemFields =
     [
@@ -39,6 +43,11 @@ public static partial class IdmlJson
         ["orientation"] = "landscape", ["verticalAlignment"] = "verticalAlign", ["gutter"] = "columnGutter",
         ["padding"] = "inset", ["header"] = "headerRows", ["cells"] = "rows", ["data"] = "rows", ["parent"] = "basedOn",
         ["inherits"] = "basedOn", ["based_on"] = "basedOn", ["bold"] = "fontStyle", ["italic"] = "fontStyle",
+        ["listType"] = "list", ["listStyleType"] = "list", ["bullets"] = "list", ["numbering"] = "list", ["numbered"] = "list",
+        ["bulletChar"] = "bullet", ["bulletCharacter"] = "bullet", ["marker"] = "bullet", ["bulletText"] = "bulletAfter",
+        ["numberingFormat"] = "numberFormat", ["numberStyle"] = "numberFormat", ["numberingExpression"] = "numberText",
+        ["numberExpression"] = "numberText", ["level"] = "listLevel", ["numberingLevel"] = "listLevel", ["start"] = "startAt",
+        ["numberingStartAt"] = "startAt",
     };
 
     /// <summary>

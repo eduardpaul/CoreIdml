@@ -32,6 +32,28 @@ public enum TextPosition
     Subscript,
 }
 
+/// <summary>Bullets and Numbering list type (<c>BulletsAndNumberingListType</c>).</summary>
+public enum ListType
+{
+    /// <summary>Not a list paragraph (<c>NoList</c>).</summary>
+    None,
+    Bullet,
+    Numbered,
+}
+
+/// <summary>InDesign's numbering formats (<c>NumberingFormat</c>), the values the Bullets and Numbering dialog offers.</summary>
+public static class NumberingFormats
+{
+    public const string Arabic = "1, 2, 3, 4...";
+    public const string ArabicTwoDigits = "01, 02, 03...";
+    public const string ArabicThreeDigits = "001, 002, 003...";
+    public const string ArabicFourDigits = "0001, 0002, 0003...";
+    public const string UpperRoman = "I, II, III, IV...";
+    public const string LowerRoman = "i, ii, iii, iv...";
+    public const string UpperLetters = "A, B, C, D...";
+    public const string LowerLetters = "a, b, c, d...";
+}
+
 /// <summary>
 /// InDesign language names (<c>AppliedLanguage</c>).
 /// </summary>
@@ -151,6 +173,40 @@ public sealed class ParagraphFormat : CharacterFormat
     /// <summary>Keep with the next N lines.</summary>
     public int? KeepWithNext { get; init; }
 
+    /// <summary>
+    /// Bullet or numbered list. InDesign generates the bullet or number; it is not part of the text. For the usual
+    /// hanging list, give a <see cref="LeftIndent"/> and the opposite <see cref="FirstLineIndent"/>: the tab after
+    /// the marker then stops at the left indent.
+    /// </summary>
+    public ListType? ListType { get; init; }
+
+    /// <summary>The bullet (one character; InDesign's default is U+2022 •).</summary>
+    public string? BulletCharacter { get; init; }
+
+    /// <summary>
+    /// Text after the bullet, with InDesign's metacharacters: <c>^t</c> tab (the default), <c>^m</c> em space,
+    /// <c>^&gt;</c> en space. A tab character is written as <c>^t</c>.
+    /// </summary>
+    public string? BulletTextAfter { get; init; }
+
+    /// <summary>Number style, one of <see cref="NumberingFormats"/>.</summary>
+    public string? NumberingFormat { get; init; }
+
+    /// <summary>
+    /// The number's text: <c>^#</c> is the number, <c>^1</c> to <c>^9</c> the current number of that level,
+    /// <c>^t</c> a tab. InDesign's default is <c>^#.^t</c>. A tab character is written as <c>^t</c>.
+    /// </summary>
+    public string? NumberingExpression { get; init; }
+
+    /// <summary>List level, 1 to 9: a level restarts after any paragraph of a higher level.</summary>
+    public int? NumberingLevel { get; init; }
+
+    /// <summary>The first number (used when the list starts or restarts).</summary>
+    public int? NumberingStartAt { get; init; }
+
+    /// <summary>False restarts the numbering at this paragraph (at <see cref="NumberingStartAt"/>); true continues it.</summary>
+    public bool? NumberingContinue { get; init; }
+
     internal override void ApplyTo(XElement element)
     {
         base.ApplyTo(element);
@@ -167,7 +223,34 @@ public sealed class ParagraphFormat : CharacterFormat
         Set(element, "Hyphenation", Hyphenation);
         Set(element, "KeepLinesTogether", KeepLinesTogether);
         Set(element, "KeepWithNext", KeepWithNext?.ToString(CultureInfo.InvariantCulture));
+        Set(element, "BulletsAndNumberingListType", ListType switch
+        {
+            Dom.ListType.None => "NoList",
+            Dom.ListType.Bullet => "BulletList",
+            Dom.ListType.Numbered => "NumberedList",
+            _ => null,
+        });
+        if (BulletCharacter is { Length: > 0 } bullet)
+        {
+            var properties = IdmlXml.GetOrCreateProperties(element);
+            properties.Element("BulletChar")?.Remove();
+            properties.Add(new XElement("BulletChar",
+                new XAttribute("BulletCharacterType", "UnicodeOnly"),
+                new XAttribute("BulletCharacterValue", char.ConvertToUtf32(bullet, 0).ToString(CultureInfo.InvariantCulture))));
+        }
+        Set(element, "BulletsTextAfter", Metacharacters(BulletTextAfter));
+        if (NumberingFormat is not null)
+        {
+            IdmlXml.SetProperty(element, "NumberingFormat", "string", NumberingFormat);
+        }
+        Set(element, "NumberingExpression", Metacharacters(NumberingExpression));
+        Set(element, "NumberingLevel", NumberingLevel?.ToString(CultureInfo.InvariantCulture));
+        Set(element, "NumberingStartAt", NumberingStartAt?.ToString(CultureInfo.InvariantCulture));
+        Set(element, "NumberingContinue", NumberingContinue);
     }
+
+    /// <summary>Tab characters as InDesign's <c>^t</c> (the list texts are stored with metacharacters).</summary>
+    private static string? Metacharacters(string? text) => text?.Replace("\t", "^t", StringComparison.Ordinal);
 
     private static string ToIdml(Justification value) => value switch
     {

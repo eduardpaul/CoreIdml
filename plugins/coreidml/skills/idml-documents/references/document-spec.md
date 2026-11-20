@@ -70,6 +70,34 @@ Format fields:
 | `tracking` | Thousandths of an em. |
 | `caps` | `normal`, `allCaps`, `smallCaps` or `capToSmallCap`. |
 | `position` | `normal`, `superscript` or `subscript`. |
+| `list` | `bullet`, `numbered` or `none`. Paragraphs and paragraph styles only; see [Lists](#lists). |
+| `bullet`, `bulletAfter` | The bullet (one character, default `•`) and the text after it (default a tab; `^m` em space, `^>` en space). |
+| `numberFormat` | `1` (default), `01`, `001`, `0001`, `a`, `A`, `i` or `I`. |
+| `numberText` | The number's text: `^#` is the number, `^1` to `^9` that level's number, `\t` a tab. Default `^#.\t`; also `^#)\t`, `(^#)\t`, `^1.^#\t`. |
+| `listLevel` | 1 to 9. A level restarts after any paragraph of a higher level (a lower number). |
+| `startAt` | On a paragraph: restart the numbering here, at this number. On a style: the first number of its lists. |
+
+### Lists
+
+InDesign draws bullets and numbers itself: they are **not part of the text**, so never type `•` or `1.` into a list
+paragraph. Make one paragraph style per kind of item and set `list` on it:
+
+```json
+"paragraphStyles": [
+  { "name": "Bullet", "basedOn": "Body", "list": "bullet", "leftIndent": 14, "firstLineIndent": -14 },
+  { "name": "Step", "basedOn": "Body", "list": "numbered", "leftIndent": 18, "firstLineIndent": -18 },
+  { "name": "Sub step", "basedOn": "Body", "list": "numbered", "listLevel": 2, "numberFormat": "a", "numberText": "^#)\t", "leftIndent": 36, "firstLineIndent": -18 }
+]
+```
+
+- **Hanging indent:** `leftIndent` N with `firstLineIndent` -N puts the marker at the margin and the text, including
+  wrapped lines, at N: the tab after the marker stops at the left indent. Without them the text follows the marker
+  at the next default tab (every 36 pt).
+- **Counting:** numbers run through the whole story, per level, and continue past paragraphs that are not in the list
+  (notes, figures). Every numbered style at the same level shares one count, so a second list continues the first:
+  give its first paragraph `"startAt": 1`. Each story counts on its own.
+- `idml_get_story` with `includeParagraphs` marks list paragraphs with `"list": "bullet"` or `"numbered"`; their
+  `text` does not include the marker. `idml_render_page` shows the markers.
 
 ## `pages`
 

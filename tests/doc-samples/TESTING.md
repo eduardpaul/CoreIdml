@@ -385,7 +385,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `08-para-rules` | C (regions), D | Weights, offsets, width (column/text), indents, types, above and below together, 2-column frame. | |
 | `08-para-borders-shading` | C (regions) | Shading, borders, rounded corners, split across columns, merged consecutive borders. | |
 | `08-para-drop-caps` | D, C | Drop cap size and position (2–5 lines, 1–3 characters), character style, detail flags, indents, baseline grid. | |
-| `08-para-bullets-numbering` | D | Every marker word (`•`, `–`, `▪`, `►`, `○`, `■`, `1.`, `A`, `iii`, `01`, `(1)`, `Step 1:`, `Article 1.`, `1.1.1`) at the reference position; start at 5; list continued across frames; right-aligned two-digit numbers. | Markers are generated, not stored as text: today every one is an unmatched word. |
+| `08-para-bullets-numbering` | D | Every marker word (`•`, `–`, `▪`, `►`, `○`, `■`, `1.`, `A`, `iii`, `01`, `(1)`, `Step 1:`, `Article 1.`, `1.1.1`) at the reference position; start at 5; list continued across frames; right-aligned two-digit numbers. | Markers are generated, not stored as text. Now drawn: 100% of words within 1 pt on all 7 pages. Right-aligned numbers in a hanging indent sit where left-aligned ones do (p2, p7); list A is two stories (p6). |
 | `08-para-nested-grep-styles` | D (font per word), C | Run-in heads, word sequences, line styles and GREP matches drawn in the right style. | Check the font and colour of matched words, not only their positions. |
 | `08-para-optical-margin` | D | Hanging punctuation by size (8, 14, 24 pt). | |
 

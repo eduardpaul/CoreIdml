@@ -52,7 +52,7 @@ internal sealed class TextComposer
             if (flow.Exhausted)
             {
                 layout.Overset = true;
-                layout.OversetCharacters += paragraphs.Skip(index + 1).Sum(p => p.Items.OfType<TextItem>().Sum(t => t.Text.Length));
+                layout.OversetCharacters += paragraphs.Skip(index + 1).Sum(p => p.Items.OfType<TextItem>().Where(t => !t.Generated).Sum(t => t.Text.Length));
             }
         }
         layout.LastDescent = flow.LastDescent;
@@ -85,6 +85,8 @@ internal sealed class TextComposer
         public double Rise;
         public RunStyle Style = null!;
         public bool BreakAfter;
+        // Part of a list's generated bullet or number.
+        public bool Marker;
         public TabItem? Tab;
         public XElement? Table;
         public InlineObjectItem? Object;
@@ -95,10 +97,11 @@ internal sealed class TextComposer
         var result = new List<Shaped>();
         foreach (var item in paragraph.Items)
         {
+            var first = result.Count;
             switch (item)
             {
                 case TextItem text:
-                    ShapeText(text.Text, text.Style, result, paragraph.Format.Hyphenation);
+                    ShapeText(text.Text, text.Style, result, text.Generated ? null : paragraph.Format.Hyphenation);
                     break;
                 case PageNumberItem number:
                     ShapeText(pageName, number.Style, result);
@@ -119,6 +122,13 @@ internal sealed class TextComposer
                         Advance = inline.Bounds.Width, Natural = inline.Bounds.Width, Rise = inline.YOffset, Object = inline,
                     });
                     break;
+            }
+            if (item.Generated)
+            {
+                for (var i = first; i < result.Count; i++)
+                {
+                    result[i].Marker = true;
+                }
             }
         }
         // Pair kerning between neighbours in the same font and size. A hyphenation point between two letters does not
@@ -390,7 +400,7 @@ internal sealed class TextComposer
                 case GlyphKind.Table:
                     return (i, false);
                 case GlyphKind.Tab:
-                    glyph.Advance = Math.Max(0.1, NextTabStop(x + indent, format, available + indent) - indent - x);
+                    glyph.Advance = Math.Max(0.1, NextTabStop(x + indent, format, available + indent, indent) - indent - x);
                     break;
             }
             var width = x + glyph.Advance;
@@ -447,19 +457,35 @@ internal sealed class TextComposer
     private static double HyphenWidth(Shaped soft) =>
         soft.Font.TryMap('-', out var glyph) ? soft.Font.Advance(glyph) * soft.Size * soft.Style.HorizontalScale : soft.Size * 0.33;
 
-    /// <summary>The next tab stop after <paramref name="position"/> (measured from the column's left edge).</summary>
-    private static double NextTabStop(double position, ParagraphFormatting format, double columnWidth)
+    /// <summary>
+    /// The next tab stop after <paramref name="position"/> (measured from the column's left edge). A line that starts
+    /// left of the left indent (a hanging first line, <paramref name="lineIndent"/> &lt; LeftIndent) also has an
+    /// implied stop at the left indent, as in InDesign: that is where a list's text goes after "bullet, tab". Only an
+    /// explicit tab stop comes before it; the default stops (every 36 pt) left of the left indent do not count
+    /// (08-para-bullets-numbering: "Step 1:" ending at 31 pt with a 48 pt indent puts the text at 48, not at 36).
+    /// </summary>
+    private static double NextTabStop(double position, ParagraphFormatting format, double columnWidth, double lineIndent)
     {
         foreach (var tab in format.Tabs)
         {
             if (tab.Position > position + Epsilon)
             {
-                return tab.Position;
+                return HangingStop(tab.Position);
             }
         }
         var last = format.Tabs.Count > 0 ? format.Tabs[^1].Position : 0;
         var next = last + (Math.Floor((Math.Max(position, last) - last) / DefaultTabInterval) + 1) * DefaultTabInterval;
+        var hanging = format.LeftIndent;
+        if (lineIndent < hanging - Epsilon && hanging > position + Epsilon)
+        {
+            return hanging;
+        }
         return Math.Min(next, Math.Max(columnWidth, position));
+
+        double HangingStop(double explicitStop) =>
+            lineIndent < format.LeftIndent - Epsilon && format.LeftIndent > position + Epsilon && format.LeftIndent < explicitStop
+                ? format.LeftIndent
+                : explicitStop;
     }
 
     private sealed record LineMetrics(double Ascent, double Descent, double Leading, double CapHeight, double XHeight, double MaxSize);
@@ -535,7 +561,7 @@ internal sealed class TextComposer
             _ => "left",
         };
         var extraPerSpace = 0.0;
-        var spaces = visible.Count(glyph => glyph.Kind == GlyphKind.Space);
+        var spaces = visible.Count(Stretches);
         if (justify && spaces > 0 && width < available && !visible.Any(glyph => glyph.Kind == GlyphKind.Tab))
         {
             extraPerSpace = (available - width) / spaces;
@@ -575,9 +601,14 @@ internal sealed class TextComposer
             runFirst = null;
         }
 
+        var markerLength = 0;
         foreach (var glyph in visible)
         {
-            var advance = glyph.Advance + (glyph.Kind == GlyphKind.Space ? extraPerSpace : 0);
+            if (glyph.Marker && markerLength == lineText.Length)
+            {
+                markerLength += glyph.Kind == GlyphKind.Tab ? 1 : glyph.Text.Length;
+            }
+            var advance = glyph.Advance + (Stretches(glyph) ? extraPerSpace : 0);
             if (glyph.Kind == GlyphKind.Tab)
             {
                 FlushRun();
@@ -608,8 +639,14 @@ internal sealed class TextComposer
             x += advance;
         }
         FlushRun();
-        flow.Layout.Lines.Add(new LineInfo(flow.FrameIndex, flow.ColumnIndex, baseline, column.X + indent, width, lineText.ToString()));
+        flow.Layout.Lines.Add(new LineInfo(flow.FrameIndex, flow.ColumnIndex, baseline, column.X + indent, width, lineText.ToString()) { MarkerLength = markerLength });
     }
+
+    /// <summary>
+    /// Whether justification widens this glyph: word spaces and (flexible) no-break spaces only. InDesign's fixed
+    /// spaces (em, en, thin, ... often after a list's bullet) keep their width.
+    /// </summary>
+    private static bool Stretches(Shaped glyph) => glyph.Kind == GlyphKind.Space && glyph.Text is " " or " ";
 
     private static void ApplyTabAlignment(List<Shaped> line, ParagraphFormatting format, double indent, double available)
     {
@@ -622,7 +659,7 @@ internal sealed class TextComposer
                 x += glyph.Advance;
                 continue;
             }
-            var target = glyph.Tab!.RightIndentTab ? available + indent : NextTabStop(x + indent, format, available + indent);
+            var target = glyph.Tab!.RightIndentTab ? available + indent : NextTabStop(x + indent, format, available + indent, indent);
             var alignment = glyph.Tab.RightIndentTab ? "RightAlign" : format.Tabs.FirstOrDefault(tab => Math.Abs(tab.Position - target) < Epsilon).Alignment ?? "LeftAlign";
             var segment = 0.0;
             for (var j = i + 1; j < line.Count && line[j].Kind != GlyphKind.Tab; j++)

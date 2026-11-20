@@ -201,7 +201,9 @@ internal static class LayoutTools
                 """ "font":{"type":"string"},"fontStyle":{"type":"string"},"size":{"type":"number"},"leading":{"type":"number"},"color":{"type":"string","description":"Swatch name"},"tint":{"type":"number"},""" +
                 """ "align":{"type":"string","enum":["left","center","right","justify","justifyAll"]},"spaceBefore":{"type":"number"},"spaceAfter":{"type":"number"},""" +
                 """ "firstLineIndent":{"type":"number"},"leftIndent":{"type":"number"},"rightIndent":{"type":"number"},"underline":{"type":"boolean"},"strikeThrough":{"type":"boolean"},""" +
-                """ "tracking":{"type":"number"},"caps":{"type":"string","enum":["normal","allCaps","smallCaps","capToSmallCap"]},"position":{"type":"string","enum":["normal","superscript","subscript"]}""",
+                """ "tracking":{"type":"number"},"caps":{"type":"string","enum":["normal","allCaps","smallCaps","capToSmallCap"]},"position":{"type":"string","enum":["normal","superscript","subscript"]},""" +
+                """ "list":{"type":"string","enum":["bullet","numbered","none"],"description":"Paragraph styles. InDesign draws the bullet or number. Hanging: leftIndent 18, firstLineIndent -18"},"bullet":{"type":"string","description":"Default •"},"bulletAfter":{"type":"string","description":"Default a tab; ^m em space"},""" +
+                """ "numberFormat":{"type":"string","enum":["1","01","001","0001","a","A","i","I"]},"numberText":{"type":"string","description":"^# the number, ^1-^9 a level's number; default ^#.\\t"},"listLevel":{"type":"integer","minimum":1,"maximum":9},"startAt":{"type":"integer"}""",
                 "kind", "name"),
             Access = ToolAccess.Edit,
             Idempotent = true,

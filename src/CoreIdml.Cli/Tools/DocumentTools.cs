@@ -33,7 +33,7 @@ internal static class DocumentTools
         {
             Name = "idml_get_story",
             Title = "Get story",
-            Description = "One story in full: text and every content run (index, text, paragraph and character style, scope: body, table cell, footnote, note). includeParagraphs adds body paragraphs (index, text, style, first and last run) for idml_apply_style.",
+            Description = "One story in full: text and every content run (index, text, paragraph and character style, scope: body, table cell, footnote, note). includeParagraphs adds body paragraphs (index, text, style, first and last run, list: bullet or numbered when InDesign draws a marker that is not in the text) for idml_apply_style.",
             InputSchema = Schema.Read(
                 """ "storyId":{"type":"string","description":"e.g. u123"},"includeParagraphs":{"type":"boolean"}""", "storyId"),
             Access = ToolAccess.Read,
@@ -47,13 +47,22 @@ internal static class DocumentTools
                     return json;
                 }
                 var result = JsonNode.Parse(json)!.AsObject();
-                result["paragraphs"] = new JsonArray([.. story.Paragraphs().Select(paragraph => (JsonNode)new JsonObject
+                result["paragraphs"] = new JsonArray([.. story.Paragraphs().Select(paragraph =>
                 {
-                    ["index"] = paragraph.Index,
-                    ["text"] = paragraph.Text,
-                    ["style"] = paragraph.ParagraphStyle,
-                    ["firstRun"] = paragraph.FirstRun,
-                    ["lastRun"] = paragraph.LastRun,
+                    var entry = new JsonObject
+                    {
+                        ["index"] = paragraph.Index,
+                        ["text"] = paragraph.Text,
+                        ["style"] = paragraph.ParagraphStyle,
+                        ["firstRun"] = paragraph.FirstRun,
+                        ["lastRun"] = paragraph.LastRun,
+                    };
+                    if (paragraph.List is { } list)
+                    {
+                        // InDesign draws the bullet or number; it is not in the text.
+                        entry["list"] = list;
+                    }
+                    return (JsonNode)entry;
                 })]);
                 return JsonText.Write(result);
             })),

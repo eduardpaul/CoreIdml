@@ -64,6 +64,8 @@ Common mistakes:
 - Name every frame (`name`): `idml_fill`, `continueFrom`, the fit report and `idml_edit_item` find frames by name.
 - Image `path`s are absolute; images are linked, not embedded.
 - Shapes have no outline unless `stroke` is given.
+- Lists: a paragraph style with `"list": "bullet"` or `"numbered"` and a hanging indent (`leftIndent` 14,
+  `firstLineIndent` -14). InDesign draws the bullet or number; never type `•` or `1.` into the text.
 
 For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds into it (`x: -3`, `y: -3` in mm, 6 mm
 wider and taller than the page); use `cmyk` colours; keep text inside the margins.

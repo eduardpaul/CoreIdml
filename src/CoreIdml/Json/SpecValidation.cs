@@ -70,6 +70,10 @@ public static partial class IdmlJson
             }
             Choice<Capitalization>(format.Caps, "caps", path);
             Choice<TextPosition>(format.Position, "position", path);
+            if (paragraph && ListError(format) is { } listError)
+            {
+                Add(path, listError);
+            }
         }
 
         var characterStyleSpecs = spec.CharacterStyles ?? [];
@@ -216,6 +220,31 @@ public static partial class IdmlJson
         var value = hex.TrimStart('#');
         return value.Length == 6 && value.All(Uri.IsHexDigit);
     }
+
+    /// <summary>What is wrong with a format's bullets and numbering fields, or null.</summary>
+    private static string? ListError(TextFormatSpec format)
+    {
+        if (format.List is { } list && TryListType(list) is null)
+        {
+            return $"Unknown list '{list}'. Use bullet, numbered or none.";
+        }
+        if (format.NumberFormat is { } numberFormat && TryNumberingFormat(numberFormat) is null)
+        {
+            return $"Unknown numberFormat '{numberFormat}'. Use 1, 01, 001, 0001, a, A, i or I.";
+        }
+        if (format.ListLevel is { } level && level is < 1 or > 9)
+        {
+            return $"listLevel {level} is out of range. Use 1 to 9.";
+        }
+        if (format.Bullet is { } bullet && !IsOneCharacter(bullet))
+        {
+            return $"bullet '{bullet}' must be one character.";
+        }
+        return null;
+    }
+
+    private static bool IsOneCharacter(string text) =>
+        text.Length == 1 && !char.IsSurrogate(text[0]) || text.Length == 2 && char.IsSurrogatePair(text[0], text[1]);
 
     private static string ItemTypeError(string type) => $"Unknown item type '{type}'. Use text, rectangle, ellipse, line, image or table.";
 

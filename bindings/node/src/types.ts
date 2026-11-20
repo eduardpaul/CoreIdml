@@ -37,6 +37,20 @@ export interface TextFormat {
   tracking?: number;
   caps?: string;
   position?: string;
+  /** Paragraphs and paragraph styles: `bullet`, `numbered` or `none`. InDesign draws the bullet or number; leave it out of the text. */
+  list?: string;
+  /** The bullet character; default `•`. */
+  bullet?: string;
+  /** Text after the bullet; default a tab. `^m` em space, `^>` en space. */
+  bulletAfter?: string;
+  /** `1` (default), `01`, `001`, `0001`, `a`, `A`, `i`, `I`. */
+  numberFormat?: string;
+  /** `^#` the number, `^1`-`^9` that level's number, a tab or `^t` a tab. Default `^#.^t`. */
+  numberText?: string;
+  /** 1-9; a level restarts after any paragraph of a higher level. */
+  listLevel?: number;
+  /** On a paragraph, restart the numbering at this number; on a style, the first number. */
+  startAt?: number;
 }
 
 export interface StyleSpec extends TextFormat {

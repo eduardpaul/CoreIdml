@@ -40,7 +40,7 @@ internal static class SpecSchema
             "items":{"type":"array","items":{"$ref":"#/$defs/item"}}}}}}},
         "spacing":{"type":"object","description":"Sides fall back to all, then 0","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},
         "style":{"allOf":[{"$ref":"#/$defs/format"}],"type":"object","required":["name"],"properties":{"name":{"type":"string"},"basedOn":{"type":"string","description":"Declared before this one"}},"description":"Updated when the name exists"},
-        "format":{"type":"object","description":"Runs and character styles take only font, fontStyle, size, color, tint, underline, strikeThrough, tracking, caps, position.","properties":{
+        "format":{"type":"object","description":"Runs and character styles take only font, fontStyle, size, color, tint, underline, strikeThrough, tracking, caps, position. For lists, prefer a paragraph style with list set.","properties":{
           "font":{"type":"string","description":"Installed family (idml_list_fonts), e.g. Arial"},
           "fontStyle":{"type":"string","description":"e.g. Regular, Bold, Bold Italic"},
           "size":{"type":"number"},"leading":{"type":"number"},
@@ -51,7 +51,14 @@ internal static class SpecSchema
           "underline":{"type":"boolean"},"strikeThrough":{"type":"boolean"},
           "tracking":{"type":"number","description":"1/1000 em"},
           "caps":{"type":"string","enum":["normal","allCaps","smallCaps","capToSmallCap"]},
-          "position":{"type":"string","enum":["normal","superscript","subscript"]}}},
+          "position":{"type":"string","enum":["normal","superscript","subscript"]},
+          "list":{"type":"string","enum":["bullet","numbered","none"],"description":"Paragraphs and paragraph styles. InDesign draws the bullet or number: do not type it in the text. Hanging list: leftIndent 18, firstLineIndent -18 (the tab after the marker stops at the left indent)."},
+          "bullet":{"type":"string","description":"One character; default •"},
+          "bulletAfter":{"type":"string","description":"After the bullet; default a tab. ^m em space, ^> en space"},
+          "numberFormat":{"type":"string","enum":["1","01","001","0001","a","A","i","I"],"description":"Default 1"},
+          "numberText":{"type":"string","description":"^# the number, ^1-^9 that level's number, \\t a tab. Default ^#.\\t; e.g. ^#)\\t or ^1.^#\\t"},
+          "listLevel":{"type":"integer","minimum":1,"maximum":9,"description":"Restarts after any paragraph of a higher level"},
+          "startAt":{"type":"integer","description":"Paragraph: restart numbering at this number. Style: first number"}}},
         "item":{"type":"object","description":"x/y: top-left corner from the page's top-left, y down, margins not added.","properties":{
           "type":{"type":"string","enum":["text","table","image","rectangle","ellipse","line"],"description":"Default text"},
           "name":{"type":"string","description":"idml_fill, continueFrom and reports find frames by it"},

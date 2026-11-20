@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using CoreIdml.Dom;
 using CoreIdml.Json;
 using CoreIdml.Packaging;
 
@@ -204,6 +205,73 @@ public class DocumentSpecTests
             """);
 
         Assert.Equal(2, document.AllPageItems.Count());
+    }
+
+    [Fact]
+    public void List_fields_write_InDesigns_bullets_and_numbering_attributes()
+    {
+        var spec = """
+        {
+          "paragraphStyles": [
+            { "name": "Bullet", "list": "bullet", "bullet": "–", "bulletAfter": "^m", "leftIndent": 14, "firstLineIndent": -14 },
+            { "name": "Step", "list": "numbered", "numberFormat": "a", "numberText": "^#)\t", "listLevel": 2, "startAt": 3 }
+          ],
+          "pages": [ { "items": [ { "type": "text", "name": "list", "x": 0, "y": 0, "width": 200, "height": 200, "paragraphs": [
+            { "text": "One", "style": "Bullet" },
+            { "text": "Two", "style": "Step", "startAt": 5 },
+            { "text": "Plain", "style": "Bullet", "list": "none" }
+          ] } ] } ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        var bullet = document.Styles.FindParagraphStyle("Bullet")!.Element;
+        Assert.Equal("BulletList", bullet.Attribute("BulletsAndNumberingListType")?.Value);
+        Assert.Equal("^m", bullet.Attribute("BulletsTextAfter")?.Value);
+        var bulletChar = bullet.Element("Properties")?.Element("BulletChar");
+        Assert.Equal("UnicodeOnly", bulletChar?.Attribute("BulletCharacterType")?.Value);
+        Assert.Equal("8211", bulletChar?.Attribute("BulletCharacterValue")?.Value);
+
+        var step = document.Styles.FindParagraphStyle("Step")!.Element;
+        Assert.Equal("NumberedList", step.Attribute("BulletsAndNumberingListType")?.Value);
+        Assert.Equal("a, b, c, d...", step.Element("Properties")?.Element("NumberingFormat")?.Value);
+        Assert.Equal("^#)^t", step.Attribute("NumberingExpression")?.Value);
+        Assert.Equal("2", step.Attribute("NumberingLevel")?.Value);
+        Assert.Equal("3", step.Attribute("NumberingStartAt")?.Value);
+        // A style's startAt only sets where lists start; restarting would give every paragraph the same number.
+        Assert.Null(step.Attribute("NumberingContinue"));
+
+        var story = ((TextFrame)document.AllPageItems.Single(item => item.Name == "list")).Story;
+        var ranges = story.Element.Descendants("ParagraphStyleRange").ToList();
+        Assert.Equal("false", ranges[1].Attribute("NumberingContinue")?.Value);
+        Assert.Equal("5", ranges[1].Attribute("NumberingStartAt")?.Value);
+        Assert.Equal("NoList", ranges[2].Attribute("BulletsAndNumberingListType")?.Value);
+        Assert.Equal(["bullet", "numbered", null], story.Paragraphs().Select(paragraph => paragraph.List));
+    }
+
+    [Theory]
+    [InlineData("""{ "list": "dots" }""", "Unknown list 'dots'. Use bullet, numbered or none.")]
+    [InlineData("""{ "list": "numbered", "numberFormat": "roman" }""", "Unknown numberFormat 'roman'. Use 1, 01, 001, 0001, a, A, i or I.")]
+    [InlineData("""{ "list": "numbered", "listLevel": 10 }""", "listLevel 10 is out of range. Use 1 to 9.")]
+    [InlineData("""{ "list": "bullet", "bullet": "->" }""", "bullet '->' must be one character.")]
+    public void Unknown_list_values_name_the_ones_allowed(string fields, string message)
+    {
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument($$"""{ "paragraphStyles": [ { "name": "L", {{fields[1..^1]}} } ] }"""));
+
+        Assert.Equal(message, exception.Message);
+    }
+
+    [Fact]
+    public void List_fields_on_a_run_are_reported_as_misplaced()
+    {
+        var warnings = IdmlJson.CheckSpec("""
+            { "pages": [ { "items": [ { "type": "text", "paragraphs": [ { "runs": [ { "text": "x", "list": "bullet" } ] } ] } ] } ],
+              "paragraphStyles": [ { "name": "L", "listType": "bullet" } ] }
+            """);
+
+        Assert.Contains("pages[0].items[0].paragraphs[0].runs[0]: 'list' does not apply to a run (set it on the paragraph); it is ignored.", warnings);
+        Assert.Contains("paragraphStyles[0]: unknown field 'listType', ignored (did you mean 'list'?).", warnings);
     }
 
     private static XElement Item(IdmlDocument document, string name) =>
