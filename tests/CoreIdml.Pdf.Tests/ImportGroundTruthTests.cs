@@ -28,7 +28,7 @@ public sealed class ImportGroundTruthTests(ITestOutputHelper output)
     private void Score(VisualSample sample)
     {
         var outDir = TestSupport.OutputDirectory(Path.Combine("import", sample.Name));
-        var result = IdmlPdf.Import(File.OpenRead(sample.ReferencePdf!), new PdfImportOptions { ImageDirectory = Path.Combine(outDir, "links"), Fonts = sample.FontOptions() });
+        var result = IdmlPdf.Import(File.OpenRead(sample.ReferencePdf!), new PdfImportOptions { ImageDirectory = Path.Combine(outDir, "links"), Fonts = sample.FontOptions(TestSupport.FontDirectory) });
         using var imported = result.Document;
         imported.Save(Path.Combine(outDir, "rebuilt.idml"));
         using var original = IdmlDocument.Open(sample.Idml!);

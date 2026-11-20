@@ -37,6 +37,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="CoreIdml.Pdf.Tests" />
     <InternalsVisibleTo Include="CoreIdml.Benchmarks" />
+    <InternalsVisibleTo Include="CoreIdml.VisualReport" />
   </ItemGroup>
 
 </Project>

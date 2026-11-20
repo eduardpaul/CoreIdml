@@ -57,7 +57,7 @@ public sealed class VisualTests(ITestOutputHelper output)
     private List<PageDiff> RunExportSample(VisualSample sample, string directory)
     {
         using var document = IdmlDocument.Open(sample.Idml!);
-        var options = new PdfExportOptions { Fonts = sample.FontOptions(), DocumentPath = sample.Idml, Pages = sample.Pages };
+        var options = new PdfExportOptions { Fonts = sample.FontOptions(TestSupport.FontDirectory), DocumentPath = sample.Idml, Pages = sample.Pages };
         options.LinkDirectories.Add(Path.Combine(sample.Directory, "links"));
         foreach (var linkDirectory in sample.LinkDirectories)
         {
@@ -124,7 +124,7 @@ public sealed class VisualTests(ITestOutputHelper output)
         imported.Document.Save(Path.Combine(directory, "imported.idml"));
         output.WriteLine($"[{sample.Name}] import: {imported.TextFrames} text frames, {imported.ImageFrames} images, {imported.Shapes} shapes; {string.Join("; ", imported.Warnings)}");
         using var stream = new MemoryStream();
-        var result = IdmlPdf.Export(imported.Document, stream, new PdfExportOptions { Fonts = sample.FontOptions() });
+        var result = IdmlPdf.Export(imported.Document, stream, new PdfExportOptions { Fonts = sample.FontOptions(TestSupport.FontDirectory) });
         Report(sample.Name, result);
         var ours = stream.ToArray();
         File.WriteAllBytes(Path.Combine(directory, "roundtrip.pdf"), ours);

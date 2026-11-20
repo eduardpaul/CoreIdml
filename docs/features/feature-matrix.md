@@ -100,7 +100,8 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Place JPEG and PNG | `Image`, `Link` | ✅ | ✅ | Spec `image`, `idml_fill`, `idml_relink_image`. Fit: `fill`, `fit`, `stretch`, `center`, `original`. |
 | Crop, scale, offset in the frame | `Image@ItemTransform`, `GraphicBounds` | 🟡 | ✅ | Agent: through the fit modes only. |
 | PNG transparency | PNG alpha | — | ✅ | Soft mask. |
-| Placed PDF, placed InDesign page | `PDF`, `ImportedPage` | DOM only | ✅ | Vector, clipped, crop box honoured. The spec and tools accept JPEG and PNG only. |
+| Placed PDF | `PDF` | DOM only | ✅ | Vector, clipped, crop box honoured. The spec and tools accept JPEG and PNG only. |
+| Placed InDesign page | `ImportedPage` (link to an `.indd`) | DOM only | ❌ | The linked `.indd` is read as a PDF, fails ("not a readable PDF") and nothing is drawn. INDD is Adobe's closed binary format, so this can only be reported, not drawn; InDesign's own PDF draws the page from the `.indd`. |
 | TIFF, PSD, EPS, AI **[new]** | `Image`, `EPS` | ❌ | ❌ | Warns "Placed ... graphics are not rendered". TIFF and PSD are the usual print formats in real InDesign files. |
 | Image clipping paths, alpha channels | `ClippingPathSettings` | ❌ | ❌ | The image is clipped to its frame only. |
 | Relink, relink to folder, package | `Link@LinkResourceURI` | ✅ | — | `idml_relink_image`, `idml_relink_folder`, `idml_package`. Summary reports actual and effective ppi. |

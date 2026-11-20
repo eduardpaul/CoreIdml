@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Measures CoreIdml's PDF output against InDesign's, per sample and per page, and compares a run with an earlier one
+    (better / worse / unchanged per case). README.md shows the command line.
+
+    The measurement code is the visual harness of tests/CoreIdml.Pdf.Tests, compiled in from there, so the tool and
+    the tests always measure the same way.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CoreIdml.VisualReport</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CoreIdml\CoreIdml.csproj" />
+    <ProjectReference Include="..\..\src\CoreIdml.Pdf\CoreIdml.Pdf.csproj" />
+    <!-- Rasterizer (pdf_oxide): native binaries for linux, osx and win on x64 and arm64. -->
+    <PackageReference Include="PdfOxide" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\tests\CoreIdml.Pdf.Tests\VisualDiff.cs" Link="Harness\VisualDiff.cs" />
+    <Compile Include="..\..\tests\CoreIdml.Pdf.Tests\VisualSample.cs" Link="Harness\VisualSample.cs" />
+    <Compile Include="..\..\tests\CoreIdml.Pdf.Tests\TextPositionDiff.cs" Link="Harness\TextPositionDiff.cs" />
+    <Compile Include="..\..\tests\CoreIdml.Pdf.Tests\Rasterizer.cs" Link="Harness\Rasterizer.cs" />
+  </ItemGroup>
+
+</Project>

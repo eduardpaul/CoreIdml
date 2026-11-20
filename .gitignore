@@ -47,3 +47,10 @@ real_samples*/
 .DS_Store
 Thumbs.db
 docs/reference/*
+
+# InDesign reference samples: internal only, never committed (see tests/doc-samples/TESTING.md).
+# The testing guide is the one file kept in git, so it survives when the package is replaced.
+/tests/doc-samples/*
+!/tests/doc-samples/TESTING.md
+# Default output of tools/CoreIdml.VisualReport
+/visual-report/

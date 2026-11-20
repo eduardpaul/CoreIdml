@@ -21,6 +21,7 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/CoreIdml.AbiGen/CoreIdml.AbiGen.csproj" />
+    <Project Path="tools/CoreIdml.VisualReport/CoreIdml.VisualReport.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
