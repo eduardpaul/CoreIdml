@@ -250,7 +250,49 @@ public class DocumentSpecTests
         Assert.Equal(["bullet", "numbered", null], story.Paragraphs().Select(paragraph => paragraph.List));
     }
 
+    [Fact]
+    public void Tabs_write_InDesigns_tab_list_and_a_paragraphs_tabs_replace_its_styles()
+    {
+        var spec = """
+        {
+          "paragraphStyles": [ { "name": "Contents", "tabs": [ { "position": 400, "align": "right", "leader": "." }, { "position": 20 } ] } ],
+          "pages": [ { "items": [ { "type": "text", "name": "toc", "x": 0, "y": 0, "width": 420, "height": 200, "paragraphs": [
+            { "text": "Chapter 1\t1", "style": "Contents" },
+            { "text": "Total\t4,000.50", "style": "Contents", "tabs": [ { "position": 300, "align": "decimal", "alignOn": "," } ] }
+          ] } ] } ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        var items = document.Styles.FindParagraphStyle("Contents")!.Element.Element("Properties")!.Element("TabList")!.Elements("ListItem").ToList();
+        Assert.Equal(["20", "400"], items.Select(item => item.Element("Position")!.Value));
+        Assert.Equal(["LeftAlign", "RightAlign"], items.Select(item => item.Element("Alignment")!.Value));
+        Assert.Equal(["", "."], items.Select(item => item.Element("Leader")!.Value));
+        var story = ((TextFrame)document.AllPageItems.Single(item => item.Name == "toc")).Story;
+        var local = story.Element.Descendants("ParagraphStyleRange").ElementAt(1).Element("Properties")!.Element("TabList")!.Elements("ListItem").Single();
+        Assert.Equal("CharacterAlign", local.Element("Alignment")!.Value);
+        Assert.Equal(",", local.Element("AlignmentCharacter")!.Value);
+    }
+
+    [Fact]
+    public void Tab_fields_are_checked()
+    {
+        var warnings = IdmlJson.CheckSpec("""
+            { "paragraphStyles": [ { "name": "T", "tabStops": [], "tabs": [ { "pos": 10, "align": "right", "leaderChar": "." }, { "align": "left" } ] } ] }
+            """);
+
+        Assert.Contains("paragraphStyles[0]: unknown field 'tabStops', ignored (did you mean 'tabs'?).", warnings);
+        Assert.Contains("paragraphStyles[0].tabs[0]: unknown field 'pos', ignored (did you mean 'position'?).", warnings);
+        Assert.Contains("paragraphStyles[0].tabs[0]: unknown field 'leaderChar', ignored (did you mean 'leader'?).", warnings);
+        Assert.Contains("paragraphStyles[0].tabs[1]: a tab stop needs a position; 0 is used.", warnings);
+    }
+
     [Theory]
+    [InlineData("""{ "tabs": [ { "position": 10, "align": "middle" } ] }""", "Unknown tab align 'middle'. Use left, center, right or decimal.")]
+    [InlineData("""{ "tabs": [ { "position": -5 } ] }""", "Tab position -5 is negative.")]
+    [InlineData("""{ "tabs": [ { "position": 5, "align": "decimal", "alignOn": ".," } ] }""", "Tab alignOn '.,' must be one character.")]
+    [InlineData("""{ "tabs": [ { "position": 5, "leader": "123456789" } ] }""", "Tab leader '123456789' is longer than InDesign's 8 characters.")]
     [InlineData("""{ "list": "dots" }""", "Unknown list 'dots'. Use bullet, numbered or none.")]
     [InlineData("""{ "list": "numbered", "numberFormat": "roman" }""", "Unknown numberFormat 'roman'. Use 1, 01, 001, 0001, a, A, i or I.")]
     [InlineData("""{ "list": "numbered", "listLevel": 10 }""", "listLevel 10 is out of range. Use 1 to 9.")]

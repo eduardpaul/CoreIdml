@@ -57,7 +57,11 @@ internal sealed record RunStyle
 }
 
 /// <summary>A tab stop: position from the column's left edge.</summary>
-internal readonly record struct TabStop(double Position, string Alignment);
+/// <summary>
+/// A tab stop: position from the column's left edge; alignment (LeftAlign, CenterAlign, RightAlign, CharacterAlign); the
+/// character a CharacterAlign stop aligns on; and the leader drawn across the tab's space (empty for none).
+/// </summary>
+internal readonly record struct ResolvedTab(double Position, string Alignment, string AlignmentCharacter = ".", string Leader = "");
 
 /// <summary>Resolved paragraph formatting.</summary>
 internal sealed record ParagraphFormatting
@@ -76,7 +80,7 @@ internal sealed record ParagraphFormatting
 
     public double LastLineIndent { get; init; }
 
-    public IReadOnlyList<TabStop> Tabs { get; init; } = [];
+    public IReadOnlyList<ResolvedTab> Tabs { get; init; } = [];
 
     public HyphenationSettings Hyphenation { get; init; } = new(false, 2, 2, 5, true);
 }

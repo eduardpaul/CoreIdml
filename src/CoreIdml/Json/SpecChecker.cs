@@ -12,7 +12,7 @@ public static partial class IdmlJson
     private static readonly string[] ParagraphOnlyFields =
     [
         "leading", "align", "spaceBefore", "spaceAfter", "firstLineIndent", "leftIndent", "rightIndent",
-        "list", "bullet", "bulletAfter", "numberFormat", "numberText", "listLevel", "startAt",
+        "list", "bullet", "bulletAfter", "numberFormat", "numberText", "listLevel", "startAt", "tabs",
     ];
     private static readonly string[] PageFields = ["index", "margins", "items"];
     private static readonly string[] CommonItemFields =
@@ -47,7 +47,8 @@ public static partial class IdmlJson
         ["bulletChar"] = "bullet", ["bulletCharacter"] = "bullet", ["marker"] = "bullet", ["bulletText"] = "bulletAfter",
         ["numberingFormat"] = "numberFormat", ["numberStyle"] = "numberFormat", ["numberingExpression"] = "numberText",
         ["numberExpression"] = "numberText", ["level"] = "listLevel", ["numberingLevel"] = "listLevel", ["start"] = "startAt",
-        ["numberingStartAt"] = "startAt",
+        ["numberingStartAt"] = "startAt", ["tabStops"] = "tabs", ["tabList"] = "tabs", ["stops"] = "tabs", ["leaderChar"] = "leader",
+        ["fill"] = "leader", ["alignmentCharacter"] = "alignOn", ["decimalChar"] = "alignOn", ["pos"] = "position", ["x"] = "position",
     };
 
     /// <summary>
@@ -80,7 +81,10 @@ public static partial class IdmlJson
         ForEach(root, "characterStyles", warnings, (style, path) =>
             CheckFields(style, path, ["name", "basedOn", .. CharacterFormatFields], warnings, ParagraphOnlyFields, "a character style"));
         ForEach(root, "paragraphStyles", warnings, (style, path) =>
-            CheckFields(style, path, ["name", "basedOn", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings));
+        {
+            CheckFields(style, path, ["name", "basedOn", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings);
+            CheckTabs(style, path, warnings);
+        });
         ForEach(root, "pages", warnings, (pageSpec, pagePath) =>
         {
             CheckFields(pageSpec, pagePath, PageFields, warnings);
@@ -111,11 +115,25 @@ public static partial class IdmlJson
         ForEach(item, "paragraphs", warnings, (paragraph, paragraphPath) =>
         {
             CheckFields(paragraph, paragraphPath, ["text", "style", "runs", .. CharacterFormatFields, .. ParagraphOnlyFields], warnings);
+            CheckTabs(paragraph, paragraphPath, warnings);
             ForEach(paragraph, "runs", warnings, (run, runPath) =>
                 CheckFields(run, runPath, ["text", "style", .. CharacterFormatFields], warnings, ParagraphOnlyFields, "a run (set it on the paragraph)"),
                 paragraphPath);
         }, path);
     }
+
+    private static readonly string[] TabFields = ["position", "align", "leader", "alignOn"];
+
+    /// <summary>The fields of each stop in a paragraph's or paragraph style's <c>tabs</c>.</summary>
+    private static void CheckTabs(JsonElement owner, string path, List<string> warnings) =>
+        ForEach(owner, "tabs", warnings, (tab, tabPath) =>
+        {
+            CheckFields(tab, tabPath, TabFields, warnings);
+            if (Property(tab, "position") is null)
+            {
+                warnings.Add($"{tabPath}: a tab stop needs a position; 0 is used.");
+            }
+        }, path);
 
     private static void CheckSpacing(JsonElement owner, string path, List<string> warnings, string field = "margins")
     {

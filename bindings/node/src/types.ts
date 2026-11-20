@@ -51,6 +51,20 @@ export interface TextFormat {
   listLevel?: number;
   /** On a paragraph, restart the numbering at this number; on a style, the first number. */
   startAt?: number;
+  /** Paragraphs and paragraph styles: tab stops, replacing the style's; `[]` clears them. Put a tab character in the text. */
+  tabs?: TabSpec[];
+}
+
+/** A tab stop. */
+export interface TabSpec {
+  /** Points from the frame's left edge, inside its inset. */
+  position: number;
+  /** `left` (default), `center`, `right` or `decimal` (`alignOn` sits on the stop). */
+  align?: string;
+  /** Repeated across the tab's space: `.`, `-`, `_`, `·` (up to 8 characters). */
+  leader?: string;
+  /** For `decimal`: the character to align on, default `.`. */
+  alignOn?: string;
 }
 
 export interface StyleSpec extends TextFormat {

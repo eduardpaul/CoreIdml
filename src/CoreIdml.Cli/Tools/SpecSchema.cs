@@ -58,7 +58,13 @@ internal static class SpecSchema
           "numberFormat":{"type":"string","enum":["1","01","001","0001","a","A","i","I"],"description":"Default 1"},
           "numberText":{"type":"string","description":"^# the number, ^1-^9 that level's number, \\t a tab. Default ^#.\\t; e.g. ^#)\\t or ^1.^#\\t"},
           "listLevel":{"type":"integer","minimum":1,"maximum":9,"description":"Restarts after any paragraph of a higher level"},
-          "startAt":{"type":"integer","description":"Paragraph: restart numbering at this number. Style: first number"}}},
+          "startAt":{"type":"integer","description":"Paragraph: restart numbering at this number. Style: first number"},
+          "tabs":{"type":"array","description":"Paragraphs and paragraph styles: tab stops, replacing the style's; [] clears them (default stops every 36 pt). Put \\t in the text. Table of contents: [{\"position\":400,\"align\":\"right\",\"leader\":\".\"}]","items":{"$ref":"#/$defs/tab"}}}},
+        "tab":{"type":"object","required":["position"],"properties":{
+          "position":{"type":"number","minimum":0,"description":"pt from the frame's left edge, inside its inset"},
+          "align":{"type":"string","enum":["left","center","right","decimal"],"description":"Default left. decimal: alignOn sits on the stop; text without it ends there"},
+          "leader":{"type":"string","maxLength":8,"description":"Repeated across the tab's space: . - _ ·"},
+          "alignOn":{"type":"string","description":"decimal: the character, default ."}}},
         "item":{"type":"object","description":"x/y: top-left corner from the page's top-left, y down, margins not added.","properties":{
           "type":{"type":"string","enum":["text","table","image","rectangle","ellipse","line"],"description":"Default text"},
           "name":{"type":"string","description":"idml_fill, continueFrom and reports find frames by it"},

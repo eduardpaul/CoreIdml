@@ -41,6 +41,27 @@ public enum ListType
     Numbered,
 }
 
+/// <summary>How text after a tab lines up with its stop.</summary>
+public enum TabAlignment
+{
+    /// <summary>The text starts at the stop.</summary>
+    Left,
+    Center,
+    /// <summary>The text ends at the stop (page numbers in a table of contents, prices).</summary>
+    Right,
+    /// <summary>
+    /// <see cref="TabStop.AlignOn"/> (a decimal point by default) sits on the stop; text without it ends at the stop.
+    /// </summary>
+    Character,
+}
+
+/// <summary>
+/// A tab stop: <paramref name="Position"/> in points from the frame's (column's) left edge, its alignment, the leader
+/// repeated across the tab's space (".", "-", "_", "·" or any short text; empty for none) and, for
+/// <see cref="TabAlignment.Character"/>, the character to align on.
+/// </summary>
+public sealed record TabStop(double Position, TabAlignment Alignment = TabAlignment.Left, string Leader = "", string AlignOn = ".");
+
 /// <summary>InDesign's numbering formats (<c>NumberingFormat</c>), the values the Bullets and Numbering dialog offers.</summary>
 public static class NumberingFormats
 {
@@ -207,6 +228,12 @@ public sealed class ParagraphFormat : CharacterFormat
     /// <summary>False restarts the numbering at this paragraph (at <see cref="NumberingStartAt"/>); true continues it.</summary>
     public bool? NumberingContinue { get; init; }
 
+    /// <summary>
+    /// Tab stops, replacing the ones set before (an empty list clears them, so InDesign's default stops every 36 pt
+    /// apply). Null keeps the style's.
+    /// </summary>
+    public IReadOnlyList<TabStop>? TabStops { get; init; }
+
     internal override void ApplyTo(XElement element)
     {
         base.ApplyTo(element);
@@ -247,6 +274,24 @@ public sealed class ParagraphFormat : CharacterFormat
         Set(element, "NumberingLevel", NumberingLevel?.ToString(CultureInfo.InvariantCulture));
         Set(element, "NumberingStartAt", NumberingStartAt?.ToString(CultureInfo.InvariantCulture));
         Set(element, "NumberingContinue", NumberingContinue);
+        if (TabStops is not null)
+        {
+            // As InDesign writes it: one record per stop, in position order.
+            var properties = IdmlXml.GetOrCreateProperties(element);
+            properties.Element("TabList")?.Remove();
+            properties.Add(new XElement("TabList", new XAttribute("type", "list"),
+                TabStops.OrderBy(stop => stop.Position).Select(stop => new XElement("ListItem", new XAttribute("type", "record"),
+                    new XElement("Alignment", new XAttribute("type", "enumeration"), stop.Alignment switch
+                    {
+                        TabAlignment.Center => "CenterAlign",
+                        TabAlignment.Right => "RightAlign",
+                        TabAlignment.Character => "CharacterAlign",
+                        _ => "LeftAlign",
+                    }),
+                    new XElement("AlignmentCharacter", new XAttribute("type", "string"), stop.AlignOn),
+                    new XElement("Leader", new XAttribute("type", "string"), stop.Leader),
+                    new XElement("Position", new XAttribute("type", "unit"), IdmlXml.Format(stop.Position))))));
+        }
     }
 
     /// <summary>Tab characters as InDesign's <c>^t</c> (the list texts are stored with metacharacters).</summary>

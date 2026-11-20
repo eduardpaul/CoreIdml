@@ -469,7 +469,7 @@ internal sealed class StoryReader
             return cached;
         }
         string? Get(string name) => resolver.Paragraph(range, name);
-        var tabs = new List<TabStop>();
+        var tabs = new List<ResolvedTab>();
         var tabSource = range.Element("Properties")?.Element("TabList")
             ?? resolver.StyleChain(range.Attribute("AppliedParagraphStyle")?.Value)
                 .Select(style => style.Element("Properties")?.Element("TabList")).FirstOrDefault(list => list is not null);
@@ -480,7 +480,8 @@ internal sealed class StoryReader
                 var position = Values.Number(item.Element("Position")?.Value);
                 if (position is not null)
                 {
-                    tabs.Add(new TabStop(position.Value, item.Element("Alignment")?.Value ?? "LeftAlign"));
+                    tabs.Add(new ResolvedTab(position.Value, item.Element("Alignment")?.Value ?? "LeftAlign",
+                        item.Element("AlignmentCharacter")?.Value is { Length: > 0 } character ? character : ".", item.Element("Leader")?.Value ?? string.Empty));
                 }
             }
         }

@@ -70,9 +70,9 @@ public static partial class IdmlJson
             }
             Choice<Capitalization>(format.Caps, "caps", path);
             Choice<TextPosition>(format.Position, "position", path);
-            if (paragraph && ListError(format) is { } listError)
+            if (paragraph && ParagraphValueError(format) is { } valueError)
             {
-                Add(path, listError);
+                Add(path, valueError);
             }
         }
 
@@ -221,8 +221,8 @@ public static partial class IdmlJson
         return value.Length == 6 && value.All(Uri.IsHexDigit);
     }
 
-    /// <summary>What is wrong with a format's bullets and numbering fields, or null.</summary>
-    private static string? ListError(TextFormatSpec format)
+    /// <summary>What is wrong with a format's bullets and numbering or tab stop values, or null.</summary>
+    private static string? ParagraphValueError(TextFormatSpec format)
     {
         if (format.List is { } list && TryListType(list) is null)
         {
@@ -239,6 +239,25 @@ public static partial class IdmlJson
         if (format.Bullet is { } bullet && !IsOneCharacter(bullet))
         {
             return $"bullet '{bullet}' must be one character.";
+        }
+        foreach (var tab in format.Tabs ?? [])
+        {
+            if (tab.Align is { } align && TryTabAlignment(align) is null)
+            {
+                return $"Unknown tab align '{align}'. Use left, center, right or decimal.";
+            }
+            if (tab.Position < 0)
+            {
+                return $"Tab position {tab.Position} is negative.";
+            }
+            if (tab.AlignOn is { } alignOn && !IsOneCharacter(alignOn))
+            {
+                return $"Tab alignOn '{alignOn}' must be one character.";
+            }
+            if (tab.Leader is { Length: > 8 } leader)
+            {
+                return $"Tab leader '{leader}' is longer than InDesign's 8 characters.";
+            }
         }
         return null;
     }

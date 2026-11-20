@@ -87,6 +87,8 @@ internal sealed class TextComposer
         public bool BreakAfter;
         // Part of a list's generated bullet or number.
         public bool Marker;
+        // A tab's leader (from the stop it went to), drawn across its space.
+        public string? Leader;
         public TabItem? Tab;
         public XElement? Table;
         public InlineObjectItem? Object;
@@ -400,7 +402,9 @@ internal sealed class TextComposer
                 case GlyphKind.Table:
                     return (i, false);
                 case GlyphKind.Tab:
-                    glyph.Advance = Math.Max(0.1, NextTabStop(x + indent, format, available + indent, indent) - indent - x);
+                    // Right, centre and decimal stops count the text after them, so a right tab at the column's edge
+                    // (a table of contents) keeps its page number on the line.
+                    glyph.Advance = Math.Max(0.1, TabAdvance(glyphs, i, x, format, indent, available).Advance);
                     break;
             }
             var width = x + glyph.Advance;
@@ -612,6 +616,18 @@ internal sealed class TextComposer
             if (glyph.Kind == GlyphKind.Tab)
             {
                 FlushRun();
+                // InDesign writes a tab as a space glyph where it starts: invisible, but text extraction (copy, search,
+                // accessibility) then sees a word break there, also when a leader or the next column follows closely.
+                if (glyph.Font.TryMap(' ', out var space))
+                {
+                    var spaceWidth = glyph.Font.Advance(space) * glyph.Size * glyph.Style.HorizontalScale;
+                    flow.Add(new GlyphRunOp(glyph.Font, glyph.Size, glyph.Style.HorizontalScale, glyph.Style.Fill, x, baseline - glyph.Rise,
+                        [new PlacedGlyph(space, " ", spaceWidth, spaceWidth)]) { VerticalScale = glyph.Style.VerticalScale });
+                }
+                if (glyph.Leader is { Length: > 0 } leader)
+                {
+                    DrawLeader(leader, glyph, column.X, x, x + advance, baseline, flow);
+                }
                 x += advance;
                 runStart = x;
                 lineText.Append('\t');
@@ -659,21 +675,78 @@ internal sealed class TextComposer
                 x += glyph.Advance;
                 continue;
             }
-            var target = glyph.Tab!.RightIndentTab ? available + indent : NextTabStop(x + indent, format, available + indent, indent);
-            var alignment = glyph.Tab.RightIndentTab ? "RightAlign" : format.Tabs.FirstOrDefault(tab => Math.Abs(tab.Position - target) < Epsilon).Alignment ?? "LeftAlign";
-            var segment = 0.0;
-            for (var j = i + 1; j < line.Count && line[j].Kind != GlyphKind.Tab; j++)
-            {
-                segment += line[j].Advance;
-            }
-            var start = alignment switch
-            {
-                "RightAlign" => target - segment,
-                "CenterAlign" => target - (segment / 2),
-                _ => target,
-            };
-            glyph.Advance = Math.Max(0, start - indent - x);
+            var (advance, stop) = TabAdvance(line, i, x, format, indent, available);
+            glyph.Advance = advance;
+            glyph.Leader = stop.Leader;
             x += glyph.Advance;
+        }
+    }
+
+    /// <summary>
+    /// The space the tab at <paramref name="glyphs"/>[<paramref name="index"/>] takes when the line before it is
+    /// <paramref name="x"/> wide, and the stop it goes to: the text after it (up to the next tab or break) starts at a
+    /// left stop, ends at a right one, is centred on a centre one, and for a character stop has its alignment
+    /// character's left edge on the stop, or ends there without one (InDesign, 08-para-tabs p3).
+    /// </summary>
+    private static (double Advance, ResolvedTab Stop) TabAdvance(List<Shaped> glyphs, int index, double x, ParagraphFormatting format, double indent, double available)
+    {
+        var tab = glyphs[index].Tab!;
+        var target = tab.RightIndentTab ? available + indent : NextTabStop(x + indent, format, available + indent, indent);
+        var stop = tab.RightIndentTab
+            ? new ResolvedTab(target, "RightAlign")
+            : format.Tabs.FirstOrDefault(candidate => Math.Abs(candidate.Position - target) < Epsilon) is { Alignment: not null } found ? found : new ResolvedTab(target, "LeftAlign");
+        if (stop.Alignment is not ("RightAlign" or "CenterAlign" or "CharacterAlign"))
+        {
+            return (Math.Max(0, target - indent - x), stop);
+        }
+        var segment = 0.0;
+        double? beforeCharacter = null;
+        for (var j = index + 1; j < glyphs.Count && glyphs[j].Kind is not (GlyphKind.Tab or GlyphKind.Break or GlyphKind.Table); j++)
+        {
+            if (beforeCharacter is null && stop.Alignment == "CharacterAlign" && glyphs[j].Text == stop.AlignmentCharacter)
+            {
+                beforeCharacter = segment;
+            }
+            segment += glyphs[j].Advance;
+        }
+        var start = stop.Alignment switch
+        {
+            "RightAlign" => target - segment,
+            "CenterAlign" => target - (segment / 2),
+            _ => target - (beforeCharacter ?? segment),
+        };
+        return (Math.Max(0, start - indent - x), stop);
+    }
+
+    /// <summary>
+    /// Draws a tab leader across a tab's space, from <paramref name="from"/> to <paramref name="to"/>, the way InDesign
+    /// does (measured in 08-para-tabs): copies of the leader text stand on a grid of its width counted from the
+    /// column's left edge, so leaders line up from line to line; the first copy starts at or after the text before the
+    /// tab, and a copy is drawn while its first glyph fits before the text after it (the rest of a multi-character
+    /// leader may run into it). The glyphs take the tab's own formatting.
+    /// </summary>
+    private void DrawLeader(string leader, Shaped tab, double columnLeft, double from, double to, double baseline, Flow flow)
+    {
+        var unit = new List<Shaped>();
+        ShapeText(leader, tab.Style, unit);
+        unit.RemoveAll(glyph => glyph.Kind == GlyphKind.SoftHyphen);
+        var width = unit.Sum(glyph => glyph.Advance);
+        if (unit.Count == 0 || width <= Epsilon)
+        {
+            return;
+        }
+        var first = Math.Ceiling(((from - columnLeft) / width) - 1e-6);
+        var glyphs = new List<PlacedGlyph>();
+        double start = columnLeft + (first * width), position = start;
+        while (position + unit[0].Advance <= to + Epsilon)
+        {
+            glyphs.AddRange(unit.Select(glyph => new PlacedGlyph(glyph.Glyph, glyph.Text, glyph.Advance, glyph.Natural)));
+            position += width;
+        }
+        if (glyphs.Count > 0)
+        {
+            var head = unit[0];
+            flow.Add(new GlyphRunOp(head.Font, head.Size, head.Style.HorizontalScale, head.Style.Fill, start, baseline - head.Rise, glyphs) { VerticalScale = head.Style.VerticalScale });
         }
     }
 

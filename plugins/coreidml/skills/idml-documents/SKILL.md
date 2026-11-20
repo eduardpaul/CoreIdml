@@ -66,6 +66,8 @@ Common mistakes:
 - Shapes have no outline unless `stroke` is given.
 - Lists: a paragraph style with `"list": "bullet"` or `"numbered"` and a hanging indent (`leftIndent` 14,
   `firstLineIndent` -14). InDesign draws the bullet or number; never type `•` or `1.` into the text.
+- Columns of text (contents pages, price lists): `tabs` on the paragraph style, a `\t` in the text, never runs of
+  spaces. A right stop at the frame's inner width with `"leader": "."` makes a table of contents line.
 
 For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds into it (`x: -3`, `y: -3` in mm, 6 mm
 wider and taller than the page); use `cmyk` colours; keep text inside the margins.

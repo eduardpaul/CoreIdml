@@ -76,6 +76,28 @@ Format fields:
 | `numberText` | The number's text: `^#` is the number, `^1` to `^9` that level's number, `\t` a tab. Default `^#.\t`; also `^#)\t`, `(^#)\t`, `^1.^#\t`. |
 | `listLevel` | 1 to 9. A level restarts after any paragraph of a higher level (a lower number). |
 | `startAt` | On a paragraph: restart the numbering here, at this number. On a style: the first number of its lists. |
+| `tabs` | Tab stops, replacing the style's (`[]` clears them); see [Tabs](#tabs). Paragraphs and paragraph styles only. |
+
+### Tabs
+
+`"tabs": [ { "position": 300, "align": "right", "leader": "." } ]`, and a tab character (`\t`) in the text where each
+column starts. Each stop:
+
+| Field | |
+| --- | --- |
+| `position` | Points from the frame's left edge, inside its inset. Required. |
+| `align` | `left` (default): the text starts at the stop. `right`: it ends there. `center`. `decimal`: the `alignOn` character sits on the stop, and text without it ends there. |
+| `leader` | Repeated across the tab's space: `.`, `-`, `_`, `·`, or up to 8 characters. Leaders line up from line to line. |
+| `alignOn` | For `decimal`: the character, `.` by default (`,` for European prices). |
+
+Without stops, tabs go to InDesign's default stops every 36 pt. Typical uses:
+
+- **Table of contents:** a right stop at the frame's inner width with a `.` leader: `"Chapter 1\t3"`. Indent sub-entries
+  with `leftIndent`; the leader dots still line up.
+- **Price list:** `[{ "position": 200, "align": "right", "leader": "." }, { "position": 260, "align": "decimal" }]`
+  for `"Item\tsize\t12.50"`.
+
+Use tabs, not spaces, to line up columns; for a grid of cells with borders, use a `table` item.
 
 ### Lists
 

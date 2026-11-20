@@ -132,6 +132,25 @@ public class TextFormatSpec
 
     /// <summary>On a paragraph: restart the numbering at this number. On a style: the number lists start at.</summary>
     public int? StartAt { get; set; }
+
+    /// <summary>Tab stops (paragraphs and paragraph styles), replacing the style's; [] clears them.</summary>
+    public List<TabSpec>? Tabs { get; set; }
+}
+
+/// <summary>A tab stop.</summary>
+public sealed class TabSpec
+{
+    /// <summary>Points from the frame's left edge (inside its inset).</summary>
+    public double Position { get; set; }
+
+    /// <summary>left (default), center, right, or decimal (on <see cref="AlignOn"/>).</summary>
+    public string? Align { get; set; }
+
+    /// <summary>Repeated across the tab's space: ".", "-", "_", "·" or any short text.</summary>
+    public string? Leader { get; set; }
+
+    /// <summary>For decimal: the character to align on (default ".").</summary>
+    public string? AlignOn { get; set; }
 }
 
 public sealed class StyleSpec : TextFormatSpec

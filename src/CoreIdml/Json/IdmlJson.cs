@@ -426,16 +426,30 @@ public static partial class IdmlJson
         Tracking = spec.Tracking,
         Capitalization = ParseCaps(spec.Caps),
         Position = ParsePosition(spec.Position),
-        ListType = spec.List is { } list ? TryListType(list) ?? throw new IdmlException(ListError(spec)!) : null,
-        BulletCharacter = spec.Bullet is { } bullet ? IsOneCharacter(bullet) ? bullet : throw new IdmlException(ListError(spec)!) : null,
+        ListType = spec.List is { } list ? TryListType(list) ?? throw new IdmlException(ParagraphValueError(spec)!) : null,
+        BulletCharacter = spec.Bullet is { } bullet ? IsOneCharacter(bullet) ? bullet : throw new IdmlException(ParagraphValueError(spec)!) : null,
         BulletTextAfter = spec.BulletAfter,
-        NumberingFormat = spec.NumberFormat is { } numberFormat ? TryNumberingFormat(numberFormat) ?? throw new IdmlException(ListError(spec)!) : null,
+        NumberingFormat = spec.NumberFormat is { } numberFormat ? TryNumberingFormat(numberFormat) ?? throw new IdmlException(ParagraphValueError(spec)!) : null,
         NumberingExpression = spec.NumberText,
-        NumberingLevel = spec.ListLevel is { } level ? level is >= 1 and <= 9 ? level : throw new IdmlException(ListError(spec)!) : null,
+        NumberingLevel = spec.ListLevel is { } level ? level is >= 1 and <= 9 ? level : throw new IdmlException(ParagraphValueError(spec)!) : null,
         NumberingStartAt = spec.StartAt,
         // On a paragraph, startAt restarts the numbering there; on a style it only sets where lists start (making the
         // style restart would number every paragraph of it the same).
         NumberingContinue = spec.StartAt is not null && spec is not StyleSpec ? false : null,
+        TabStops = spec.Tabs?.Select(tab => new TabStop(
+            tab.Position >= 0 ? tab.Position : throw new IdmlException(ParagraphValueError(spec)!),
+            tab.Align is { } align ? TryTabAlignment(align) ?? throw new IdmlException(ParagraphValueError(spec)!) : TabAlignment.Left,
+            tab.Leader is { Length: > 8 } ? throw new IdmlException(ParagraphValueError(spec)!) : tab.Leader ?? string.Empty,
+            tab.AlignOn is { } alignOn ? IsOneCharacter(alignOn) ? alignOn : throw new IdmlException(ParagraphValueError(spec)!) : ".")).ToList(),
+    };
+
+    private static TabAlignment? TryTabAlignment(string align) => align.ToLowerInvariant() switch
+    {
+        "left" => TabAlignment.Left,
+        "center" or "centre" => TabAlignment.Center,
+        "right" => TabAlignment.Right,
+        "decimal" or "character" or "char" => TabAlignment.Character,
+        _ => null,
     };
 
     private static ListType? TryListType(string list) => list.ToLowerInvariant() switch
@@ -488,7 +502,7 @@ public static partial class IdmlJson
         || spec.FirstLineIndent is not null || spec.LeftIndent is not null || spec.RightIndent is not null || spec.Underline is not null
         || spec.StrikeThrough is not null || spec.Tracking is not null || spec.Caps is not null || spec.Position is not null
         || spec.List is not null || spec.Bullet is not null || spec.BulletAfter is not null || spec.NumberFormat is not null
-        || spec.NumberText is not null || spec.ListLevel is not null || spec.StartAt is not null;
+        || spec.NumberText is not null || spec.ListLevel is not null || spec.StartAt is not null || spec.Tabs is not null;
 
     private static Justification? ParseJustification(string? align) =>
         align is null ? null : TryJustification(align) ?? throw new IdmlException(AlignError(align));

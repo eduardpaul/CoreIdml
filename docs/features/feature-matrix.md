@@ -142,7 +142,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Skew (false italic) **[new]** | `Skew` | ❌ | ❌ † | |
 | Text stroke (outlined text) **[new]** | `StrokeColor`, `StrokeWeight` on text | ❌ | ❌ | Glyphs are only filled ([IdmlRenderer.cs:904](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.cs#L904)). Outlined display type renders as solid. |
 | Gradient text | `FillColor="Gradient/..."` on text | ❌ | ❌ | Part of the gradients plan (stretch goal). |
-| Standard ligatures | `Ligatures` | — | ✅ | |
+| Standard ligatures | `Ligatures` | — | 🟡 | From the font's GSUB `liga`. **[new]** InDesign also sets "fi" as one glyph in fonts without `liga` that have U+FB01 (Liberation Serif and Sans in doc-samples; "ff" stays two glyphs); we do not. Adding it moved text by the right amount but garbled the label lines in the rasterized pages, so the embedded glyph needs checking first. |
 | Other OpenType features **[new]** | `OTFFigureStyle`, `OTFFraction`, `OTFDiscretionaryLigature`, `OTFSwash`, `OTFContextualAlternate`, ... | ❌ | ❌ † | Old-style and tabular figures, fractions and swashes fall back to the default glyphs. |
 | No break | `NoBreak` | ❌ | ❌ † | Words joined with No Break can still be split. |
 | Language | `AppliedLanguage` | DOM only | ✅ | Picks the hyphenation patterns. |
@@ -154,8 +154,8 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Alignment and justification | `Justification` | ✅ | ✅ | `align`. "Towards spine" is drawn as left, "away from spine" as right on every page. |
 | Indents | `LeftIndent`, `RightIndent`, `FirstLineIndent`, `LastLineIndent` | ✅ | ✅ | Agent: all but last line. |
 | Space before and after | `SpaceBefore`, `SpaceAfter` | ✅ | ✅ | |
-| Tab stops: left, centre, right; right-indent tab | `TabList` | ❌ | ✅ | A hanging first line (first-line indent below the left indent) also stops at the left indent, as in InDesign. |
-| Decimal and align-on tabs, tab leaders **[new]** | `TabList/ListItem/Alignment`, `Leader` | ❌ | ❌ | Decimal tabs are drawn as left tabs; dot leaders (price lists, tables of contents) are missing. |
+| Tab stops: left, centre, right; right-indent tab | `TabList` | ✅ | ✅ | Spec `tabs` (`position`, `align`, `leader`, `alignOn`) on paragraphs and paragraph styles; DOM `ParagraphFormat.TabStops`. A hanging first line (first-line indent below the left indent) also stops at the left indent, as in InDesign. Right, centre and decimal stops reserve the text after them when lines are broken, so a right tab at the column's edge keeps its page number on the line. Each tab is written to the PDF as an invisible space glyph, as InDesign does, so extracted text has a word break there. |
+| Decimal and align-on tabs, tab leaders | `TabList/ListItem/Alignment`, `AlignmentCharacter`, `Leader` | ✅ | ✅ | Measured against `08-para-tabs`: the alignment character's left edge on the stop, text without it ending there; leader copies on a grid of the leader's width from the column's left edge (leaders line up from line to line), from the first slot after the text to the last whose first glyph fits before the next text; leaders in the tab's formatting. Every page within 1 pt except one word on p2, caused by the "fi" ligature gap (see Standard ligatures). |
 | Hyphenation | `Hyphenation`, `Hyphenate*` | DOM only | ✅ | For the languages `Hyphenator` supports. |
 | Paragraph composer | `Composer` | — | 🟡 | Greedy single-line composer only: line breaks can differ from InDesign's default Paragraph Composer. |
 | Word and letter spacing limits | `MinimumWordSpacing`, ... | ❌ | 🟡 | Justification stretches word spaces (and flexible no-break spaces; em, en, thin and other fixed spaces keep their width); the 133% limit is fixed, letter and glyph spacing are not used. |
@@ -246,7 +246,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 3 | **Table alternating fills, table style region cell styles** | Plain tables | S–M | Both resolved in `DrawCell`; the agent side can expose `alternateFill` on the spec table. |
 | 4 | **Keep options, widows and orphans, start in next frame** | Headings orphaned | M | In `Flow.Place`; needs look-ahead of N lines. Changes overset results. |
 | 5 | **Text variables, next/previous page number** | Blank | S | Draw `ResultText`; compute page markers like the current page number. |
-| 6 | **Tab leaders, decimal tabs** | Missing dots, misaligned numbers | S | In `ApplyTabAlignment`. |
+| 6 | ~~**Tab leaders, decimal tabs**~~ | Drawn | S | See the tab rows under paragraph formatting; `08-para-tabs` matches InDesign within 1 pt but for one word (the fi ligature). |
 | 7 | **Footnotes** | Missing | L | Reference numbers inline, footnote area at the bottom of the column shrinking the column. |
 | 8 | **Text stroke, skew, underline options** | Solid, upright, thin | S | Text render mode 2, a skew in `Tm`, underline weight/offset/colour. |
 | 9 | **TIFF and PSD images** | Missing | M | TIFF decoder (uncompressed, LZW, deflate) for the common case; PSD composite image. |
@@ -258,7 +258,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 15 | **Mixed inks, OpenType features, optical kerning, baseline grid** | Approximated or missing | M each | Lower priority. |
 
 Agent-only gaps (the preview already draws them, the tools cannot author them), cheapest first: stroke alignment,
-join; baseline shift, scale and language in styles; tab stops; cell fill, inset and vertical alignment per cell;
+join; baseline shift, scale and language in styles; cell fill, inset and vertical alignment per cell;
 merged cells; delete rows and add or delete columns; groups; placed PDFs; object styles. Most are a field in
 `SpecModel.cs`, `SpecChecker.cs`, `SpecSchema.cs` and `document-spec.md` over DOM code that partly exists.
 
