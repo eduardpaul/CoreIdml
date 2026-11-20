@@ -1,14 +1,14 @@
 # Paragraph rules
 
-Status: **drawn; authoring planned.** Rules above and below are read from the IDML and drawn by the composer and
-renderer, measured against `08-para-rules` (every page at 100% in the visual report, each rule's position, length,
-weight, colour and dashes equal to InDesign's in its content stream). The DOM, spec and tools
-([Design (authoring)](#design-authoring)) are not done. Overview, order, milestones and open questions:
-[README.md](README.md).
+Status: **drawn; authoring planned.** Rules above and below, paragraph borders and shading are read from the IDML and
+drawn by the composer and renderer, measured against `08-para-rules` and `08-para-borders-shading` (every page of both
+at 100% in the visual report, the rules' and boxes' positions, weights, colours and dashes equal to InDesign's in its
+content stream). The DOM, spec and tools ([Design (authoring)](#design-authoring)) are not done. Overview, order,
+milestones and open questions: [README.md](README.md).
 
 ## IDML
 
-Checked in the sample's `Resources/Styles.xml` (the defaults are `[No paragraph style]`'s).
+Checked in the two samples' `Resources/Styles.xml` (the defaults are `[No paragraph style]`'s).
 
 **Rules**, on `ParagraphStyle` and `ParagraphStyleRange`:
 
@@ -20,6 +20,21 @@ Checked in the sample's `Resources/Styles.xml` (the defaults are `[No paragraph 
   `<RuleBelowColor type="object">Color/Black</RuleBelowColor>`; `<RuleBelowType type="object">StrokeStyle/$ID/Dashed</RuleBelowType>`
   (`Solid`, `Dashed`, `Canned Dotted`, `Wavy`, `ThickThin` in the sample); `<RuleBelowGapColor type="object">Color/Yellow</RuleBelowGapColor>`
   (default `Swatch/None`).
+
+**Shading:** `ParagraphShadingOn`, `ParagraphShadingTint` (20), `ParagraphShadingOverprint`, `ParagraphShadingWidth`
+(`ColumnWidth`), `ParagraphShadingClipToFrame`, `ParagraphShadingSuppressPrinting`, `ParagraphShadingLeftOffset`,
+`...RightOffset`, `...TopOffset`, `...BottomOffset` (0), `ParagraphShadingTopOrigin` (`AscentTopOrigin`),
+`ParagraphShadingBottomOrigin` (`DescentBottomOrigin`), `ParagraphShadingTopLeftCornerOption` (`None`; the sample also
+has `RoundedCorner`, `InverseRoundedCorner`, `BevelCorner`), `...TopLeftCornerRadius` (12) and the same for the other
+three corners; `<ParagraphShadingColor type="object">Color/Black</ParagraphShadingColor>`.
+
+**Borders:** `ParagraphBorderOn`, `ParagraphBorderTint` (−1), `ParagraphBorderOverprint`, `ParagraphBorderGapTint`,
+`ParagraphBorderGapOverprint`, the four offsets, corner options and radii as for shading, `ParagraphBorderStrokeEndJoin`
+(`MiterEndJoin`), `ParagraphBorderStrokeEndCap` (`ButtEndCap`), `ParagraphBorderWidth`, `ParagraphBorderTopOrigin`,
+`ParagraphBorderBottomOrigin`, `ParagraphBorderTopLineWeight`, `...BottomLineWeight`, `...LeftLineWeight`,
+`...RightLineWeight` (1), `ParagraphBorderDisplayIfSplits` (`"false"`) and `MergeConsecutiveParaBorders` (`"true"`);
+`ParagraphBorderColor` (`Color/Black`), `ParagraphBorderGapColor` (`Swatch/None`) and `ParagraphBorderType`
+(`StrokeStyle/$ID/Solid`) under `Properties`.
 
 ## Geometry, measured in the reference PDFs
 
@@ -45,23 +60,49 @@ Checked in the sample's `Resources/Styles.xml` (the defaults are `[No paragraph 
   the weight, thick-thin as a half-weight line a quarter weight up and a sixth-weight line 5/12 down. Tint: `0 0 0 0.5 K`
   for 50% black (p6).
 
-**Not in the sample**, implemented from memory and noted in the code: `Text Color` (the fill of the paragraph's first
-text for the rule above, its last for the rule below); keep in frame at the top of a later column.
+**Borders and shading** (08-para-borders-shading):
+
+- The box runs from the first line's ascent (the first-baseline Ascent: 7.627 pt for 11 pt Liberation Serif) to the
+  last line's descent (2.374 pt), across the column, grown by the offsets (p1: 6 pt all round, 255.75 × 22 pt for a
+  one-line paragraph in a 243.75 pt column).
+- **Shading** is a filled rectangle (`re f`) in its colour at its tint (p1: cyan 40%). It spans the column whatever the
+  paragraph's indents (p1: indents of 12, the shading still 243.75 pt from the column's edge). Shading alone is drawn
+  **paragraph by paragraph** (p1: two one-line paragraphs, two rectangles, overlapping with offsets of 6).
+- **Borders** are stroked centred on the box (p2: a 3 pt red border 4 pt out is a 251.75 × 32 pt rectangle at `3 w`).
+  With left and right weights of 0, the top and bottom are two lines across the box (p2).
+- **Merging:** consecutive paragraphs with the same border are **one box** from the first's ascent to the last's
+  descent, the space between them included, and so is their shading (p2: two paragraphs, one rectangle; p4: three
+  paragraphs in one box; the fourth, with another border colour and weight, in a box of its own that overlaps it).
+- **Corners** (p3, radius 10): rounded corners are quarter circles, inverse rounded corners curves into the box with
+  one control point at the corner's inner point (`v` curves), bevel corners straight cuts. The shading takes the same
+  path, filled before the border is stroked.
+- **No space is taken** (p1 to p4: the first baselines and the 14 pt leading are unchanged with offsets of 0 to 8 pt
+  and 3 pt borders), and the text stays where it was in its column (p2: a 3 pt border does not move it in).
+- **Order:** shading, border, then the text (p3, p4).
+
+**Not in the samples**, implemented from memory and noted in the code: `Text Color` for rules (the fill of the
+paragraph's first text for the rule above, its last for the rule below); a paragraph split across columns (p5's six
+paragraphs fit in one column): a box per column, its edges at the break drawn only with Display Border if Paragraph
+Splits; text width for borders and shading (the widest line); the Baseline and Leading top origins and the Baseline
+bottom origin; Clip to Frame; Do Not Print or Export; border stroke types other than solid; inset and fancy corners; keep
+in frame at the top of a later column.
 
 ## What is drawn, and where
 
 - [ParagraphDecorations.cs](../../src/CoreIdml.Pdf/Layout/ParagraphDecorations.cs): the resolved `ParagraphRule`,
-  read in `StoryReader.FormatOf` into `ParagraphFormatting`. Rules are drawn as `TextRuleOp`s.
+  `ParagraphBorder` and `ParagraphShading` (read in `StoryReader.FormatOf` into `ParagraphFormatting`) and the
+  `ParagraphShadingOp` and `ParagraphBorderOp` draw ops. Rules reuse `TextRuleOp`.
 - [TextComposer.ParagraphDecorations.cs](../../src/CoreIdml.Pdf/Layout/TextComposer.ParagraphDecorations.cs): once
-  the story is composed (and vertically justified), each paragraph's first and last lines give its rules, inserted at
-  the start of each frame's ops. `LineInfo` records each line's paragraph, column, text start and ascent for this.
-  Paragraphs holding a table get none.
+  the story is composed (and vertically justified), each paragraph's lines give its rules and boxes, inserted at the
+  start of each frame's ops. `LineInfo` records each line's paragraph, column, text start, ascent, descent and leading
+  for this. Paragraphs holding a table get none.
 - `KeepRuleAboveInFrame`: the first line's `LineMetrics.KeptRuleAbove`, which `Flow.Place` honours at the top of a
   column. Nothing else changes where lines go, and line breaking is untouched.
-- The renderer draws them with `DrawTextRule` (stroke types and gap colour), as underlines.
+- [IdmlRenderer.ParagraphDecorations.cs](../../src/CoreIdml.Pdf/Rendering/IdmlRenderer.ParagraphDecorations.cs):
+  shading and border paths, corners, per-side strokes. Rules go through `DrawTextRule` (stroke types and gap colour).
 
-**Not done:** overprint (rules and gaps); multi-line stroke styles other than thick-thin; rules of paragraphs holding a
-table. Paragraph borders and shading (`ParagraphBorder*`, `ParagraphShading*`) would reuse the same pass.
+**Not done:** overprint (rules, gaps, borders, shading); multi-line stroke styles other than thick-thin on rules;
+dashed and dotted borders measured against InDesign; rules and boxes of paragraphs holding a table.
 
 ## Design (authoring)
 
@@ -113,8 +154,10 @@ Borders and shading would follow the same pattern (`border`, `shading` objects).
 
 ## Tests
 
-- **Composer** ([ParagraphRuleTests.cs](../../tests/CoreIdml.Pdf.Tests/ParagraphRuleTests.cs)): rule positions above
-  and below against the baselines, column and text width with indents (and a centred line), no space taken, keep in
-  frame.
-- **Visual:** `08-para-rules` in the report.
+- **Composer and renderer** ([ParagraphRuleTests.cs](../../tests/CoreIdml.Pdf.Tests/ParagraphRuleTests.cs)): rule
+  positions above and below against the baselines, column and text width with indents (and a centred line), no space
+  taken, keep in frame, merged and broken borders, shading per paragraph across the column, a bordered paragraph split
+  across two columns (open and closed at the break), and in the PDF the shading rectangle, the border's corner curve
+  and per-side lines.
+- **Visual:** `08-para-rules` and `08-para-borders-shading` in the report.
 - **To add with authoring:** the style XML (attributes, `Properties` colour, stroke type), the spec, `CheckSpec`.

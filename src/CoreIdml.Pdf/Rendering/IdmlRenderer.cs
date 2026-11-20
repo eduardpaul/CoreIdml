@@ -1164,6 +1164,12 @@ internal sealed partial class IdmlRenderer : IDisposable
                 case TextRuleOp rule:
                     DrawTextRule(rule, content);
                     break;
+                case ParagraphShadingOp shading:
+                    DrawParagraphShading(shading, content, bounds);
+                    break;
+                case ParagraphBorderOp border:
+                    DrawParagraphBorder(border, content);
+                    break;
             }
         }
     }

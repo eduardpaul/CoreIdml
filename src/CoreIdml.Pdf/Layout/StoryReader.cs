@@ -703,6 +703,8 @@ internal sealed class StoryReader
                 : null,
             RuleAbove = ParagraphDecorations.Rule(Get, "RuleAbove", document.Swatches),
             RuleBelow = ParagraphDecorations.Rule(Get, "RuleBelow", document.Swatches),
+            Border = ParagraphDecorations.Border(Get, document.Swatches),
+            Shading = ParagraphDecorations.Shading(Get, document.Swatches),
         };
         paragraphFormats[range] = format;
         return format;

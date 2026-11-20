@@ -123,6 +123,12 @@ internal sealed record ParagraphFormatting
 
     /// <summary>The rule below the paragraph (<c>RuleBelow="true"</c>); null for none.</summary>
     public ParagraphRule? RuleBelow { get; init; }
+
+    /// <summary>The paragraph's border (<c>ParagraphBorderOn="true"</c>); null for none.</summary>
+    public ParagraphBorder? Border { get; init; }
+
+    /// <summary>The paragraph's shading (<c>ParagraphShadingOn="true"</c>); null for none.</summary>
+    public ParagraphShading? Shading { get; init; }
 }
 
 /// <summary>
@@ -444,6 +450,12 @@ internal sealed record LineInfo(int FrameIndex, int Column, double Baseline, dou
 
     /// <summary>How far the line's glyphs reach above the baseline (the first-baseline Ascent).</summary>
     public double Ascent { get; init; }
+
+    /// <summary>How far the line's glyphs reach below the baseline.</summary>
+    public double Descent { get; init; }
+
+    /// <summary>The line's leading.</summary>
+    public double Leading { get; init; }
 }
 
 /// <summary>The result of composing a story into its frames.</summary>

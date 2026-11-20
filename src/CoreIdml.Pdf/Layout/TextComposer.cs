@@ -1470,6 +1470,8 @@ internal sealed partial class TextComposer
             ColumnLeft = column.X,
             ColumnWidth = column.Width,
             Ascent = metrics.Ascent,
+            Descent = metrics.Descent,
+            Leading = metrics.Leading,
         });
     }
 
