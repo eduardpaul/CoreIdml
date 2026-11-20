@@ -379,7 +379,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | Sample | Checks | Pass when | Watch out |
 | --- | --- | --- | --- |
 | `08-para-alignment-indents` | D | Line starts and ends per alignment and indent; balance ragged lines. | |
-| `08-para-tabs` | D | Tab positions within 0.5 pt; decimal and character alignment on `.`, `,`, `=`; leaders (`.`, `-`, `_`, `·`, `ab`) present between the right words. | Leaders extract as words: a missing leader is a set of unmatched words, and a leader glyph short or extra changes the word. Now drawn (p3, p4 100% within 1 pt); p2 misses the `ab` line by one copy because InDesign sets "fi" as a ligature in Liberation Serif and we do not. |
+| `08-para-tabs` | D | Tab positions within 0.5 pt; decimal and character alignment on `.`, `,`, `=`; leaders (`.`, `-`, `_`, `·`, `ab`) present between the right words. | Leaders extract as words: a missing leader is a set of unmatched words, and a leader glyph short or extra changes the word. Now drawn: every page 100% within 1 pt. |
 | `08-para-hyphenation-justification` | D | p5 single-line composer: same line breaks as InDesign (the fair page for our composer); p1–4: settings read (B), lines compared. | Paragraph Composer pages will not match until a paragraph composer exists. |
 | `08-para-keeps-breaks` | D, F | Keep with next, keep together, keep first/last lines, start in next column, frame, page, odd page: the same paragraph starts each column and page. | p8 blank by design; p6 and p9 are continuations. |
 | `08-para-rules` | C (regions), D | Weights, offsets, width (column/text), indents, types, above and below together, 2-column frame. | |

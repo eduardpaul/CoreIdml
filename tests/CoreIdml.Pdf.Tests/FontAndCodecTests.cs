@@ -30,10 +30,14 @@ public sealed class FontAndCodecTests
         var used = "Hola señor".Select(c => font.GlyphId(c)).ToList();
         var subset = FontSubsetter.Subset(font, used);
         Assert.True(subset.Length < font.RawData.Length / 4, $"subset is {subset.Length} bytes");
-        var reloaded = OpenTypeFont.Load(subset);
+        var reloaded = new SubsetFont(subset);
         Assert.Equal(font.GlyphCount, reloaded.GlyphCount);
-        Assert.Equal(font.GlyphId('ñ'), reloaded.GlyphId('ñ'));
-        Assert.Equal(font.Advance(font.GlyphId('H')), reloaded.Advance(reloaded.GlyphId('H')));
+        Assert.Equal(font.Advance(font.GlyphId('H')), reloaded.Advance(font.GlyphId('H')));
+        Assert.True(reloaded.OutlineLength(font.GlyphId('ñ')) > 0);
+        Assert.Equal(0, reloaded.OutlineLength(font.GlyphId('Z')));
+        // Addressed by glyph id only, as InDesign embeds fonts: with a cmap some renderers pick glyphs through the
+        // text instead, and draw a ligature such as fi as f and i.
+        Assert.DoesNotContain("cmap", reloaded.Tables.Keys);
     }
 
     [Fact]

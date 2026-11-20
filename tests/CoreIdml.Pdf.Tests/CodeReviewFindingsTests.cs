@@ -158,6 +158,6 @@ public sealed class CodeReviewFindingsTests
 
         var subset = FontSubsetter.Subset(damaged, [composite, damaged.GlyphId('a')]);
 
-        Assert.Equal(damaged.GlyphCount, OpenTypeFont.Load(subset).GlyphCount);
+        Assert.Equal(damaged.GlyphCount, new SubsetFont(subset).GlyphCount);
     }
 }

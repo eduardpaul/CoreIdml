@@ -7,9 +7,14 @@ namespace CoreIdml.Pdf.Fonts;
 /// kept, outlines of unused glyphs are emptied, and only the tables a PDF renderer needs are written. Composite
 /// glyphs pull in their components.
 /// </summary>
+/// <remarks>
+/// No <c>cmap</c>: the PDF addresses glyphs by id (<c>/CIDToGIDMap /Identity</c>), and InDesign leaves it out too. With
+/// a <c>cmap</c>, some renderers (pdf_oxide) choose glyphs through the text (ToUnicode, then <c>cmap</c>) instead of the
+/// id, which draws a ligature such as fi as a separate f and i spaced as one glyph ("f itti ng").
+/// </remarks>
 internal static class FontSubsetter
 {
-    private static readonly string[] KeptTables = ["cmap", "cvt ", "fpgm", "glyf", "head", "hhea", "hmtx", "loca", "maxp", "name", "OS/2", "post", "prep"];
+    private static readonly string[] KeptTables = ["cvt ", "fpgm", "glyf", "head", "hhea", "hmtx", "loca", "maxp", "name", "OS/2", "post", "prep"];
 
     public static byte[] Subset(OpenTypeFont font, IEnumerable<ushort> usedGlyphs)
     {

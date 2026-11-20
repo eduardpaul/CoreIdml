@@ -96,6 +96,31 @@ internal sealed class OpenTypeFont
         ReadKern();
         ReadGpos();
         ReadGsubLigatures();
+        AddPresentationFormLigatures();
+    }
+
+    /// <summary>
+    /// A font without standard ligatures (no GSUB <c>liga</c>) that has the fi and fl characters (U+FB01, U+FB02) gets
+    /// them as its ligatures, as InDesign does: with Liberation Serif and Sans (no <c>liga</c>) InDesign 20 sets "fi"
+    /// as one glyph and "ff" as two (doc-samples 08-para-tabs, 08-para-alignment-indents, 05-image-fitting).
+    /// </summary>
+    private void AddPresentationFormLigatures()
+    {
+        if (ligatures.Count > 0 || !cmap.TryGetValue('f', out var f))
+        {
+            return;
+        }
+        foreach (var (second, form) in (ReadOnlySpan<(char, int)>)[('i', 0xFB01), ('l', 0xFB02)])
+        {
+            if (cmap.TryGetValue(second, out var other) && cmap.TryGetValue(form, out var ligature) && ligature != 0)
+            {
+                if (!ligatures.TryGetValue(f, out var list))
+                {
+                    ligatures[f] = list = [];
+                }
+                list.Add(([other], ligature));
+            }
+        }
     }
 
     public string SourcePath { get; }

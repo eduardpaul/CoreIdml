@@ -180,6 +180,25 @@ public sealed class LayoutTests
         }
     }
 
+    [Theory]
+    [InlineData("fit", null, "fi|t")]
+    [InlineData("flat", null, "fl|a|t")]
+    [InlineData("off", null, "o|f|f")]
+    [InlineData("fit", "false", "f|i|t")]
+    public void Fonts_without_standard_ligatures_use_their_fi_and_fl_characters(string text, string? ligatures, string expected)
+    {
+        // InDesign 20 with Liberation Serif and Sans, which have no GSUB liga: "fi" is one glyph, "ff" two
+        // (doc-samples 08-para-tabs, 05-image-fitting, 08-para-bullets-numbering).
+        var (document, page) = NewDocument();
+        var style = document.Styles.AddParagraphStyle("Body", new ParagraphFormat { FontFamily = "Liberation Serif", PointSize = 12 });
+        var frame = page.AddText(new Rect(0, 0, 300, 100), text, style);
+        frame.Story.Element.Descendants("CharacterStyleRange").Single().SetAttributeValue("Ligatures", ligatures);
+
+        var run = Assert.Single(Layout(document, frame).OpsByFrame[frame.Id].OfType<GlyphRunOp>());
+        Assert.Equal(expected, string.Join("|", run.Glyphs.Select(g => g.Text)));
+        Assert.Equal(text, run.Text);
+    }
+
     /// <summary>
     /// Liberation Serif has an fi glyph (U+FB01) but no standard ligature using it; its one ligature lookup (under
     /// dlig) is rewritten to make f + i -> fi a liga ligature, the way fonts such as Raleway define it.
