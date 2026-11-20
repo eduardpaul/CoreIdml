@@ -72,8 +72,10 @@ public sealed class TextMeasurer : IDisposable
             .ToList();
         var full = renderer.Compose(story, extended);
         var lastColumn = last.Columns.Count - 1;
-        var bottom = full.Lines.Where(line => line.FrameIndex == areas.Count - 1 && line.Column == lastColumn).Select(line => line.Baseline).DefaultIfEmpty(column.Y).Max()
-            + full.LastDescent;
+        var lastLines = full.Lines.Where(line => line.FrameIndex == areas.Count - 1 && line.Column == lastColumn).ToList();
+        // Footnotes need their room below the text.
+        var bottom = Math.Max(lastLines.Select(line => line.Baseline).DefaultIfEmpty(column.Y).Max() + full.LastDescent,
+            lastLines.Select(full.FootnoteBottom).DefaultIfEmpty(column.Y).Max());
         var overflowPoints = Math.Max(0, bottom - (column.Y + column.Height));
         // The composer only counts whole paragraphs that did not start; count the characters of the lines that did not fit.
         var oversetCharacters = Math.Max(layout.OversetCharacters, full.Lines.Skip(layout.Lines.Count).Sum(line => line.Text.Length - line.MarkerLength));

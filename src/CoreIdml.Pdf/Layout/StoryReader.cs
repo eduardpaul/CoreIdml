@@ -15,7 +15,7 @@ internal sealed class StoryReader
         ["ParagraphStyleRange", "CharacterStyleRange", "XMLElement", "HyperlinkTextSource", "HyperlinkTextDestination", "Change", "Story"];
 
     private static readonly HashSet<string> Skipped =
-        ["Properties", "Footnote", "Note", "XMLAttribute", "XMLComment", "XMLInstruction", "DTD", "StoryPreference", "InCopyExportOption",
+        ["Properties", "Note", "XMLAttribute", "XMLComment", "XMLInstruction", "DTD", "StoryPreference", "InCopyExportOption",
          "Rectangle", "Oval", "Polygon", "GraphicLine", "TextFrame", "Group", "Button", "EPSText", "Image", "PDF", "EPS", "Index", "Bookmark"];
 
     private readonly IdmlDocument document;
@@ -108,6 +108,15 @@ internal sealed class StoryReader
                         firstText ??= child;
                         lastStyle = StyleOf(child);
                         items.Add(new TextVariableItem(child, lastStyle));
+                        break;
+                    case "Footnote":
+                        // Its paragraphs are its own text, composed at the foot of the column; here only its number.
+                        currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        items.Add(new FootnoteItem(child, NoteMarkerStyle(child, Footnotes.MarkerStyle, Footnotes.MarkerPositioning)) { Generated = true });
+                        break;
+                    case "Endnote":
+                        currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
+                        items.Add(new TextItem(EndnoteNumber(child.Attribute("Self")?.Value, reference: true), NoteMarkerStyle(child, Endnotes.MarkerStyle, Endnotes.MarkerPositioning)) { Generated = true });
                         break;
                     case "Cell" or "Row" or "Column":
                         break;
@@ -242,7 +251,7 @@ internal sealed class StoryReader
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
                         EndParagraph(child);
                         break;
-                    case "Table" or "TextVariableInstance":
+                    case "Table" or "TextVariableInstance" or "Footnote" or "Endnote":
                         currentRange ??= child.Ancestors("ParagraphStyleRange").FirstOrDefault();
                         hasItems = true;
                         break;
@@ -271,6 +280,92 @@ internal sealed class StoryReader
         {
             EndParagraph(null);
         }
+    }
+
+    // ---- footnotes and endnotes -------------------------------------------------------------------------
+
+    private FootnoteOptions? footnoteOptions;
+    private EndnoteOptions? endnoteOptions;
+    private Dictionary<string, int>? endnoteOrdinals;
+    private Dictionary<string, int>? footnotesBefore;
+
+    /// <summary>The document's footnote options.</summary>
+    public FootnoteOptions Footnotes => footnoteOptions ??= FootnoteOptions.Read(document);
+
+    private EndnoteOptions Endnotes => endnoteOptions ??= EndnoteOptions.Read(document);
+
+    /// <summary>
+    /// The formatting of a note's reference number: the text's where the note is (11-long-footnotes-endnotes keeps
+    /// every reference in a run of its own with <c>Position="Superscript"</c>: 5.83 pt, 3.33 pt up in 10 pt text),
+    /// under the options' character style, superscript or subscript as the options' marker positioning says
+    /// (<c>SuperscriptMarker</c>; <c>SubscriptMarker</c>, and <c>NormalMarker</c> leaving the run's own position,
+    /// from memory).
+    /// </summary>
+    private RunStyle NoteMarkerStyle(XElement note, string? characterStyle, string positioning)
+    {
+        var style = characterStyle is null ? StyleOf(note) : StyleOf(note, [characterStyle]);
+        return positioning switch
+        {
+            "SuperscriptMarker" when style.Position != "Superscript" => style with { Position = "Superscript" },
+            "SubscriptMarker" when style.Position != "Subscript" => style with { Position = "Subscript" },
+            _ => style,
+        };
+    }
+
+    /// <summary>
+    /// The number of endnote <paramref name="id"/> (an <c>Endnote@Self</c>): its place among the endnotes of the
+    /// document's endnote stories (<c>EndnoteRange@SourceEndnote</c>, in story order: InDesign keeps them in the order
+    /// of their references; 11-long-footnotes-endnotes p5 numbers the three references 1, 2, 3), from
+    /// <c>StartEndnoteNumberAt</c>. An endnote missing from them takes its place among the document's references.
+    /// Restarting by section is not done.
+    /// </summary>
+    private string EndnoteNumber(string? id, bool reference)
+    {
+        if (endnoteOrdinals is null)
+        {
+            endnoteOrdinals = new Dictionary<string, int>(StringComparer.Ordinal);
+            var endnoteStories = document.Stories.Where(story => story.Element.Attribute("IsEndnoteStory")?.Value == "true").ToList();
+            foreach (var range in endnoteStories.SelectMany(story => story.Element.Descendants("EndnoteRange")))
+            {
+                if (range.Attribute("SourceEndnote")?.Value is { } source)
+                {
+                    endnoteOrdinals.TryAdd(source, endnoteOrdinals.Count);
+                }
+            }
+            var listed = endnoteOrdinals.Count;
+            foreach (var endnote in document.Stories.SelectMany(story => story.Element.Descendants("Endnote")))
+            {
+                if (endnote.Attribute("Self")?.Value is { } self && !endnoteOrdinals.ContainsKey(self))
+                {
+                    endnoteOrdinals[self] = listed++;
+                }
+            }
+        }
+        var ordinal = id is not null && endnoteOrdinals.TryGetValue(id, out var known) ? known : 0;
+        return Endnotes.Format(Endnotes.StartAt + ordinal, reference);
+    }
+
+    /// <summary>
+    /// How many footnotes the stories before <paramref name="story"/> hold (in layout order: page, then top, then
+    /// left): where its numbering goes on when footnotes are numbered through the document without restarting.
+    /// </summary>
+    public int FootnotesBefore(XElement story)
+    {
+        if (footnotesBefore is null)
+        {
+            footnotesBefore = new Dictionary<string, int>(StringComparer.Ordinal);
+            var stories = document.Stories.ToDictionary(s => s.Id, s => s.Element, StringComparer.Ordinal);
+            var count = 0;
+            foreach (var id in StoriesInLayoutOrder())
+            {
+                footnotesBefore[id] = count;
+                if (stories.TryGetValue(id, out var element))
+                {
+                    count += element.Descendants("Footnote").Count(footnote => !TrackedChanges.IsDeleted(footnote));
+                }
+            }
+        }
+        return story.Attribute("Self")?.Value is { } storyId && footnotesBefore.TryGetValue(storyId, out var before) ? before : 0;
     }
 
     /// <summary>
@@ -348,7 +443,7 @@ internal sealed class StoryReader
         return Rect.FromEdges(bounds.Left - outside, bounds.Top - outside, bounds.Right + outside, bounds.Bottom + outside);
     }
 
-    private static void AddContent(XElement content, RunStyle style, List<InlineItem> items, List<(int Before, char Code)> hidden)
+    private void AddContent(XElement content, RunStyle style, List<InlineItem> items, List<(int Before, char Code)> hidden)
     {
         var text = new StringBuilder();
         var run = content.Ancestors("CharacterStyleRange").FirstOrDefault();
@@ -377,6 +472,10 @@ internal sealed class StoryReader
                                 Flush();
                                 items.Add(new LineBreakItem(style));
                                 break;
+                            case (char)0xFEFF:
+                                // Zero width no-break space: nothing to draw (InDesign wraps each endnote's text in
+                                // the endnote story in them, 11-long-footnotes-endnotes p6).
+                                break;
                             default:
                                 text.Append(c);
                                 break;
@@ -386,6 +485,15 @@ internal sealed class StoryReader
                 case XProcessingInstruction { Target: "ACE" } instruction:
                     switch (instruction.Data.Trim())
                     {
+                        case "4":
+                            // The note's number at the start of its text: known once its reference is placed (a
+                            // footnote), or from the order of the endnote story (an endnote; the sample's endnotes
+                            // have none, so their form there is from memory).
+                            Flush();
+                            items.Add(content.Ancestors("EndnoteRange").FirstOrDefault() is { } range
+                                ? new TextItem(EndnoteNumber(range.Attribute("SourceEndnote")?.Value, reference: false), style) { Generated = true }
+                                : new FootnoteNumberItem(style) { Generated = true });
+                            break;
                         case "18":
                             // Current, next and previous page numbers share the code; the run's PageNumberType
                             // tells them apart (11-long-markers-variables, jump lines).

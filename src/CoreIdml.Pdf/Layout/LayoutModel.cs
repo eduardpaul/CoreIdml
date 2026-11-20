@@ -211,6 +211,15 @@ internal sealed record TextVariableItem(XElement Instance, RunStyle Style) : Inl
 internal sealed record TableItem(XElement Table, RunStyle Style) : InlineItem(Style);
 
 /// <summary>
+/// A footnote's reference in the text (a <c>Footnote</c> element): its number, numbered where the line goes, in
+/// <see cref="InlineItem.Style"/>; the footnote's text goes to the foot of that column (see <c>TextComposer.Footnotes</c>).
+/// </summary>
+internal sealed record FootnoteItem(XElement Footnote, RunStyle Style) : InlineItem(Style);
+
+/// <summary>The footnote's number at the start of its own text (<c>&lt;?ACE 4?&gt;</c>): <see cref="FrameArea.FootnoteNumber"/>.</summary>
+internal sealed record FootnoteNumberItem(RunStyle Style) : InlineItem(Style);
+
+/// <summary>
 /// A page item anchored in the text (a shape, frame or group): its visible bounds in its own parent coordinates (where
 /// its ItemTransform puts it; the composer moves it to the line). Inline (<see cref="Anchored"/> null) it flows like a
 /// character, its bottom <see cref="YOffset"/> above the baseline; otherwise <see cref="Anchored"/> says where it goes.
@@ -393,6 +402,15 @@ internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, st
     /// same height.
     /// </summary>
     public bool BalanceColumns { get; init; }
+
+    /// <summary>
+    /// The frame's own footnote spacing (<c>FootnotesEnableOverrides</c>: <c>FootnotesMinimumSpacing</c>,
+    /// <c>FootnotesSpaceBetween</c>); null when it uses the document's footnote options.
+    /// </summary>
+    public (double SpaceBefore, double SpaceBetween)? FootnoteSpacing { get; init; }
+
+    /// <summary>The number a footnote's text starts with (<see cref="FootnoteNumberItem"/>), when this area holds one.</summary>
+    public string FootnoteNumber { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -478,6 +496,19 @@ internal sealed class StoryLayout
 
     /// <summary>Descent of the last placed line (how far its glyphs hang below the baseline).</summary>
     public double LastDescent { get; set; }
+
+    /// <summary>
+    /// For each column (frame index, column index) holding footnotes, how far below its last line of text the column
+    /// must reach for them: the space before the footnotes, their rule and their lines.
+    /// </summary>
+    public Dictionary<(int Frame, int Column), double> FootnoteDepths { get; } = [];
+
+    /// <summary>
+    /// Where the column of <paramref name="line"/> must end to hold it: its baseline, or below it the footnotes of its
+    /// column when it is the column's last line (<see cref="FootnoteDepths"/>, counted from any line of the column).
+    /// </summary>
+    public double FootnoteBottom(LineInfo line) =>
+        line.Baseline + (FootnoteDepths.TryGetValue((line.FrameIndex, line.Column), out var depth) ? depth : 0);
 }
 
 /// <summary>Number parsing helpers for IDML attribute values.</summary>

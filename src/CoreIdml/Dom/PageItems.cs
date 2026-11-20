@@ -373,14 +373,15 @@ public abstract class PageItem : IdmlNode
 
     /// <summary>Element names <see cref="TryWrap"/> turns into page items.</summary>
     internal static bool IsPageItemKind(string localName) =>
-        localName is "TextFrame" or "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "Group" || GenericKinds.Contains(localName);
+        localName is "TextFrame" or "EndnoteTextFrame" or "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "Group" || GenericKinds.Contains(localName);
 
     /// <summary>Page items whose child elements <see cref="SelfAndDescendants"/> visits: groups and frames.</summary>
-    internal static bool HoldsItems(string localName) => localName is "Group" or "TextFrame" or "Rectangle" or "Oval" or "Polygon";
+    internal static bool HoldsItems(string localName) => localName is "Group" or "TextFrame" or "EndnoteTextFrame" or "Rectangle" or "Oval" or "Polygon";
 
     internal static PageItem? TryWrap(IdmlDocument document, Spread spread, XElement element) => element.Name.LocalName switch
     {
-        "TextFrame" => new TextFrame(document, spread, element),
+        // The frame InDesign 2018+ creates for a document's endnotes (11-long-footnotes-endnotes p6) is a text frame of its own name.
+        "TextFrame" or "EndnoteTextFrame" => new TextFrame(document, spread, element),
         "Rectangle" or "Oval" or "Polygon" => new GraphicFrame(document, spread, element),
         "GraphicLine" => new GraphicLine(document, spread, element),
         "Group" => new Group(document, spread, element),

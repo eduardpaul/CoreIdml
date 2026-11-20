@@ -47,7 +47,7 @@ public class Spread : IdmlNode
             {
                 continue;
             }
-            if (kind == "TextFrame" && (storyId is null || (child.Attribute("ParentStory")?.Value ?? string.Empty) == storyId))
+            if (kind is "TextFrame" or "EndnoteTextFrame" && (storyId is null || (child.Attribute("ParentStory")?.Value ?? string.Empty) == storyId))
             {
                 output.Add(new TextFrame(Document, this, child));
             }

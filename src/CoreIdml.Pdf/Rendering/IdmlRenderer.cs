@@ -85,7 +85,8 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         var inset = TextInset(resolver.ObjectChain(frame.Element));
         var top = columns[0].Y;
-        var bottom = layout.Lines.Max(line => line.Baseline) + layout.LastDescent;
+        // Footnotes need their room below the text.
+        var bottom = Math.Max(layout.Lines.Max(line => line.Baseline) + layout.LastDescent, layout.Lines.Max(layout.FootnoteBottom));
         return new TextMeasure(layout.Lines.Max(line => line.Width), bottom - top + inset.Top + inset.Bottom, layout.Lines.Count);
     }
 
@@ -292,6 +293,9 @@ internal sealed partial class IdmlRenderer : IDisposable
             Page = page is null ? null : PageArea(frame, page),
             BalanceColumns = Preference("VerticalBalanceColumns") == "true",
             TextArea = TextAreaOf(frame, chain, inner, inset),
+            FootnoteSpacing = Preference("FootnotesEnableOverrides") == "true"
+                ? (Values.Number(Preference("FootnotesMinimumSpacing"), 12), Values.Number(Preference("FootnotesSpaceBetween"), 6))
+                : null,
         };
     }
 

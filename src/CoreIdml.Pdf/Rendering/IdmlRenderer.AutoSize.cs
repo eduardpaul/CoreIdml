@@ -115,10 +115,12 @@ internal sealed partial class IdmlRenderer
             }
             if (type is "HeightOnly" or "HeightAndWidth")
             {
-                var laid = Lay(width, Unlimited, balance: last.Columns.Count > 1).Lines.Where(line => line.FrameIndex == lastIndex).ToList();
+                var layout = Lay(width, Unlimited, balance: last.Columns.Count > 1);
+                var laid = layout.Lines.Where(line => line.FrameIndex == lastIndex).ToList();
                 if (laid.Count > 0)
                 {
-                    height = Math.Max(laid.Max(line => line.Baseline) - stored.Y + inset.Bottom, Minimum("Height"));
+                    // Footnotes go below the last baseline (from memory: no sample has an auto-sizing frame with any).
+                    height = Math.Max(laid.Max(layout.FootnoteBottom) - stored.Y + inset.Bottom, Minimum("Height"));
                 }
             }
         }

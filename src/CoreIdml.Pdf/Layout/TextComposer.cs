@@ -14,8 +14,9 @@ namespace CoreIdml.Pdf.Layout;
 /// spacing, letter spacing and glyph scaling within the paragraph's limits, <see cref="Justifier"/>), vertical
 /// justification, keep options and Start Paragraph (a forbidden column break moves to an earlier line, laying the text
 /// out again from there), paragraphs that span or split columns and balanced columns (the text laid out again with a
-/// lower column bottom), inline tables (rows flow across columns and frames, header rows repeat), and anchored objects
-/// (inline, above the line, custom-positioned: <see cref="PlaceCustom"/>).
+/// lower column bottom), inline tables (rows flow across columns and frames, header rows repeat), anchored objects
+/// (inline, above the line, custom-positioned: <see cref="PlaceCustom"/>) and footnotes at the foot of their column
+/// (<see cref="PlaceFootnotes"/>).
 /// Not done: optical kerning, text wrap.
 /// Deterministic: same input, same output.
 /// </summary>
@@ -50,7 +51,7 @@ internal sealed partial class TextComposer
             layout.Overset = paragraphs.Any(p => p.Items.Count > 0);
             return layout;
         }
-        var flow = new Flow(frames, layout);
+        var flow = new Flow(frames, layout) { Notes = NotesFor(container) };
         layout.Paragraphs = paragraphs;
         // Keep options: the flow state before each paragraph, the column of each of its lines (null for a paragraph
         // holding a table, which keeps leave alone), and the column breaks moved earlier to honour them.
@@ -71,6 +72,8 @@ internal sealed partial class TextComposer
             var band = flow.BandId;
             Balance(BandStart(paragraphs.Count, band), paragraphs.Count, band, () => !flow.Exhausted && flow.BandId == band);
         }
+        // The rest of a footnote split at the end of the text goes on in the next columns.
+        flow.PlaceRemainingNotes();
         // Paragraphs after the one that ran out of room were not laid out.
         layout.ParagraphFrames.AddRange(paragraphFrames.Take(Math.Min(index + 1, paragraphs.Count)));
         if (flow.Exhausted)
@@ -295,11 +298,13 @@ internal sealed partial class TextComposer
         public int UnbrokenAfter;
     }
 
-    private List<Shaped> Shape(ParagraphModel paragraph, FrameArea frame) => Shape(paragraph.Items, paragraph.Format, frame);
+    private List<Shaped> Shape(ParagraphModel paragraph, Flow flow) => Shape(paragraph.Items, paragraph.Format, flow);
 
-    private List<Shaped> Shape(IReadOnlyList<InlineItem> items, ParagraphFormatting format, FrameArea frame)
+    private List<Shaped> Shape(IReadOnlyList<InlineItem> items, ParagraphFormatting format, Flow flow)
     {
+        var frame = flow.Frame;
         var result = new List<Shaped>();
+        var footnotes = 0;
         foreach (var item in items)
         {
             var first = result.Count;
@@ -307,6 +312,13 @@ internal sealed partial class TextComposer
             {
                 case TextItem text:
                     ShapeText(text.Text, text.Style, result, text.Generated ? null : format.Hyphenation);
+                    break;
+                case FootnoteItem footnote:
+                    // Numbered for the page the paragraph starts on; PlaceFootnotes numbers it again where its line goes.
+                    ShapeText(FootnoteReference(flow, footnotes++), footnote.Style, result);
+                    break;
+                case FootnoteNumberItem footnoteNumber:
+                    ShapeText(frame.FootnoteNumber, footnoteNumber.Style, result);
                     break;
                 case PageNumberItem number:
                     ShapeText(number.Marker switch
@@ -738,7 +750,7 @@ internal sealed partial class TextComposer
         {
             flow.NextColumn();
         }
-        var glyphs = Shape(paragraph, flow.Frame);
+        var glyphs = Shape(paragraph, flow);
         var dropCap = TakeDropCap(glyphs, format, flow.Frame);
         flow.PendingSpace += isFirst ? 0 : format.SpaceBefore;
         // Span Columns: the lines are as wide as the columns spanned, or as a sub-column of a split paragraph.
@@ -786,7 +798,7 @@ internal sealed partial class TextComposer
             if (lineStyles is not null && index < glyphs.Count && glyphs[index].Item is { } source
                 && lineStyles.LineStyle(columns.Count) is var wanted && wanted != lineStyle)
             {
-                var rest = Shape(lineStyles.ItemsFrom(source, glyphs[index].Index, wanted), format, flow.Frame);
+                var rest = Shape(lineStyles.ItemsFrom(source, glyphs[index].Index, wanted), format, flow);
                 // After a line that ends in a hyphen the rest of the word is not a word of its own: it keeps no hyphenation
                 // points (and no split ligatures) of its own.
                 if (index > 0 && glyphs[index - 1].Kind == GlyphKind.SoftHyphen)
@@ -826,6 +838,7 @@ internal sealed partial class TextComposer
             {
                 (end, forced, available) = BreakLine(column.Width);
                 metrics = Metrics(end);
+                ReserveFootnotes(glyphs, start, end, flow);
                 if (!flow.Place(metrics, snapToGrid))
                 {
                     index = end;
@@ -839,6 +852,7 @@ internal sealed partial class TextComposer
                 }
             }
             var line = glyphs.GetRange(start, end - start);
+            PlaceFootnotes(line, flow);
             index = end;
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             columns.Add(flow.ColumnOrdinal);
@@ -892,6 +906,7 @@ internal sealed partial class TextComposer
                     (wrappedEnd, wrappedForced, wrappedWidth) = BreakInSlot(actual, wrappedMetrics, least, replan: true);
                     wrappedMetrics = Metrics(wrappedEnd);
                 }
+                ReserveFootnotes(glyphs, start, wrappedEnd, flow);
                 return flow.Place(wrappedMetrics, snapToGrid, least);
             }
 
@@ -1238,7 +1253,10 @@ internal sealed partial class TextComposer
                 leading = Math.Max(leading, glyph.Style.Leading ?? (glyph.Style.AutoLeading * (height + Math.Max(0, glyph.Rise))));
                 continue;
             }
-            ascent = Math.Max(ascent, (glyph.Style.Font.Ascent * glyph.Size) + Math.Max(0, glyph.Rise));
+            // A superscript's raise does not count, a baseline shift does: InDesign sets the first baseline of a line
+            // with superscripts where it sets it without (07-char-case-position p3: "E = mc2" in 18 pt Liberation Serif,
+            // superscript or not, 36 pt below its label; 11-long-footnotes-endnotes p1: a footnote reference).
+            ascent = Math.Max(ascent, (glyph.Style.Font.Ascent * glyph.Size) + Math.Max(0, glyph.Style.BaselineShift));
             descent = Math.Max(descent, (glyph.Style.Font.Descent * glyph.Size) - Math.Min(0, glyph.Rise));
             leading = Math.Max(leading, glyph.Style.EffectiveLeading);
             cap = Math.Max(cap, glyph.Style.Font.CapHeight * glyph.Size);
@@ -2013,7 +2031,7 @@ internal sealed partial class TextComposer
     /// through sub-columns of its column (<see cref="BeginSplit"/>). A band can be given a lowest baseline
     /// (<see cref="SetLimit"/>), which is how <see cref="Compose"/> balances columns.
     /// </summary>
-    private sealed class Flow
+    private sealed partial class Flow
     {
         private readonly IReadOnlyList<FrameArea> frames;
         private readonly List<FilledColumn> filled = [];
@@ -2090,7 +2108,7 @@ internal sealed partial class TextComposer
             int FrameIndex, int ColumnIndex, int ColumnOrdinal, bool Exhausted, bool AtColumnTop, double Baseline, double LastDescent,
             double PendingSpace, double UsedBottom, int ContentPage, int FilledColumns, int ColumnOps, int Lines, bool Overset,
             int ColumnLines, Bands Bands, double BandBottom, double SplitBottom, int Ids, (int Id, bool OneColumn)? LastSplit,
-            (double Baseline, double Top, int Next)? Pending, (int Frame, WrapRegion Region)[] AnchoredWraps);
+            (double Baseline, double Top, int Next)? Pending, (int Frame, WrapRegion Region)[] AnchoredWraps, NoteState Notes);
 
         public Flow(IReadOnlyList<FrameArea> frames, StoryLayout layout)
         {
@@ -2403,7 +2421,7 @@ internal sealed partial class TextComposer
             {
                 bottom = Math.Min(bottom, sub);
             }
-            return bottom;
+            return Math.Min(bottom, NoteFloor());
         }
 
         private static double Deepest(double bottom, double baseline) => double.IsNaN(bottom) ? baseline : Math.Max(bottom, baseline);
@@ -2480,6 +2498,7 @@ internal sealed partial class TextComposer
             PendingSpace = 0;
             Baseline = Column.Y;
             usedBottom = Column.Y;
+            PlaceCarriedNotes();
             return true;
         }
 
@@ -2636,7 +2655,7 @@ internal sealed partial class TextComposer
         }
 
         public State Save() => new(FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop, Baseline, LastDescent, PendingSpace, usedBottom,
-            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending, anchoredWraps);
+            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending, anchoredWraps, notes);
 
         /// <summary>Goes back to <paramref name="state"/>, dropping everything laid out since.</summary>
         public void Restore(State state)
@@ -2652,6 +2671,8 @@ internal sealed partial class TextComposer
             (FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop) = (state.FrameIndex, state.ColumnIndex, state.ColumnOrdinal, state.Exhausted, state.AtColumnTop);
             (Baseline, LastDescent, PendingSpace, usedBottom, contentPage) = (state.Baseline, state.LastDescent, state.PendingSpace, state.UsedBottom, state.ContentPage);
             (columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending, anchoredWraps) = (state.ColumnLines, state.Bands, state.BandBottom, state.SplitBottom, state.Ids, state.LastSplit, state.Pending, state.AnchoredWraps);
+            // No line is being placed at a saved point.
+            (notes, lineNotes) = (state.Notes, 0);
         }
 
         /// <summary>
@@ -2666,6 +2687,7 @@ internal sealed partial class TextComposer
             {
                 FinishColumn(filled[i], i + 1 < filled.Count ? filled[i + 1].FirstLine : Layout.Lines.Count, afterText);
             }
+            DrawNotes();
             foreach (var (target, op) in afterText)
             {
                 target.Add(op);
@@ -2683,7 +2705,7 @@ internal sealed partial class TextComposer
             }
             var frame = frames[Math.Min(frameIndex, frames.Count - 1)];
             var column = frame.Columns.Count == 0 ? default : frame.Columns[Math.Min(columnIndex, frame.Columns.Count - 1)];
-            var free = column.Bottom - used;
+            var free = NoteFloor(frameIndex, columnIndex, column.Bottom) - used;
             var dy = frame.VerticalJustification switch
             {
                 "CenterAlign" => free / 2,
