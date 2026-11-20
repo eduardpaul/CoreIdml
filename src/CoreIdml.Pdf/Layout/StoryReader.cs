@@ -701,6 +701,8 @@ internal sealed class StoryReader
                     Values.Number(Get("SpanColumnMinSpaceBefore"), 0),
                     Values.Number(Get("SpanColumnMinSpaceAfter"), 0))
                 : null,
+            RuleAbove = ParagraphDecorations.Rule(Get, "RuleAbove", document.Swatches),
+            RuleBelow = ParagraphDecorations.Rule(Get, "RuleBelow", document.Swatches),
         };
         paragraphFormats[range] = format;
         return format;

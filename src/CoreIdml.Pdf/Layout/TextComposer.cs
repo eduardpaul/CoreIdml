@@ -80,6 +80,7 @@ internal sealed partial class TextComposer
         }
         layout.LastDescent = flow.LastDescent;
         flow.Finish();
+        DrawParagraphDecorations(layout, frames);
         return layout;
 
         // Lays out paragraphs `from` up to `to`, honouring keep options; returns where it stopped (`to`, or the
@@ -824,7 +825,7 @@ internal sealed partial class TextComposer
             else
             {
                 (end, forced, available) = BreakLine(column.Width);
-                metrics = Measure(glyphs.GetRange(start, end - start), paragraph.MarkStyle);
+                metrics = Metrics(end);
                 if (!flow.Place(metrics, snapToGrid))
                 {
                     index = end;
@@ -841,7 +842,7 @@ internal sealed partial class TextComposer
             index = end;
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             columns.Add(flow.ColumnOrdinal);
-            EmitLine(line, flow, format, indent + flow.Line.Inset, available, isLast, forced, metrics);
+            EmitLine(line, flow, format, indent + flow.Line.Inset, available, isLast, forced, metrics, number);
             if (dropCap is not null && columns.Count == 1)
             {
                 EmitDropCap(dropCap, flow, format);
@@ -876,7 +877,7 @@ internal sealed partial class TextComposer
             {
                 var (wordEnd, wordWidth) = FirstWord(glyphs, start, format);
                 var least = wordWidth + indent + format.RightIndent;
-                var estimate = Measure(glyphs.GetRange(start, wordEnd - start), paragraph.MarkStyle);
+                var estimate = Metrics(wordEnd);
                 if (flow.Find(estimate, snapToGrid, least) is not { } found)
                 {
                     (wrappedEnd, wrappedForced) = FitLine(glyphs, start, column.Width - indent - format.RightIndent, format, indent);
@@ -885,11 +886,11 @@ internal sealed partial class TextComposer
                     return false;
                 }
                 (wrappedEnd, wrappedForced, wrappedWidth) = BreakInSlot(found, estimate, least, replan: false);
-                wrappedMetrics = Measure(glyphs.GetRange(start, wrappedEnd - start), paragraph.MarkStyle);
+                wrappedMetrics = Metrics(wrappedEnd);
                 if (flow.Find(wrappedMetrics, snapToGrid, least) is { } actual && (actual.Inset != found.Inset || actual.Width != found.Width))
                 {
                     (wrappedEnd, wrappedForced, wrappedWidth) = BreakInSlot(actual, wrappedMetrics, least, replan: true);
-                    wrappedMetrics = Measure(glyphs.GetRange(start, wrappedEnd - start), paragraph.MarkStyle);
+                    wrappedMetrics = Metrics(wrappedEnd);
                 }
                 return flow.Place(wrappedMetrics, snapToGrid, least);
             }
@@ -937,6 +938,14 @@ internal sealed partial class TextComposer
             // Whether plan line `number` was planned for the stretch `slot` takes.
             bool Expected(int number, Slot slot) =>
                 slots is { Count: > 0 } made && made[Math.Min(number, made.Count - 1)] is var planFor && planFor.Inset == slot.Inset && planFor.Width == slot.Width;
+
+            // The metrics of the line from `start` to `to`; the paragraph's first line also keeps a rule above that is
+            // kept in its frame inside the column (see Flow.Place).
+            LineMetrics Metrics(int to)
+            {
+                var measured = Measure(glyphs.GetRange(start, to - start), paragraph.MarkStyle);
+                return columns.Count == 0 && format.RuleAbove is { KeptRoom: > 0 } rule ? measured with { KeptRuleAbove = rule.KeptRoom } : measured;
+            }
         }
         flow.PendingSpace = format.SpaceAfter;
         if (spans)
@@ -1195,6 +1204,12 @@ internal sealed partial class TextComposer
     {
         /// <summary>The room the line's above-line objects take above it (<see cref="AboveLineRoom"/>).</summary>
         public double AboveLine { get; init; }
+
+        /// <summary>
+        /// How far above the baseline a rule above kept in the frame reaches (<see cref="ParagraphRule.KeptRoom"/>), on
+        /// a paragraph's first line: at the top of a column the baseline goes at least that far down.
+        /// </summary>
+        public double KeptRuleAbove { get; init; }
     }
 
     private static LineMetrics Measure(List<Shaped> line, RunStyle markStyle)
@@ -1270,7 +1285,7 @@ internal sealed partial class TextComposer
         return to;
     }
 
-    private void EmitLine(List<Shaped> line, Flow flow, ParagraphFormatting format, double indent, double available, bool isLast, bool forced, LineMetrics metrics)
+    private void EmitLine(List<Shaped> line, Flow flow, ParagraphFormatting format, double indent, double available, bool isLast, bool forced, LineMetrics metrics, int paragraph)
     {
         // Drop trailing spaces and the break itself; a soft hyphen at the end becomes a visible hyphen.
         var visible = new List<Shaped>(line);
@@ -1336,6 +1351,7 @@ internal sealed partial class TextComposer
             _ => 0,
         };
         var baseline = flow.Baseline;
+        var textLeft = x;
         var lineText = new StringBuilder();
         var runStart = x;
         var run = new List<PlacedGlyph>();
@@ -1446,7 +1462,15 @@ internal sealed partial class TextComposer
             x += advance;
         }
         FlushRun();
-        flow.Layout.Lines.Add(new LineInfo(flow.FrameIndex, flow.ColumnIndex, baseline, column.X + indent, width, lineText.ToString()) { MarkerLength = markerLength });
+        flow.Layout.Lines.Add(new LineInfo(flow.FrameIndex, flow.ColumnIndex, baseline, column.X + indent, width, lineText.ToString())
+        {
+            MarkerLength = markerLength,
+            Paragraph = paragraph,
+            TextLeft = textLeft,
+            ColumnLeft = column.X,
+            ColumnWidth = column.Width,
+            Ascent = metrics.Ascent,
+        });
     }
 
     /// <summary>
@@ -2212,7 +2236,8 @@ internal sealed partial class TextComposer
                         "FixedHeight" => Frame.MinimumFirstBaselineOffset,
                         _ => metrics.Ascent,
                     };
-                    baseline = column.Y + Math.Max(offset, Frame.MinimumFirstBaselineOffset);
+                    // A rule above kept in the frame stays below the column's top (08-para-rules p5).
+                    baseline = column.Y + Math.Max(Math.Max(offset, Frame.MinimumFirstBaselineOffset), metrics.KeptRuleAbove);
                 }
                 else
                 {

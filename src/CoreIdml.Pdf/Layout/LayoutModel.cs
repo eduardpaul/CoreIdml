@@ -117,6 +117,12 @@ internal sealed record ParagraphFormatting
 
     /// <summary>The paragraph spans or splits the frame's columns (<c>SpanColumnType</c>); null for a single column.</summary>
     public ColumnSpanFormat? ColumnSpan { get; init; }
+
+    /// <summary>The rule above the paragraph (<c>RuleAbove="true"</c>); null for none.</summary>
+    public ParagraphRule? RuleAbove { get; init; }
+
+    /// <summary>The rule below the paragraph (<c>RuleBelow="true"</c>); null for none.</summary>
+    public ParagraphRule? RuleBelow { get; init; }
 }
 
 /// <summary>
@@ -423,6 +429,21 @@ internal sealed record FrameMarkers(string? NextPage, string? PreviousPage, stri
 internal sealed record LineInfo(int FrameIndex, int Column, double Baseline, double Left, double Width, string Text)
 {
     public int MarkerLength { get; init; }
+
+    /// <summary>The index of the line's paragraph in <see cref="StoryLayout.Paragraphs"/>.</summary>
+    public int Paragraph { get; init; }
+
+    /// <summary>Where the line's text starts, once aligned (<see cref="Width"/> long from there).</summary>
+    public double TextLeft { get; init; }
+
+    /// <summary>The left edge of the column the line was set in (the columns spanned, or a split paragraph's sub-column).</summary>
+    public double ColumnLeft { get; init; }
+
+    /// <summary>The width of the column the line was set in.</summary>
+    public double ColumnWidth { get; init; }
+
+    /// <summary>How far the line's glyphs reach above the baseline (the first-baseline Ascent).</summary>
+    public double Ascent { get; init; }
 }
 
 /// <summary>The result of composing a story into its frames.</summary>
