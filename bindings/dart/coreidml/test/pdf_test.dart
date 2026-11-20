@@ -26,8 +26,27 @@ void main() {
       expect(fonts.map((font) => font['requestedFamily']), everyElement('Minion Pro'));
       expect(fonts.map((font) => font['usedFont']), everyElement(startsWith('Liberation Serif')));
       expect(report['missingImages'], [endsWith('default.jpg')]);
-      expect(report['oversetStories'], contains('u19f'));
+      // Whether the template's stories fit depends on the line breaking and on the substitute fonts; the test below
+      // checks the overset report with a story that cannot fit.
+      expect(report['oversetStories'], isA<List>());
       expect(report['warnings'], isEmpty);
+    });
+
+    test('a story that does not fit its frame is reported as overset', () {
+      final doc = IdmlDocument.create({
+        'pages': [
+          {
+            'items': [
+              {'type': 'text', 'x': 50, 'y': 50, 'width': 60, 'height': 14, 'text': 'This text cannot fit in a frame one line high and sixty points wide.'},
+            ],
+          },
+        ],
+      });
+      addTearDown(doc.close);
+
+      final report = doc.exportPdf('${tempFolder().path}/overset.pdf', options: liberationFonts);
+
+      expect(report['oversetStories'], hasLength(1));
     });
 
     test('without fonts, the standard PDF fonts are used and reported', () {

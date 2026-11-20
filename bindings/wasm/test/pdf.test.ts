@@ -45,9 +45,21 @@ test('a document is rendered with the fonts of the in-memory file system', () =>
     assert.equal(font.requestedFamily, 'Minion Pro');
     assert.match(font.usedFont, /^Liberation /);
   }
-  assert.deepEqual(report.oversetStories, ['u19f']);
+  // Whether the template's stories fit depends on the line breaking and on the substitute fonts; the test below
+  // checks the overset report with a story that cannot fit.
+  assert.ok(Array.isArray(report.oversetStories));
   // The template's photo is on a disk this engine does not have.
   assert.equal(report.missingImages.length, 1);
+});
+
+test('a story that does not fit its frame is reported as overset', () => {
+  using doc = idml.create({
+    pages: [{ items: [{ type: 'text', x: 36, y: 36, width: 60, height: 14, text: 'This text cannot fit in a frame one line high and sixty points wide.' }] }],
+  });
+
+  const { report } = doc.exportPdfBytes({ useSystemFonts: false });
+
+  assert.equal(report.oversetStories.length, 1);
 });
 
 test('placed images are found in the links folder; pages can be chosen', () => {
