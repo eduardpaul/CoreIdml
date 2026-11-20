@@ -46,8 +46,8 @@ public sealed class ParagraphComposerTests
         return Layout(document, frame).Lines;
     }
 
-    /// <summary>The cost the paragraph composer weighs a ragged line by: the cube of what it leaves empty.</summary>
-    private static double Rag(List<LineInfo> lines, double width) => lines.Take(lines.Count - 1).Sum(line => Math.Pow(width - line.Width, 3));
+    /// <summary>The cost the paragraph composer weighs a ragged line by: the square of what it leaves empty.</summary>
+    private static double Rag(List<LineInfo> lines, double width) => lines.Take(lines.Count - 1).Sum(line => Math.Pow(width - line.Width, 2));
 
     [Fact]
     public void Ragged_lines_are_evened_out_where_one_line_at_a_time_leaves_them_uneven()
@@ -62,6 +62,20 @@ public sealed class ParagraphComposerTests
             better += Rag(paragraph, width) < Rag(single, width) - 1 ? 1 : 0;
         }
         Assert.True(better >= 3, $"the paragraph composer evened out {better} of 13 widths");
+    }
+
+    [Theory]
+    // 01-doc-page-sizes p4 (300 pt): InDesign leaves 22 pt rather than end the line before the last in "invi-"; in the
+    // 157.5 pt column of 06-frame-basics p1 it takes the hyphen rather than leave 24 pt.
+    [InlineData(300, "This was")]
+    [InlineData(157.5, "This was invi-")]
+    public void A_hyphen_before_the_last_line_is_taken_only_for_a_wide_gap(double width, string penultimateEnd)
+    {
+        const string text = "“You want to tell me, and I have no objection to hearing it.” This was invitation enough.";
+        var (document, page) = NewDocument();
+        var frame = page.AddText(new Rect(0, 0, width, 500), text, Style(document, "HL Composer", Justification.Left, hyphenation: true));
+        var lines = Layout(document, frame).Lines;
+        Assert.EndsWith(penultimateEnd, lines[^2].Text.TrimEnd());
     }
 
     [Fact]

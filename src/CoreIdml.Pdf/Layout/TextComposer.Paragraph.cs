@@ -3,7 +3,7 @@ namespace CoreIdml.Pdf.Layout;
 /// <summary>
 /// The Adobe Paragraph Composer (<c>Composer="HL Composer"</c>, InDesign's default): the breaks of a whole paragraph
 /// chosen together, Knuth and Plass's total fit. Each line costs (10 + badness)² demerits, plus 100² for a hyphen,
-/// 3000 when the line before also ends in one and 10000 for a hyphen on the line before the last (TeX's linepenalty,
+/// 3000 when the line before also ends in one and 5000 for a hyphen on the line before the last (TeX's linepenalty,
 /// hyphenpenalty, doublehyphendemerits and finalhyphendemerits, with InDesign's own values where the references show
 /// them); the paragraph takes the breaks of least total. The badness of a line:
 /// <list type="bullet">
@@ -16,11 +16,19 @@ namespace CoreIdml.Pdf.Layout;
 /// aligned stretches the first line to 191% instead; p4 compresses one line to 26% with a 50% minimum). A line that
 /// must stretch with nothing that may (one word without single-word justification) costs
 /// <see cref="ImpossibleCost"/>.</item>
-/// <item>ragged: 100 (gap / 2 em)³ for the room it leaves at the end, nothing for the last line. The hyphenation zone
-/// plays no part (p3: the same breaks with zones of 0 and 60 pt); the rag is evened out instead (08-para-keeps-breaks
-/// p1: a word that fits goes to the next line when that makes both lines closer to full). The 2 em is relative to the
-/// type: 01-doc-bleed-slug hyphenates twice to fill lines that would leave 38 and 20 pt (10 pt type), while
-/// 06-frame-basics p2 leaves 16 pt rather than hyphenate.</item>
+/// <item>ragged: 100 gap / 2 em for the room it leaves at the end, nothing for the last line: linear, so the demerits
+/// grow with the square of the room. The hyphenation zone plays no part (p3: the same breaks with zones of 0 and
+/// 60 pt); the rag is evened out instead (08-para-keeps-breaks p1: a word that fits goes to the next line when that
+/// makes both lines closer to full). The 2 em is relative to the type: 01-doc-bleed-slug hyphenates twice to fill
+/// lines that would leave 38 and 20 pt (10 pt type), while 06-frame-basics p2 leaves 16 pt rather than hyphenate.
+/// A linear badness (TeX cubes it) with TeX's own 5000 for a hyphen before the last line is what the references show:
+/// InDesign leaves 20.9 to 24.1 pt rather than end the line before the last in a hyphen (01-doc-page-sizes p4 "This
+/// was" rather than "invi-", 01-doc-margins-guides p2, 02-item-object-styles p1, 09-style-text-styles p2 and
+/// 11-long-markers-variables p4 at 7 pt) but takes one to avoid 23.7 to 56 pt (06-frame-basics p1 and p4 "invi-",
+/// 06-frame-baseline-grid p2, 10-table-structure p5, 11-long-conditional-text p4, 07-char-case-position p3), and
+/// leaves "universally" alone in 07-char-basics p3 rather than end it with "ac-". Of the 427 paragraphs of two lines or
+/// more in the doc-samples whose lines can be found in the references, the cube composes 356 as InDesign does (358 at
+/// most with any hyphen-before-the-last value), the linear badness 364, none of them one the cube got right.</item>
 /// </list>
 /// Not modelled: fitness classes (adjacent loose and tight lines), the hyphenation weight slider (HyphenWeight; the
 /// references show the same breaks with 5 and 10), "hyphenate last word".
@@ -37,7 +45,7 @@ internal sealed partial class TextComposer
     private const double DoubleHyphenDemerits = 3000;
 
     /// <summary>Demerits for a hyphen on the line before the last.</summary>
-    private const double FinalHyphenDemerits = 10000;
+    private const double FinalHyphenDemerits = 5000;
 
     /// <summary>The badness at which a stretched line counts as just loose (r ≈ 3.1, 200% word spacing by default).</summary>
     private const double StretchCap = 3000;
@@ -188,7 +196,7 @@ internal sealed partial class TextComposer
                         return false;
                     }
                     var gap = (width - natural) / (RaggedRoom * em);
-                    badness = last || forced ? 0 : 100 * gap * gap * gap;
+                    badness = last || forced ? 0 : 100 * gap;
                 }
                 if (double.IsPositiveInfinity(badness))
                 {
