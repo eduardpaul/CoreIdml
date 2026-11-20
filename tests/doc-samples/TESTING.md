@@ -331,7 +331,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `02-item-groups-paste-into` | C | Group opacity as one layer (overlaps not visible through each other), nested clipping. | Group opacity applied per child shows as darker overlaps. |
 | `02-item-anchored` | D, C | Inline objects on the baseline with offsets; above-line alignment; custom anchored objects at the reference position (within 1 pt). | Custom positions are relative to frame, column, margin or page edge. |
 | `02-item-hidden-locked-nonprinting` | C | Hidden and non-printing items absent, locked items present, group flags inherited. | |
-| `02-item-object-styles` | B, C | Fill, stroke, corners, insets and **transparency/shadow** resolved through the style; local overrides win; disabled categories leave the item's own values. | Transparency from the style is a known gap. |
+| `02-item-object-styles` | B, C | Fill, stroke, corners, insets and **transparency/shadow** resolved through the style; local overrides win; disabled categories leave the item's own values. | Opacity from the style is resolved (the sample has none, only a drop shadow, which CoreIdml does not draw). p1: the text frame's 2 pt stroke moves the text 1 pt in and narrows the columns to 255 pt; the remaining misses are one line break of InDesign's paragraph composer ("may" moved to the next line). |
 | `02-item-text-wrap` | D, C | Lines avoid the wrap area per mode and side; contour wraps follow the shape and the alpha channel; inverted wrap flows inside. | Large composer effects; judge by line starts and line lengths. |
 
 ### 03 Colour, 04 Effects

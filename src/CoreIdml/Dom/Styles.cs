@@ -3,7 +3,7 @@ using CoreIdml.Xml;
 
 namespace CoreIdml.Dom;
 
-/// <summary>A paragraph or character style.</summary>
+/// <summary>A paragraph, character or object style.</summary>
 public abstract class Style : IdmlNode
 {
     private protected Style(IdmlDocument document, XElement element)
@@ -58,7 +58,19 @@ public sealed class CharacterStyle : Style
     }
 }
 
-/// <summary>Paragraph and character styles of the document (Resources/Styles.xml).</summary>
+/// <summary>
+/// An object style: the fill, stroke, corners, text frame options and transparency that page items take from it, for the
+/// categories it controls (<c>EnableFill</c>, <c>EnableStroke</c>, ...), unless an item overrides them.
+/// </summary>
+public sealed class ObjectStyle : Style
+{
+    internal ObjectStyle(IdmlDocument document, XElement element)
+        : base(document, element)
+    {
+    }
+}
+
+/// <summary>Paragraph, character and object styles of the document (Resources/Styles.xml).</summary>
 public sealed class StyleCatalog
 {
     private readonly IdmlDocument document;
@@ -73,6 +85,10 @@ public sealed class StyleCatalog
 
     public IReadOnlyList<CharacterStyle> CharacterStyles =>
         CharacterGroup.Descendants("CharacterStyle").Select(element => new CharacterStyle(document, element)).ToList();
+
+    /// <summary>The object styles, built-in ones ([None], [Normal Text Frame], ...) included.</summary>
+    public IReadOnlyList<ObjectStyle> ObjectStyles =>
+        document.StylesRoot.Element("RootObjectStyleGroup")?.Descendants("ObjectStyle").Select(element => new ObjectStyle(document, element)).ToList() ?? [];
 
     /// <summary>InDesign's [Basic Paragraph].</summary>
     public ParagraphStyle BasicParagraph => FindParagraphStyle("[Basic Paragraph]")

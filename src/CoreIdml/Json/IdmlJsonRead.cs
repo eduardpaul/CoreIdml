@@ -47,6 +47,7 @@ public static partial class IdmlJson
         {
             summary.ParagraphStyles = document.Styles.ParagraphStyles.Select(style => style.DisplayName).ToList();
             summary.CharacterStyles = document.Styles.CharacterStyles.Select(style => style.DisplayName).ToList();
+            summary.ObjectStyles = document.Styles.ObjectStyles.Select(style => style.DisplayName).ToList();
             summary.Swatches = document.Swatches.All.Select(swatch => swatch.Name).Where(name => !string.IsNullOrEmpty(name) && name != "$ID/").ToList();
             summary.Layers = document.Layers.All.Select(layer => layer.Name).ToList();
             summary.Tags = document.Tags.Names.ToList();
@@ -91,6 +92,9 @@ public static partial class IdmlJson
                 LikelyOverset = likelyOverset,
                 LinkId = graphic?.LinkId,
                 ImageUri = graphic?.LinkUri,
+                ObjectStyle = item.GetAttribute("AppliedObjectStyle") is { } objectStyle && !objectStyle.StartsWith("ObjectStyle/$ID/", StringComparison.Ordinal)
+                    ? StyleCatalog.DisplayNameFromReference(objectStyle)
+                    : null,
             };
         }
 

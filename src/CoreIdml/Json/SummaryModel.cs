@@ -56,6 +56,8 @@ public sealed class DocumentSummary
 
     public List<string>? CharacterStyles { get; set; }
 
+    public List<string>? ObjectStyles { get; set; }
+
     public List<string>? Swatches { get; set; }
 
     public List<string>? Layers { get; set; }
@@ -115,6 +117,9 @@ public sealed class ItemSummary
     public string? LinkId { get; set; }
 
     public string? ImageUri { get; set; }
+
+    /// <summary>The object style applied to the item, when it is not a built-in one ([None], [Normal Text Frame], ...).</summary>
+    public string? ObjectStyle { get; set; }
 }
 
 public sealed class StorySummary

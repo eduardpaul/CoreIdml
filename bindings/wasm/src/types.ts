@@ -268,6 +268,8 @@ export interface ItemSummary extends JsonObject {
   likelyOverset?: boolean;
   linkId?: string;
   imageUri?: string;
+  /** The object style applied to the item, when it is not a built-in one (`[None]`, `[Normal Text Frame]`, ...). */
+  objectStyle?: string;
 }
 
 export interface PageSummary extends JsonObject {
@@ -329,6 +331,7 @@ export interface DocumentSummary extends JsonObject {
   links?: LinkSummary[];
   paragraphStyles?: string[];
   characterStyles?: string[];
+  objectStyles?: string[];
   swatches?: string[];
   layers?: string[];
   tags?: string[];

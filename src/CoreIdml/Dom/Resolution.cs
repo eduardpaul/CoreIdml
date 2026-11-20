@@ -76,12 +76,104 @@ public sealed class AttributeResolver
         return chain;
     }
 
-    /// <summary>The effective value of a page item attribute (FillColor, StrokeWeight, corner options, ...).</summary>
-    public string? Item(XElement item, string name) => First(ObjectChain(item), name);
+    /// <summary>
+    /// The effective value of a page item attribute (FillColor, StrokeWeight, corner options, ...): the item's own
+    /// value, else its object style chain's, unless the style leaves the attribute's category alone
+    /// (<see cref="ObjectStyleCategory"/>).
+    /// </summary>
+    public string? Item(XElement item, string name)
+    {
+        var chain = ObjectChain(item);
+        return ObjectStyleCategory(name) is { } category && !StylesControl(chain, category) ? Own(item, name) : First(chain, name);
+    }
+
+    /// <summary>
+    /// The object style category (<c>EnableFill</c>, <c>EnableStroke</c>, <c>EnableStrokeAndCornerOptions</c>) that
+    /// holds a page item attribute, or null when the attribute belongs to none of them. An object style whose category
+    /// is off (its check box cleared in Object Style Options) does not touch those attributes: the item keeps its own
+    /// values. In 02-item-object-styles p3, "OS Stroke Only" (<c>EnableFill="false"</c>) leaves the ovals' fill alone
+    /// and "OS Fill Only" (<c>EnableStroke="false"</c>) the polygon's stroke; InDesign writes those values on the item.
+    /// Which attribute is in which category follows InDesign's dialog (from memory, not measured: the samples only
+    /// clear Fill and Stroke): weight, type, colour, tint, gap and overprint are Stroke; alignment, caps, joins,
+    /// arrowheads and corners are Stroke and Corner Options.
+    /// </summary>
+    internal static string? ObjectStyleCategory(string name) => name switch
+    {
+        "FillColor" or "FillTint" or "OverprintFill" => "EnableFill",
+        _ when name.StartsWith("GradientFill", StringComparison.Ordinal) => "EnableFill",
+        "StrokeWeight" or "StrokeType" or "StrokeColor" or "StrokeTint" or "OverprintStroke" or "GapColor" or "GapTint"
+            or "OverprintGap" or "StrokeDashAndGap" => "EnableStroke",
+        _ when name.StartsWith("GradientStroke", StringComparison.Ordinal) => "EnableStroke",
+        "StrokeAlignment" or "EndCap" or "EndJoin" or "MiterLimit" or "LeftLineEnd" or "RightLineEnd" or "LeftArrowHeadScale"
+            or "RightArrowHeadScale" or "ArrowHeadAlignment" => "EnableStrokeAndCornerOptions",
+        _ when name.EndsWith("CornerOption", StringComparison.Ordinal) || name.EndsWith("CornerRadius", StringComparison.Ordinal)
+            => "EnableStrokeAndCornerOptions",
+        _ => null,
+    };
+
+    /// <summary>
+    /// The text frame category that holds a <c>TextFramePreference</c> attribute: baseline options (first baseline
+    /// offset), auto-sizing, column rules, footnotes, and general options for everything else (columns, inset, vertical
+    /// justification, ignore wrap). In 02-item-object-styles p1 "OS Text Frame" enables only the general options
+    /// (two columns, 8 pt inset).
+    /// </summary>
+    internal static string FramePreferenceCategory(string name) =>
+        name is "FirstBaselineOffset" or "MinimumFirstBaselineOffset" ? "EnableTextFrameBaselineOptions"
+        : name.Contains("AutoSizing", StringComparison.Ordinal) ? "EnableTextFrameAutoSizingOptions"
+        : name.StartsWith("ColumnRule", StringComparison.Ordinal) ? "EnableTextFrameColumnRuleOptions"
+        : name.StartsWith("Footnotes", StringComparison.Ordinal) ? "EnableTextFrameFootnoteOptions"
+        : "EnableTextFrameGeneralOptions";
+
+    /// <summary>
+    /// Whether the object styles of an <see cref="ObjectChain"/> control a category (<c>EnableFill</c>,
+    /// <c>EnableTextFrameGeneralOptions</c>, ...). The most specific style that says decides for its whole BasedOn
+    /// chain: a style inherits the values of the style it is based on, so clearing a category leaves those alone too.
+    /// A style without the flag (the built-in [None]) controls every category.
+    /// </summary>
+    internal static bool StylesControl(IReadOnlyList<XElement> objectChain, string category)
+    {
+        for (var i = 1; i < objectChain.Count; i++)
+        {
+            if (objectChain[i].Attribute(category)?.Value is { } value)
+            {
+                return value != "false";
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The effective <c>BlendingSetting</c> attribute (Opacity, BlendMode, ...) of a page item: its own
+    /// <c>TransparencySetting</c>, then its object style chain's when the style applies its object transparency
+    /// (<c>ObjectStyleObjectEffectsCategorySettings@EnableTransparency</c>).
+    /// </summary>
+    public string? Blending(XElement item, string name)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        var chain = ObjectChain(item);
+        var styles = true;
+        for (var i = 1; i < chain.Count; i++)
+        {
+            if (chain[i].Element("ObjectStyleObjectEffectsCategorySettings")?.Attribute("EnableTransparency")?.Value is { } value)
+            {
+                styles = value != "false";
+                break;
+            }
+        }
+        for (var i = 0; i < (styles ? chain.Count : 1); i++)
+        {
+            if (chain[i].Element("TransparencySetting")?.Element("BlendingSetting")?.Attribute(name)?.Value is { } value)
+            {
+                return value;
+            }
+        }
+        return null;
+    }
 
     /// <summary>
     /// The effective value of a <c>TextFramePreference</c> attribute (TextColumnCount, FirstBaselineOffset, ...) or
-    /// property (InsetSpacing) of a text frame: its own preference, then its object style's.
+    /// property (InsetSpacing) of a text frame: its own preference, then its object style's when the style controls
+    /// the attribute's category (<see cref="FramePreferenceCategory"/>).
     /// </summary>
     public XElement? FramePreferenceSource(XElement textFrame, string name)
     {
@@ -95,9 +187,10 @@ public sealed class AttributeResolver
     /// <summary><see cref="FramePreferenceSource(XElement, string)"/> for a frame's <see cref="ObjectChain"/> computed once.</summary>
     internal static XElement? FramePreferenceSource(IReadOnlyList<XElement> objectChain, string name)
     {
-        foreach (var element in objectChain)
+        var count = StylesControl(objectChain, FramePreferenceCategory(name)) ? objectChain.Count : Math.Min(1, objectChain.Count);
+        for (var i = 0; i < count; i++)
         {
-            if (element.Element("TextFramePreference") is { } preference && Own(preference, name) is not null)
+            if (objectChain[i].Element("TextFramePreference") is { } preference && Own(preference, name) is not null)
             {
                 return preference;
             }

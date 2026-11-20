@@ -83,7 +83,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             return default;
         }
-        var inset = FrameInset(frame.Element);
+        var inset = TextInset(resolver.ObjectChain(frame.Element));
         var top = columns[0].Y;
         var bottom = layout.Lines.Max(line => line.Baseline) + layout.LastDescent;
         return new TextMeasure(layout.Lines.Max(line => line.Width), bottom - top + inset.Top + inset.Bottom, layout.Lines.Count);
@@ -257,7 +257,7 @@ internal sealed partial class IdmlRenderer : IDisposable
         var inner = frame.InnerBounds;
         var chain = resolver.ObjectChain(element);
         string? Preference(string name) => AttributeResolver.FramePreference(chain, name);
-        var inset = FrameInset(chain);
+        var inset = TextInset(chain);
         var columns = Math.Max(1, (int)Values.Number(Preference("TextColumnCount"), 1));
         var gutter = Values.Number(Preference("TextColumnGutter"), 12);
         var width = inner.Width - inset.Left - inset.Right;
@@ -301,7 +301,9 @@ internal sealed partial class IdmlRenderer : IDisposable
     private BaselineGrid? BaselineGridOf(TextFrame frame, IReadOnlyList<XElement> chain, double frameTop, double insetTop)
     {
         var preferences = document.Package.TryGetXml("Resources/Preferences.xml")?.Root;
-        string? FrameGrid(string name) => chain.Select(element => element.Element("BaselineFrameGridOption"))
+        // An object style that leaves the baseline options alone (EnableTextFrameBaselineOptions="false") gives no grid.
+        var sources = AttributeResolver.StylesControl(chain, "EnableTextFrameBaselineOptions") ? chain : chain.Take(1);
+        string? FrameGrid(string name) => sources.Select(element => element.Element("BaselineFrameGridOption"))
             .Append(preferences?.Element("BaselineFrameGridOption"))
             .Select(option => option?.Attribute(name)?.Value)
             .FirstOrDefault(value => value is not null);
@@ -360,7 +362,31 @@ internal sealed partial class IdmlRenderer : IDisposable
         return page.Document.FacingPages ? !page.IsLeftPage : page.Index % 2 == 0;
     }
 
-    private Spacing FrameInset(XElement frame) => FrameInset(resolver.ObjectChain(frame));
+    /// <summary>
+    /// How far the text of a frame stays inside its path: the inset spacing plus the part of a visible stroke that
+    /// falls inside the path. Measured with centred strokes: text starts half the stroke weight further in on every
+    /// side (02-item-object-styles p1: a 2 pt stroke and an 8 pt inset put the text 9 pt in, and the 540 pt frame has
+    /// two 255 pt columns; 06-frame-autosize: 1 pt strokes, text 0.5 pt in; 06-frame-basics: 0.5 pt strokes, 0.25 pt).
+    /// A stroke with no colour takes no room (01-doc-masters: 1 pt strokes of [None], text at the inset). An inside
+    /// stroke counts its whole weight and an outside one nothing (by the same rule; not in the samples).
+    /// </summary>
+    private Spacing TextInset(IReadOnlyList<XElement> objectChain)
+    {
+        var inset = FrameInset(objectChain);
+        var element = objectChain[0];
+        var weight = Values.Number(resolver.Item(element, "StrokeWeight"), 0);
+        if (weight <= 0 || resolver.Item(element, "StrokeColor") is null or "Swatch/None")
+        {
+            return inset;
+        }
+        var inside = (resolver.Item(element, "StrokeAlignment") ?? "CenterAlignment") switch
+        {
+            "InsideAlignment" => weight,
+            "OutsideAlignment" => 0,
+            _ => weight / 2,
+        };
+        return new Spacing(inset.Top + inside, inset.Right + inside, inset.Bottom + inside, inset.Left + inside);
+    }
 
     private static Spacing FrameInset(IReadOnlyList<XElement> objectChain)
     {
@@ -545,10 +571,10 @@ internal sealed partial class IdmlRenderer : IDisposable
         return new CoreIdml.Matrix(a, b, c, d, -((m.Tx * a) + (m.Ty * c)), -((m.Tx * b) + (m.Ty * d)));
     }
 
+    /// <summary>The opacity of an item, its own or from its object style (<see cref="AttributeResolver.Blending"/>).</summary>
     private void ApplyOpacity(XElement element, ContentBuilder content)
     {
-        var blending = element.Element("TransparencySetting")?.Element("BlendingSetting");
-        var opacity = Values.Number(blending?.Attribute("Opacity")?.Value, 100);
+        var opacity = Values.Number(resolver.Blending(element, "Opacity"), 100);
         if (opacity < 100)
         {
             content.GraphicsState(Pdf.Opacity(opacity / 100, opacity / 100));
