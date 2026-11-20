@@ -20,7 +20,7 @@ includes tests and docs.
 | --- | --- |
 | Master pages | [master-pages.md](master-pages.md) |
 | Paragraph rules | [paragraph-rules.md](paragraph-rules.md) |
-| Text wrap | [text-wrap.md](text-wrap.md) |
+| Text wrap | [text-wrap.md](text-wrap.md) (drawn, with text in shaped frames; authoring still a plan) |
 | Polygons and paths | [polygons-and-paths.md](polygons-and-paths.md) |
 | Gradients and effects | [gradients-and-effects.md](gradients-and-effects.md) |
 | Drop caps | [drop-caps.md](drop-caps.md) (drawn; authoring still a plan) |
@@ -81,7 +81,7 @@ Every "(memory)" item below maps to one of these documents.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1. Master pages | Known; real data in FICHA | Read only. Items can be added via `master.Pages[i]`; no create or apply | None | **Done** (left/right, based-on, OverrideList, per-page folios). Gaps: `ShowMasterItems`, text variables | Page numbers done | None | **M** |
 | 2. Paragraph rules | Attributes known (style defaults) | None (kept on round trip) | None | None | Decoration only, plus `KeepRuleAboveInFrame` | Not planned | **S–M** |
-| 3. Text wrap | Known (all `None`); 4 document prefs | None | None | n/a | **None. The largest change** (line segments, baseline probing) | n/a | **L** |
+| 3. Text wrap | Known; measured in `02-item-text-wrap` | None (read by the renderer) | None | **Done** (`TextArea`): box, object shape, jump, next column, sides, inverse, ignore wrap, shaped frames. Gaps: image contours, anchored objects | **Done**: line stretches, baseline probing, the paragraph composer plans in the stretches | n/a | **L** |
 | 4. Polygons and paths | Known; real data | Reads contours. Creates only rectangles, ovals and 2-point lines | rectangle, ellipse, line | Béziers and compound paths done. Gaps: open paths not filled, no arrowheads | n/a | Rectangles and 2-point lines only | **M** |
 | 5a. Gradients | Known and checked against `03-color-gradients` | `ResolveGradient`, `AddGradient` | None | **Done**: linear and radial fills and strokes (shadings, shading patterns), midpoints, spot stops. Gap: radial highlight | Gradient text fill done; text stroke not drawn | None | **M** + **M** PDF infra |
 | 5b. Effects | Known from `Preferences.xml` | Opacity only (wip) | Opacity only | Opacity only (`ca`/`CA`); no blend modes, soft masks or groups | n/a | None | Tier 1 **S–M**, tier 2 **L** |

@@ -366,6 +366,9 @@ internal sealed record FrameArea(string FrameId, IReadOnlyList<Rect> Columns, st
     /// <summary>The page the frame is on, in the frame's inner coordinates; null off the pages (and in a table cell).</summary>
     public PageArea? Page { get; init; }
 
+    /// <summary>Where text wrap and the frame's own shape let lines go in the columns; null: all of them.</summary>
+    public TextArea? TextArea { get; init; }
+
     /// <summary>
     /// Balance Columns (<c>VerticalBalanceColumns</c>): when the story ends in this frame, its columns end at about the
     /// same height.

@@ -1,6 +1,45 @@
 # Text wrap
 
-Status: **plan, not implemented.** Written against commit `691f87a`; the files it then marked **(wip)** were committed in `dc5bbf4` (1.1.0), so their line numbers may have moved. Overview, order, milestones and open questions: [README.md](README.md).
+Status: **drawn** (the PDF preview, `idml_check_fit` and the measurer), with text in shaped frames; **authoring is
+still a plan** (the DOM, spec and tool sections below). The plan was written against commit `691f87a`; what was built
+differs from it where the references showed otherwise, as listed under [As built](#as-built). Overview, order,
+milestones and open questions: [README.md](README.md).
+
+## As built
+
+Measured against `02-item-text-wrap` and `06-frame-shapes` (InDesign 20). Code:
+`src/CoreIdml.Pdf/Layout/TextArea.cs` (the geometry), `IdmlRenderer.TextWrap.cs` (which items wrap a frame),
+`TextComposer.cs` (`Flow.Place`, `Flow.Wrap`, `Flow.Peek`, `LayoutParagraph`'s `PlaceWrapped`) and
+`TextComposer.Paragraph.cs` (the composer plans in the stretches).
+
+- **The band.** A line is tested from the baseline before it (its baseline less its leading) down to its own
+  baseline; descenders do not count (p4: the stretch in the star's notch starts at 263, where the notch's edge is at
+  the baseline before, 255 from the line's ascent; the line above the star's tip ends at 286.8, which the tip would
+  block at the line's descent). A column's first line is tested from the column's top. Not the ascent-to-descent band the
+  plan assumed.
+- **Stretches.** The stretches the wraps leave are filled left to right, each a line of its own for the paragraph
+  composer, which plans the paragraph in the stretches the next lines would take (into the next columns). A stretch
+  narrower than the line's first word stays empty; a baseline with none moves down a leading (p5: below the jumped
+  object the lines stay on the leading's steps, which is what `AbutTextToTextWrap="true"`, the default in all 74
+  samples, gives); the first line of a column moves down 1 pt at a time (06-frame-shapes: until the first word
+  fits). A new paragraph starts on a baseline of its own (p4: not in the star's notch beside the last line before).
+- **Bounding box:** the item's box with its stroke (p2: 0.5 pt of the 1 pt stroke), grown by each offset; exact.
+- **Object shape:** the path grown by the top offset and half the stroke, round at the corners (p4: not mitred);
+  text goes in every gap, including a concave notch (p4: "tion to"). Edges of shapes are truncated to whole points
+  from the column's left edge (p4: 263.89 gives 263; 06-frame-shapes p1, p2, p3 alike), box edges are not (p2: 414.5).
+- **Sides:** left and right as named; largest area takes the wider side, the left one on a tie (p7). Towards and
+  away from the spine: memory.
+- **Inverse:** text only in bands wholly inside the shape less its offset and half the stroke (p9: 196.5 = 190 + 6
+  + 0.5); a band that crosses its edge stays empty, bands above and below are free.
+- **Jump to next column** (p6), **ignore wrap** (06-frame-basics p6). A graphic frame without a wrap of its own takes
+  its image's (p8).
+- **Shaped text frames** (ovals, polygons, curves, corner options): the frame's path less its inset (a single
+  `InsetSpacing` value) and half its stroke, as an inverted object-shape wrap (06-frame-shapes, 02-item-corners p4).
+- **Not done:** contours read from the image (alpha channel, detect edges, Photoshop path: such an item does not
+  wrap; p8), wraps of anchored objects (02-item-anchored p4), `AbutTextToTextWrap="false"`, `JustifyTextWraps`,
+  `IncludeInsideEdges`; tables ignore wraps; vertical justification still shifts wrapped lines.
+- **From memory, no sample:** master items (`ApplyToMasterPageOnly`), `ZOrderTextWrap`, `Layer@IgnoreWrap`, hidden
+  items, the spine sides, object-shape wraps using only the top offset (the samples set all four alike).
 
 
 ## IDML
@@ -15,7 +54,7 @@ Status: **plan, not implemented.** Written against commit `691f87a`; the files i
 </TextWrapPreference>
 ```
 
-**Values (memory):**
+**Values** (modes, the four plain sides and `AlphaChannel` seen in `02-item-text-wrap`; the rest memory):
 
 - `TextWrapMode`: `None`, `BoundingBoxTextWrap`, `Contour` (object shape), `JumpObjectTextWrap`,
   `NextColumnTextWrap`.
@@ -33,9 +72,9 @@ wrap when layer is hidden", memory).
 
 **Masters:** wraps on master items push text on document pages unless `ApplyToMasterPageOnly` is set (memory).
 
-## Current state
+## State before the work (the plan)
 
-Nothing reads any of this.
+Nothing read any of this.
 
 **`FrameArea` is a list of rectangles** (`Layout/LayoutModel.cs:146`) built from `InnerBounds`
 (`IdmlRenderer.cs:225-256`). An oval or polygon text frame is therefore laid out as a rectangle.

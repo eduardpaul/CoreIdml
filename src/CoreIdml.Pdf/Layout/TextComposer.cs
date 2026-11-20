@@ -755,7 +755,9 @@ internal sealed partial class TextComposer
         var lineStyle = lineStyles?.LineStyle(0);
         // The paragraph composer's line ends, from plannedStart at plannedWidth (see ComposeParagraph).
         var paragraphComposer = format.ParagraphComposer;
-        List<(int End, bool Forced)>? plan = null;
+        List<(int End, bool Forced, int Line)>? plan = null;
+        // With text wrap: the stretches the plan was made for.
+        List<Slot>? slots = null;
         var (planned, plannedStart, plannedWidth) = (0, -1, double.NaN);
         // Line n's indent from the column's left edge: the first-line indent goes to line 0, unless the paragraph starts
         // with a table; lines beside a drop cap start after it; every line from steadyLines on is indented alike.
@@ -803,27 +805,43 @@ internal sealed partial class TextComposer
             var column = flow.Column;
             var indent = LineIndent(columns.Count);
             var start = index;
-            var (end, forced, available) = BreakLine(column.Width);
             var snapToGrid = format.AlignToBaselineGrid && (firstLine || !format.GridAlignFirstLineOnly);
             firstLine = false;
             emitted = true;
-            var metrics = Measure(glyphs.GetRange(start, end - start), paragraph.MarkStyle);
-            if (!flow.Place(metrics, snapToGrid))
+            int end;
+            bool forced;
+            double available;
+            LineMetrics metrics;
+            if (flow.Frame.TextArea is not null)
             {
-                index = end;
-                columns.Add(int.MaxValue);
-                continue;
+                if (!PlaceWrapped(out end, out forced, out available, out metrics))
+                {
+                    index = end;
+                    columns.Add(int.MaxValue);
+                    continue;
+                }
             }
-            if (flow.Column.Width != column.Width)
+            else
             {
-                // The line went on to a column of another width: it is broken again at that width.
-                (end, forced, available) = BreakLine(flow.Column.Width);
+                (end, forced, available) = BreakLine(column.Width);
+                metrics = Measure(glyphs.GetRange(start, end - start), paragraph.MarkStyle);
+                if (!flow.Place(metrics, snapToGrid))
+                {
+                    index = end;
+                    columns.Add(int.MaxValue);
+                    continue;
+                }
+                if (flow.Column.Width != column.Width)
+                {
+                    // The line went on to a column of another width: it is broken again at that width.
+                    (end, forced, available) = BreakLine(flow.Column.Width);
+                }
             }
             var line = glyphs.GetRange(start, end - start);
             index = end;
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             columns.Add(flow.ColumnOrdinal);
-            EmitLine(line, flow, format, indent, available, isLast, forced, metrics);
+            EmitLine(line, flow, format, indent + flow.Line.Inset, available, isLast, forced, metrics);
             if (dropCap is not null && columns.Count == 1)
             {
                 EmitDropCap(dropCap, flow, format);
@@ -842,14 +860,81 @@ internal sealed partial class TextComposer
                 // in a column of another width (or after a table) plans again from there.
                 if (plan is null || planned >= plan.Count || plannedStart != start || plannedWidth != width)
                 {
-                    plan = ComposeParagraph(glyphs, start, columns.Count, LineIndent, steadyLines, width, format, paragraph.MarkStyle.Size);
+                    plan = ComposeParagraph(glyphs, start, columns.Count, LineIndent, steadyLines, _ => width, 0, _ => false, format, paragraph.MarkStyle.Size);
                     planned = 0;
                     plannedWidth = width;
                 }
-                var (planEnd, planForced) = plan[planned++];
+                var (planEnd, planForced, _) = plan[planned++];
                 plannedStart = planEnd;
                 return (planEnd, planForced, lineWidth);
             }
+
+            // Text wrap or a shaped frame: how wide the line may be depends on where it goes, which depends on its
+            // height. The line goes where its first word fits (a stretch at least that wide); it is broken for the
+            // stretch found at its first word's height, and again when its own height finds another.
+            bool PlaceWrapped(out int wrappedEnd, out bool wrappedForced, out double wrappedWidth, out LineMetrics wrappedMetrics)
+            {
+                var (wordEnd, wordWidth) = FirstWord(glyphs, start, format);
+                var least = wordWidth + indent + format.RightIndent;
+                var estimate = Measure(glyphs.GetRange(start, wordEnd - start), paragraph.MarkStyle);
+                if (flow.Find(estimate, snapToGrid, least) is not { } found)
+                {
+                    (wrappedEnd, wrappedForced) = FitLine(glyphs, start, column.Width - indent - format.RightIndent, format, indent);
+                    (wrappedWidth, wrappedMetrics) = (0, estimate);
+                    flow.Place(estimate, snapToGrid, least);
+                    return false;
+                }
+                (wrappedEnd, wrappedForced, wrappedWidth) = BreakInSlot(found, estimate, least, replan: false);
+                wrappedMetrics = Measure(glyphs.GetRange(start, wrappedEnd - start), paragraph.MarkStyle);
+                if (flow.Find(wrappedMetrics, snapToGrid, least) is { } actual && (actual.Inset != found.Inset || actual.Width != found.Width))
+                {
+                    (wrappedEnd, wrappedForced, wrappedWidth) = BreakInSlot(actual, wrappedMetrics, least, replan: true);
+                    wrappedMetrics = Measure(glyphs.GetRange(start, wrappedEnd - start), paragraph.MarkStyle);
+                }
+                return flow.Place(wrappedMetrics, snapToGrid, least);
+            }
+
+            // The end of the line starting at `start` in `slot`, and the line's width. The paragraph composer plans
+            // the rest of the paragraph in the stretches the next lines would take (Flow.Peek), and plans again when
+            // a line goes elsewhere.
+            (int End, bool Forced, double Available) BreakInSlot(Slot slot, LineMetrics lineMetrics, double least, bool replan)
+            {
+                var lineWidth = slot.Width - indent - format.RightIndent;
+                if (!paragraphComposer || lineStyles is not null || start >= glyphs.Count)
+                {
+                    var (fitEnd, fitForced) = FitLine(glyphs, start, lineWidth, format, indent);
+                    return (fitEnd, fitForced, lineWidth);
+                }
+                if (replan || plan is null || planned >= plan.Count || plannedStart != start || !Expected(plan[planned].Line, slot))
+                {
+                    // The paragraph has at most a line more than it has places to break.
+                    var breaks = 1;
+                    for (var i = start; i < glyphs.Count && glyphs[i].Kind != GlyphKind.Table; i++)
+                    {
+                        breaks += glyphs[i].BreakAfter || glyphs[i].Kind == GlyphKind.Break ? 1 : 0;
+                    }
+                    var peeked = flow.Peek(lineMetrics, snapToGrid, least, Math.Min(MaxPlannedSlots, breaks));
+                    if (peeked.Count == 0)
+                    {
+                        peeked.Add(slot);
+                    }
+                    // Lines past the last stretch are planned like it.
+                    var last = peeked[^1];
+                    var steady = peeked.FindLastIndex(s => s.Inset != last.Inset || s.Width != last.Width || s.Wrapped != last.Wrapped) + 1;
+                    slots = peeked;
+                    plan = ComposeParagraph(glyphs, start, columns.Count, LineIndent, steadyLines, n => peeked[Math.Min(n, peeked.Count - 1)].Width,
+                        steady, n => peeked[Math.Min(n, peeked.Count - 1)].Wrapped, format, paragraph.MarkStyle.Size);
+                    planned = 0;
+                    plannedWidth = double.NaN;
+                }
+                var (planEnd, planForced, _) = plan[planned++];
+                plannedStart = planEnd;
+                return (planEnd, planForced, lineWidth);
+            }
+
+            // Whether plan line `number` was planned for the stretch `slot` takes.
+            bool Expected(int number, Slot slot) =>
+                slots is { Count: > 0 } made && made[Math.Min(number, made.Count - 1)] is var planFor && planFor.Inset == slot.Inset && planFor.Width == slot.Width;
         }
         flow.PendingSpace = format.SpaceAfter;
         if (spans)
@@ -951,6 +1036,30 @@ internal sealed partial class TextComposer
                 (best, bestForced, bestCost) = (end, forced, cost);
             }
         }
+    }
+
+    /// <summary>The most stretches the paragraph composer plans a paragraph in at once (a bound on its work).</summary>
+    private const int MaxPlannedSlots = 400;
+
+    /// <summary>
+    /// The first word of the line starting at <paramref name="start"/>: where it ends (after the line's first break
+    /// opportunity) and how wide it is set at its tightest. A stretch text wrap leaves narrower than that takes no text.
+    /// </summary>
+    private static (int End, double Width) FirstWord(List<Shaped> glyphs, int start, ParagraphFormatting format)
+    {
+        var line = new LineMeasure();
+        var end = start;
+        while (end < glyphs.Count && glyphs[end].Kind != GlyphKind.Table)
+        {
+            var glyph = glyphs[end++];
+            line.Add(glyph);
+            if (glyph.Kind == GlyphKind.Break || glyph.BreakAfter)
+            {
+                break;
+            }
+        }
+        var space = end > start && glyphs[end - 1].Kind == GlyphKind.SoftHyphen ? line.WithHyphen(HyphenWidth(glyphs[end - 1])) : line.Space;
+        return (end, line.Tightest(space, format, IsJustified(format.Justification), pastMinimum: true));
     }
 
     /// <summary>What a hyphen adds to the cost of a justified line (about as much as word spaces at their maximum).</summary>
@@ -1858,6 +1967,12 @@ internal sealed partial class TextComposer
     // ---- flow through frames and columns ---------------------------------------------------------------
 
     /// <summary>
+    /// The stretch of the column a line takes: <paramref name="Inset"/> from the column's left edge, <paramref name="Width"/>
+    /// wide; <paramref name="Wrapped"/> when text wrap or the frame's shape limits it.
+    /// </summary>
+    private readonly record struct Slot(double Inset, double Width, bool Wrapped);
+
+    /// <summary>
     /// The position in the frame/column sequence and the ops of the columns filled so far. Columns are moved into
     /// their frames only at the end (<see cref="Finish"/>), so that keep options can return to a saved
     /// <see cref="State"/> and lay the text out again. Paragraphs that span columns divide a frame into bands: the
@@ -1884,6 +1999,10 @@ internal sealed partial class TextComposer
         private double splitBottom = double.NaN;
         // The last band or split id handed out: the same layout gives the same ids, so a limit finds its band again.
         private int ids;
+        // The stretches text wrap leaves for a band (reused), and the ones right of the last line on its baseline: that
+        // band and the next stretch to fill.
+        private readonly List<(double Left, double Right)> pieces = [];
+        private (double Baseline, double Top, int Next)? pending;
 
         private sealed record FilledColumn(int FrameIndex, int ColumnIndex, List<DrawOp> Ops, double UsedBottom, int FirstLine);
 
@@ -1906,7 +2025,8 @@ internal sealed partial class TextComposer
         public readonly record struct State(
             int FrameIndex, int ColumnIndex, int ColumnOrdinal, bool Exhausted, bool AtColumnTop, double Baseline, double LastDescent,
             double PendingSpace, double UsedBottom, int ContentPage, int FilledColumns, int ColumnOps, int Lines, bool Overset,
-            int ColumnLines, Bands Bands, double BandBottom, double SplitBottom, int Ids, (int Id, bool OneColumn)? LastSplit);
+            int ColumnLines, Bands Bands, double BandBottom, double SplitBottom, int Ids, (int Id, bool OneColumn)? LastSplit,
+            (double Baseline, double Top, int Next)? Pending);
 
         public Flow(IReadOnlyList<FrameArea> frames, StoryLayout layout)
         {
@@ -1939,6 +2059,9 @@ internal sealed partial class TextComposer
         public double LastDescent { get; private set; }
 
         public double PendingSpace { get; set; }
+
+        /// <summary>Where the last line placed went (<see cref="Place"/>).</summary>
+        public Slot Line { get; private set; }
 
         /// <summary>The current band of the frame's columns: a new frame and the end of a spanning paragraph start one.</summary>
         public int BandId => bands.Id;
@@ -2016,10 +2139,16 @@ internal sealed partial class TextComposer
         /// headline's first baseline down to the grid line below it). Whether it still fits is decided
         /// after the snap. Below a spanning paragraph every column's first line is a leading below the span's last
         /// baseline and its space after (06-frame-span-balance p1: the 22/8 pt headline's baseline at 79.4, the
-        /// 12.5 pt body lines of all three columns at 99.9).
+        /// 12.5 pt body lines of all three columns at 99.9). In a frame with a <see cref="FrameArea.TextArea"/> the line goes
+        /// where text wrap leaves a stretch at least <paramref name="least"/> wide (see <see cref="Wrap"/>); <see cref="Line"/>
+        /// is where it went.
         /// </summary>
-        public bool Place(LineMetrics metrics, bool snapToGrid)
+        public bool Place(LineMetrics metrics, bool snapToGrid, double least = 0)
         {
+            if (PlacePending(metrics, least))
+            {
+                return true;
+            }
             while (!Exhausted)
             {
                 var column = Column;
@@ -2064,20 +2193,134 @@ internal sealed partial class TextComposer
                     }
                     continue;
                 }
-                Baseline = baseline;
-                LastDescent = metrics.Descent;
-                usedBottom = baseline;
-                AtColumnTop = false;
-                PendingSpace = 0;
-                contentPage = Frame.PageIndex;
-                bandBottom = Deepest(bandBottom, baseline);
-                if (bands.Split is not null)
+                var line = new Slot(0, column.Width, false);
+                if (Frame.TextArea is { } area)
                 {
-                    splitBottom = Deepest(splitBottom, baseline);
+                    // The band a line is tested over starts at the baseline before it, or at the column's top.
+                    var rise = AtColumnTop ? baseline - column.Y : metrics.Leading + metrics.AboveLine;
+                    if (Wrap(area, column, ref baseline, rise, metrics, snapToGrid, least) is not { } wrapped)
+                    {
+                        if (!NextColumn())
+                        {
+                            return false;
+                        }
+                        continue;
+                    }
+                    line = wrapped;
                 }
+                Commit(baseline, line, metrics);
                 return true;
             }
             return false;
+        }
+
+        // The line is placed on `baseline`, in `line`.
+        private void Commit(double baseline, Slot line, LineMetrics metrics)
+        {
+            Line = line;
+            Baseline = baseline;
+            LastDescent = metrics.Descent;
+            usedBottom = baseline;
+            AtColumnTop = false;
+            PendingSpace = 0;
+            contentPage = Frame.PageIndex;
+            bandBottom = Deepest(bandBottom, baseline);
+            if (bands.Split is not null)
+            {
+                splitBottom = Deepest(splitBottom, baseline);
+            }
+        }
+
+        /// <summary>
+        /// The first stretch at or below <paramref name="baseline"/> in <paramref name="column"/> that text wrap leaves
+        /// at least <paramref name="least"/> wide (any stretch when nothing wraps the band), for a line whose band
+        /// rises <paramref name="rise"/> above its baseline; null when the column has none (or a Jump to Next Column
+        /// region sends the line on). A line that finds no room moves down a leading (02-item-text-wrap p5: below the
+        /// jumped object the lines stay on the leading's steps, 276.9 rather than right below its 256.5 pt edge); the
+        /// first line of a column moves down 1 pt at a time (06-frame-shapes: the oval's first baseline 1 pt below
+        /// the rectangle's, the triangle's 15 pt, the hexagon's 5 pt, where the first word first fits). Stretches
+        /// right of the one taken are kept for the next lines on the same baseline (06-frame-shapes p2 fills both
+        /// legs of the star).
+        /// </summary>
+        private Slot? Wrap(TextArea area, Rect column, ref double baseline, double rise, LineMetrics metrics, bool snapToGrid, double least)
+        {
+            var step = AtColumnTop ? 1 : Math.Max(1, metrics.Leading + metrics.AboveLine);
+            while (true)
+            {
+                var top = baseline - rise;
+                switch (area.Pieces(column, top, baseline, pieces))
+                {
+                    case BandWrap.Clear:
+                        return new Slot(0, column.Width, false);
+                    case BandWrap.NextColumn:
+                        return null;
+                }
+                var found = pieces.FindIndex(piece => piece.Right - piece.Left + Epsilon >= least);
+                if (found >= 0)
+                {
+                    var (left, right) = pieces[found];
+                    pending = found + 1 < pieces.Count ? (baseline, top, found + 1) : null;
+                    return new Slot(left - column.X, right - left, true);
+                }
+                baseline += step;
+                if (snapToGrid && Frame.BaselineGrid is { } grid)
+                {
+                    baseline = grid.Snap(baseline);
+                }
+                if (baseline > Bottom(column) + Epsilon)
+                {
+                    return null;
+                }
+            }
+        }
+
+        // The next stretch on the baseline of the line before, when text wrap left more than one there.
+        private bool PlacePending(LineMetrics metrics, double least)
+        {
+            if (pending is not { } rest || Frame.TextArea is not { } area || PendingSpace != 0 || metrics.AboveLine != 0)
+            {
+                pending = null;
+                return false;
+            }
+            pending = null;
+            var column = Column;
+            area.Pieces(column, rest.Top, rest.Baseline, pieces);
+            for (var i = rest.Next; i < pieces.Count; i++)
+            {
+                var (left, right) = pieces[i];
+                if (right - left + Epsilon >= least)
+                {
+                    pending = i + 1 < pieces.Count ? (rest.Baseline, rest.Top, i + 1) : null;
+                    Commit(rest.Baseline, new Slot(left - column.X, right - left, true), metrics);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Where a line with <paramref name="metrics"/> would go (see <see cref="Place"/>), without placing it.</summary>
+        public Slot? Find(LineMetrics metrics, bool snapToGrid, double least)
+        {
+            var state = Save();
+            var line = Place(metrics, snapToGrid, least) ? Line : (Slot?)null;
+            Restore(state);
+            return line;
+        }
+
+        /// <summary>
+        /// Where the next lines with <paramref name="metrics"/> would go: the first at least <paramref name="least"/>
+        /// wide, then every stretch after it, on into the next columns, up to <paramref name="count"/>.
+        /// </summary>
+        public List<Slot> Peek(LineMetrics metrics, bool snapToGrid, double least, int count)
+        {
+            var state = Save();
+            var slots = new List<Slot>();
+            while (slots.Count < count && Place(metrics, snapToGrid, slots.Count == 0 ? least : 0))
+            {
+                slots.Add(Line);
+            }
+            Restore(state);
+            return slots;
         }
 
         // The column's bottom, or the lowest baseline its band or split paragraph is limited to.
@@ -2097,7 +2340,11 @@ internal sealed partial class TextComposer
 
         private static double Deepest(double bottom, double baseline) => double.IsNaN(bottom) ? baseline : Math.Max(bottom, baseline);
 
-        public void BeginBlock() => PendingSpace = 0;
+        public void BeginBlock()
+        {
+            PendingSpace = 0;
+            pending = null;
+        }
 
         /// <summary>A block's rows (a table's) now take up the column and its page.</summary>
         public void PlaceBlock()
@@ -2109,6 +2356,7 @@ internal sealed partial class TextComposer
         /// <summary>After a table: the next line is placed a leading below <paramref name="bottom"/>.</summary>
         public void EndBlock(double bottom)
         {
+            pending = null;
             Baseline = bottom;
             LastDescent = 0;
             usedBottom = Math.Max(usedBottom, bottom);
@@ -2119,6 +2367,7 @@ internal sealed partial class TextComposer
 
         public bool NextColumn()
         {
+            pending = null;
             if (Exhausted)
             {
                 return false;
@@ -2175,6 +2424,7 @@ internal sealed partial class TextComposer
 
         private void PushColumn()
         {
+            pending = null;
             filled.Add(new FilledColumn(FrameIndex, ColumnIndex, columnOps, usedBottom, columnLines));
             columnOps = [];
             columnLines = Layout.Lines.Count;
@@ -2280,9 +2530,12 @@ internal sealed partial class TextComposer
         /// frame, the first frame on the next page, or on the next odd or even page (08-para-keeps-breaks p4 to p9; the
         /// story's frames decide where that is: there p7's continuation frame is on p9, and p8 stays blank). A
         /// paragraph already at the top of a column (frame, page) the story has put nothing in stays there.
+        /// A paragraph starts on a baseline of its own: stretches text wrap leaves right of the last line before it stay
+        /// empty (02-item-text-wrap p4: below the star the next paragraph starts on the next line, not in the notch).
         /// </summary>
         public void StartParagraph(string start)
         {
+            pending = null;
             switch (start)
             {
                 case "NextColumn":
@@ -2315,7 +2568,7 @@ internal sealed partial class TextComposer
         }
 
         public State Save() => new(FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop, Baseline, LastDescent, PendingSpace, usedBottom,
-            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit);
+            contentPage, filled.Count, columnOps.Count, Layout.Lines.Count, Layout.Overset, columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending);
 
         /// <summary>Goes back to <paramref name="state"/>, dropping everything laid out since.</summary>
         public void Restore(State state)
@@ -2330,7 +2583,7 @@ internal sealed partial class TextComposer
             Layout.Overset = state.Overset;
             (FrameIndex, ColumnIndex, ColumnOrdinal, Exhausted, AtColumnTop) = (state.FrameIndex, state.ColumnIndex, state.ColumnOrdinal, state.Exhausted, state.AtColumnTop);
             (Baseline, LastDescent, PendingSpace, usedBottom, contentPage) = (state.Baseline, state.LastDescent, state.PendingSpace, state.UsedBottom, state.ContentPage);
-            (columnLines, bands, bandBottom, splitBottom, ids, LastSplit) = (state.ColumnLines, state.Bands, state.BandBottom, state.SplitBottom, state.Ids, state.LastSplit);
+            (columnLines, bands, bandBottom, splitBottom, ids, LastSplit, pending) = (state.ColumnLines, state.Bands, state.BandBottom, state.SplitBottom, state.Ids, state.LastSplit, state.Pending);
         }
 
         /// <summary>

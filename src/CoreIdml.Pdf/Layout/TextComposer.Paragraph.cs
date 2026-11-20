@@ -103,13 +103,17 @@ internal sealed partial class TextComposer
     private const int MaxBreaksPerLine = 256;
 
     /// <summary>
-    /// The paragraph composer: the line ends (exclusive) and forced flags for glyphs[start..] up to the paragraph's end
-    /// or its next table, chosen together to minimise the paragraph's total cost. The first of these lines is line
-    /// <paramref name="firstLine"/> of the paragraph; line n is indented <paramref name="lineIndent"/>(n) from the
-    /// column's left edge, the same for every line from <paramref name="steadyFrom"/> on.
+    /// The paragraph composer: the line ends (exclusive), forced flags and line numbers (of this plan, from 0) for
+    /// glyphs[start..] up to the paragraph's end or its next table, chosen together to minimise the paragraph's total
+    /// cost. The first of these lines is line <paramref name="firstLine"/> of the paragraph; line n is indented
+    /// <paramref name="lineIndent"/>(n) from the column's left edge, the same for every line from
+    /// <paramref name="steadyFrom"/> on. Line n of the plan is set in a stretch <paramref name="slotWidth"/>(n) wide, the
+    /// same for every line from <paramref name="steadySlots"/> on. Text wrap leaves stretches that may be too narrow for
+    /// the next word (<paramref name="skippable"/>): the plan then leaves that stretch empty (line numbers skip it), as
+    /// InDesign does (see <see cref="Flow.Place"/>).
     /// </summary>
-    private static List<(int End, bool Forced)> ComposeParagraph(List<Shaped> glyphs, int start, int firstLine, Func<int, double> lineIndent,
-        int steadyFrom, double columnWidth, ParagraphFormatting format, double em)
+    private static List<(int End, bool Forced, int Line)> ComposeParagraph(List<Shaped> glyphs, int start, int firstLine, Func<int, double> lineIndent,
+        int steadyFrom, Func<int, double> slotWidth, int steadySlots, Func<int, bool> skippable, ParagraphFormatting format, double em)
     {
         var stop = start;
         while (stop < glyphs.Count && glyphs[stop].Kind != GlyphKind.Table)
@@ -118,9 +122,9 @@ internal sealed partial class TextComposer
         }
         var justified = IsJustified(format.Justification);
         var limit = Math.Max(0, format.Hyphenation.LadderLimit);
-        // A node is a break, the line after it (lines past steadyFrom are alike) and how many lines before it end in a
-        // hyphen in a row (capped at 1 without a limit).
-        var lines = Math.Max(1, steadyFrom - firstLine + 1);
+        // A node is a break, the line after it (lines past steadyFrom and steadySlots are alike) and how many lines
+        // before it end in a hyphen in a row (capped at 1 without a limit).
+        var lines = Math.Max(Math.Max(1, steadyFrom - firstLine + 1), steadySlots + 1);
         var states = (limit > 0 ? limit : 1) + 1;
         var count = stop - start + 1;
         var cost = new double[count * lines * states];
@@ -128,6 +132,8 @@ internal sealed partial class TextComposer
         Array.Fill(cost, double.PositiveInfinity);
         cost[0] = 0;
         back[0] = -1;
+        // The width of the word each position starts (computed when a stretch may be too narrow for it).
+        double[]? words = null;
         for (var position = 0; position < count - 1; position++)
         {
             for (var line = 0; line < lines; line++)
@@ -135,10 +141,21 @@ internal sealed partial class TextComposer
                 for (var hyphens = 0; hyphens < states; hyphens++)
                 {
                     var node = (((position * lines) + line) * states) + hyphens;
-                    if (!double.IsPositiveInfinity(cost[node]))
+                    if (double.IsPositiveInfinity(cost[node]))
                     {
-                        Lines(start + position, node, line, hyphens);
+                        continue;
                     }
+                    if (line + 1 < lines && skippable(line) && Word(position) > Width(line) + Epsilon)
+                    {
+                        var skip = node + states;
+                        if (cost[node] < cost[skip])
+                        {
+                            cost[skip] = cost[node];
+                            back[skip] = node;
+                        }
+                        continue;
+                    }
+                    Lines(start + position, node, line, hyphens);
                 }
             }
         }
@@ -150,20 +167,43 @@ internal sealed partial class TextComposer
                 best = node;
             }
         }
-        var breaks = new List<(int End, bool Forced)>();
+        var breaks = new List<(int End, bool Forced, int Line)>();
         for (var node = best; node > 0; node = back[node])
         {
-            var end = start + (node / (lines * states));
-            breaks.Add((end, glyphs[end - 1].Kind == GlyphKind.Break));
+            var from = back[node];
+            var position = node / (lines * states);
+            if (from / (lines * states) == position)
+            {
+                // A stretch left empty.
+                continue;
+            }
+            var end = start + position;
+            breaks.Add((end, glyphs[end - 1].Kind == GlyphKind.Break, from / states % lines));
         }
         breaks.Reverse();
         return breaks;
+
+        double Width(int number) => slotWidth(number) - lineIndent(firstLine + number) - format.RightIndent;
+
+        double Word(int position)
+        {
+            if (words is null)
+            {
+                words = new double[count];
+                Array.Fill(words, double.NaN);
+            }
+            if (double.IsNaN(words[position]))
+            {
+                words[position] = FirstWord(glyphs, start + position, format).Width;
+            }
+            return words[position];
+        }
 
         // Every line that can start at `from` (node `node`, line `number` of the plan), relaxing the nodes it ends at.
         void Lines(int from, int node, int number, int hyphens)
         {
             var indent = lineIndent(firstLine + number);
-            var width = columnWidth - indent - format.RightIndent;
+            var width = slotWidth(number) - indent - format.RightIndent;
             var nextLine = Math.Min(number + 1, lines - 1);
             var line = new LineMeasure();
             var found = 0;

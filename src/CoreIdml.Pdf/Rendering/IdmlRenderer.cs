@@ -291,6 +291,7 @@ internal sealed partial class IdmlRenderer : IDisposable
             Bounds = inner,
             Page = page is null ? null : PageArea(frame, page),
             BalanceColumns = Preference("VerticalBalanceColumns") == "true",
+            TextArea = TextAreaOf(frame, chain, inner, inset),
         };
     }
 
@@ -723,8 +724,7 @@ internal sealed partial class IdmlRenderer : IDisposable
     {
         if (RoundedCorners(item, contours) is { } corners)
         {
-            AppendCornerRectangle(bounds, corners, content);
-            return;
+            contours = [CornerContour(bounds, corners)];
         }
         foreach (var contour in contours)
         {
@@ -772,39 +772,39 @@ internal sealed partial class IdmlRenderer : IDisposable
         return any ? corners : null;
     }
 
-    private static void AppendCornerRectangle(Rect r, (string Option, double Radius)[] corners, ContentBuilder content)
+    /// <summary>
+    /// A rectangle with corner options as a path: rounded corners (the fancy and inverse rounded ones too) as quarter
+    /// circles, bevel and inset corners as straight cuts. Starts after the top-left corner and goes clockwise.
+    /// </summary>
+    private static PathContour CornerContour(Rect r, (string Option, double Radius)[] corners)
     {
         const double Kappa = 0.5522847498307936;
         var max = Math.Min(r.Width, r.Height) / 2;
         double R(int i) => corners[i].Option == "None" ? 0 : Math.Min(corners[i].Radius, max);
-        bool Bevel(int i) => corners[i].Option is "BevelCorner" or "InsetCorner";
+        bool Round(int i) => corners[i].Option is not ("BevelCorner" or "InsetCorner");
         double tl = R(0), tr = R(1), br = R(2), bl = R(3);
-        content.MoveTo(r.Left + tl, r.Top);
-        content.LineTo(r.Right - tr, r.Top);
-        if (tr > 0)
+        var points = new List<PathPoint>(8);
+        // A corner's two anchors, with handles a quarter circle needs when it is round.
+        void Corner(int i, double radius, Point from, Point fromHandle, Point to, Point toHandle)
         {
-            if (Bevel(1)) { content.LineTo(r.Right, r.Top + tr); }
-            else { content.CurveTo(r.Right - tr + (tr * Kappa), r.Top, r.Right, r.Top + tr - (tr * Kappa), r.Right, r.Top + tr); }
+            var round = Round(i);
+            points.Add(new PathPoint(from, from, round ? fromHandle : from));
+            if (radius > 0)
+            {
+                points.Add(new PathPoint(to, round ? toHandle : to, to));
+            }
         }
-        content.LineTo(r.Right, r.Bottom - br);
-        if (br > 0)
-        {
-            if (Bevel(2)) { content.LineTo(r.Right - br, r.Bottom); }
-            else { content.CurveTo(r.Right, r.Bottom - br + (br * Kappa), r.Right - br + (br * Kappa), r.Bottom, r.Right - br, r.Bottom); }
-        }
-        content.LineTo(r.Left + bl, r.Bottom);
-        if (bl > 0)
-        {
-            if (Bevel(3)) { content.LineTo(r.Left, r.Bottom - bl); }
-            else { content.CurveTo(r.Left + bl - (bl * Kappa), r.Bottom, r.Left, r.Bottom - bl + (bl * Kappa), r.Left, r.Bottom - bl); }
-        }
-        content.LineTo(r.Left, r.Top + tl);
+        var (top, right, bottom, left) = (r.Top, r.Right, r.Bottom, r.Left);
+        // The top-left corner's end, which the path starts at: its handle comes in from the left edge.
+        points.Add(new PathPoint(new Point(left + tl, top), tl > 0 && Round(0) ? new Point(left + tl - (tl * Kappa), top) : new Point(left + tl, top), new Point(left + tl, top)));
+        Corner(1, tr, new Point(right - tr, top), new Point(right - tr + (tr * Kappa), top), new Point(right, top + tr), new Point(right, top + tr - (tr * Kappa)));
+        Corner(2, br, new Point(right, bottom - br), new Point(right, bottom - br + (br * Kappa)), new Point(right - br, bottom), new Point(right - br + (br * Kappa), bottom));
+        Corner(3, bl, new Point(left + bl, bottom), new Point(left + bl - (bl * Kappa), bottom), new Point(left, bottom - bl), new Point(left, bottom - bl + (bl * Kappa)));
         if (tl > 0)
         {
-            if (Bevel(0)) { content.LineTo(r.Left + tl, r.Top); }
-            else { content.CurveTo(r.Left, r.Top + tl - (tl * Kappa), r.Left + tl - (tl * Kappa), r.Top, r.Left + tl, r.Top); }
+            points.Add(new PathPoint(new Point(left, top + tl), new Point(left, top + tl), Round(0) ? new Point(left, top + tl - (tl * Kappa)) : new Point(left, top + tl)));
         }
-        content.ClosePath();
+        return new PathContour(false, points);
     }
 
     private void DrawStroke(PageItem item, IReadOnlyList<PathContour> contours, bool closed, ContentBuilder content, Rect bounds)

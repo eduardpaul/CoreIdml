@@ -75,15 +75,16 @@ For print: set `page.bleed` (3 mm usual) and extend edge-to-edge backgrounds int
 wider and taller than the page); use `cmyk` colours; keep text inside the margins. `idml_to_pdf` with
 `includeBleed: true` exports pages with that bleed around the trim (TrimBox), as InDesign's Use Document Bleed Settings.
 
-The preview and PDF engine does not draw effects other than opacity or text wrap; the spec has no gradients, master
-pages, paragraph rules, drop caps or free paths. Design without them. When an existing document uses effects or text
-wrap, say the preview leaves them out and InDesign will show them (gradients in a document are drawn).
+The preview and PDF engine does not draw effects other than opacity; the spec has no gradients, master pages,
+paragraph rules, drop caps, text wrap or free paths. Design without them. When an existing document uses effects, say
+the preview leaves them out and InDesign will show them (gradients and text wrap in a document are drawn; a wrap that
+follows an image's alpha channel or edges is not).
 
 ## Reporting back
 
 - The full path of every file written, and that the original is untouched (or changed, if asked).
 - What changed (from the tools' diff), and what still does not fit, is missing or could not be done.
-- CoreIdml's PDF approximates InDesign's (greedy line breaking; no effects or text wrap). For print, the
+- CoreIdml's PDF approximates InDesign's (no effects; line breaks can differ). For print, the
   `.idml` is the deliverable: the user exports from InDesign.
 
 ## Ready-made tasks
