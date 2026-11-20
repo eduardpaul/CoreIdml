@@ -1081,6 +1081,12 @@ internal sealed class TextComposer
             return;
         }
         var headerCount = Math.Min(rows.Count, (int)Values.Number(table.Attribute("HeaderRowCount")?.Value, 0));
+        var footerCount = Math.Min(rows.Count - headerCount, (int)Values.Number(table.Attribute("FooterRowCount")?.Value, 0));
+        if (headerCount + footerCount == rows.Count)
+        {
+            // No body rows: nothing to repeat, the rows simply follow one another.
+            (headerCount, footerCount) = (0, 0);
+        }
         var spaceBefore = Values.Number(resolver.Table(table, "SpaceBefore"), 4);
         var spaceAfter = Values.Number(resolver.Table(table, "SpaceAfter"), -4);
 
@@ -1184,37 +1190,145 @@ internal sealed class TextComposer
             r = end + 1;
         }
 
-        var startRow = 0;
-        for (var r = 0; r < rows.Count; r++)
+        void DrawRows(int from, int to)
         {
-            var height = heights[r];
-            // The first row of a block needs room for the whole block; the rest of the block follows it.
-            var firstOfBlock = r == 0 || blockEnd[r - 1] < r;
-            var needed = firstOfBlock ? heights.Skip(r).Take(blockEnd[r] - r + 1).Sum() : 0;
-            var fits = !firstOfBlock || top + needed <= flow.Column.Bottom + Epsilon;
-            if (!fits && !(flow.AtColumnTop && r == startRow))
+            for (var r = from; r < to; r++)
             {
+                DrawRow(r, top);
+                top += heights[r];
+            }
+            if (to > from)
+            {
+                flow.PlaceBlock();
+            }
+        }
+
+        // A table split over columns and frames repeats its header rows at the top and its footer rows at the bottom
+        // of every part, and the footer's height is kept free when deciding which body rows fit (09-style-table-
+        // cell-styles p3: three body rows and the footer in the first frame, where four body rows alone would fit;
+        // 10-table-structure p4). The table starts in the next column unless its header, first body rows and footer
+        // fit together, so a header is never left alone (from memory, not in the samples). The samples keep the
+        // default repeat, in every text column, which IDML leaves out; the other options and their attribute names
+        // are from memory of InDesign's Table Options: BreakHeaders/BreakFooters OncePerTextFrame or OncePerPage
+        // repeat only where the table comes into (leaves) another frame or page, SkipFirstHeader leaves the header
+        // out of the first part and SkipLastFooter the footer out of the last.
+        var bodyEnd = rows.Count - footerCount;
+        var footerHeight = heights.Skip(bodyEnd).Sum();
+        var headerRepeat = resolver.Table(table, "BreakHeaders") ?? "InAllTextColumns";
+        var footerRepeat = resolver.Table(table, "BreakFooters") ?? "InAllTextColumns";
+        var skipFirstHeader = resolver.Table(table, "SkipFirstHeader") == "true";
+        var skipLastFooter = resolver.Table(table, "SkipLastFooter") == "true";
+
+        (int Frame, int Page) Position() => (flow.FrameIndex, flow.Frame.PageIndex);
+        static bool Repeats(string repeat, (int Frame, int Page) from, (int Frame, int Page) to) => repeat switch
+        {
+            "OncePerTextFrame" => from.Frame != to.Frame,
+            "OncePerPage" => from.Page != to.Page,
+            _ => true,
+        };
+
+        // Moves on to the next part of the table: the next column, or where the row's Start Row puts it
+        // (10-table-structure p4: row 3 starts in the next column, here the next frame).
+        bool MoveOn(string? start)
+        {
+            if (start is null)
+            {
+                return flow.NextColumn();
+            }
+            flow.StartParagraph(start);
+            return !flow.Exhausted;
+        }
+
+        // Whether the footer closes the part of the table in this column when the table moves on as start says.
+        bool FooterAtBreak(string? start)
+        {
+            if (footerCount == 0)
+            {
+                return false;
+            }
+            if (footerRepeat is not ("OncePerTextFrame" or "OncePerPage"))
+            {
+                return true;
+            }
+            var here = Position();
+            var saved = flow.Save();
+            var to = MoveOn(start) ? Position() : (-1, -1);
+            flow.Restore(saved);
+            return Repeats(footerRepeat, here, to);
+        }
+
+        // The footer below the block ending at row last: the table's last footer, or the repeated one.
+        double FooterBelow(int last, bool repeated) => last == bodyEnd - 1 ? (skipLastFooter ? 0 : footerHeight) : repeated ? footerHeight : 0;
+
+        var footerHere = false;
+        for (var r = headerCount; r < bodyEnd;)
+        {
+            // The first row of a block needs room for the whole block; the rest of the block follows it.
+            var last = Math.Min(blockEnd[r], bodyEnd - 1);
+            var needed = heights.Skip(r).Take(last - r + 1).Sum();
+            var start = rows[r].Attribute("StartRow")?.Value is { } value && value != "Anywhere" ? value : null;
+            if (r == headerCount)
+            {
+                // The table's first part: its header, first block and footer go to the next column together.
+                if (start is not null)
+                {
+                    var ordinal = flow.ColumnOrdinal;
+                    if (!MoveOn(start))
+                    {
+                        flow.Layout.Overset = true;
+                        return;
+                    }
+                    if (flow.ColumnOrdinal != ordinal)
+                    {
+                        top = flow.Column.Y;
+                    }
+                }
+                var header = skipFirstHeader ? 0 : heights.Take(headerCount).Sum();
+                if (!flow.AtColumnTop && top + header + needed + FooterBelow(last, FooterAtBreak(null)) > flow.Column.Bottom + Epsilon)
+                {
+                    if (!flow.NextColumn())
+                    {
+                        flow.Layout.Overset = true;
+                        return;
+                    }
+                    top = flow.Column.Y;
+                }
+                x = flow.Column.X + format.LeftIndent;
+                footerHere = FooterAtBreak(null);
+                if (!skipFirstHeader)
+                {
+                    DrawRows(0, headerCount);
+                }
+            }
+            else if (start is not null || top + needed + FooterBelow(last, footerHere) > flow.Column.Bottom + Epsilon)
+            {
+                // Close this part with its footer and open the next with its header. A block taller than a whole
+                // column is drawn there anyway.
+                if (FooterAtBreak(start))
+                {
+                    DrawRows(bodyEnd, rows.Count);
+                }
                 FlushEdges();
-                if (!flow.NextColumn())
+                var from = Position();
+                if (!MoveOn(start))
                 {
                     flow.Layout.Overset = true;
                     return;
                 }
                 x = flow.Column.X + format.LeftIndent;
                 top = flow.Column.Y;
-                startRow = r;
-                if (r >= headerCount && headerCount > 0)
+                footerHere = FooterAtBreak(null);
+                if (Repeats(headerRepeat, from, Position()))
                 {
-                    for (var h = 0; h < headerCount; h++)
-                    {
-                        DrawRow(h, top);
-                        top += heights[h];
-                    }
+                    DrawRows(0, headerCount);
                 }
             }
-            DrawRow(r, top);
-            top += height;
-            flow.AtColumnTop = false;
+            DrawRows(r, last + 1);
+            r = last + 1;
+        }
+        if (!skipLastFooter)
+        {
+            DrawRows(bodyEnd, rows.Count);
         }
         FlushEdges();
         flow.EndBlock(top + spaceAfter);
@@ -1488,6 +1602,13 @@ internal sealed class TextComposer
         }
 
         public void BeginBlock() => PendingSpace = 0;
+
+        /// <summary>A block's rows (a table's) now take up the column and its page.</summary>
+        public void PlaceBlock()
+        {
+            AtColumnTop = false;
+            contentPage = Frame.PageIndex;
+        }
 
         /// <summary>After a table: the next line is placed a leading below <paramref name="bottom"/>.</summary>
         public void EndBlock(double bottom)

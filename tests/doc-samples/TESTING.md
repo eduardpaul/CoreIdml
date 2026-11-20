@@ -42,7 +42,7 @@ What remains:
 | all with links | `LinkResourceURI` values are absolute paths on the generating machine (`file:C:/Users/usuario/Downloads/...`). | Links resolve only by file name through `links/`. That is the realistic case; keep it. |
 | `00-diag` | Leftover diagnostic folder (one image, no IDML). The README says to delete it. | Ignored by the harness; delete it. |
 | `10-table-cells` | p6: the three graphic cells (`GraphicTypeCell`, one with Clip Contents to Cell) are **empty**: InDesign scripting cannot place into a graphic cell. The image is in a text cell next to them. | Graphic-cell geometry and clipping are testable; an image inside a graphic cell is not. |
-| `10-table-structure` | Header and footer repeat modes and Skip First/Last left at their defaults. | Only the default repeat is tested. |
+| `10-table-structure` | Header and footer repeat modes and Skip First/Last left at their defaults: no sample writes a repeat attribute. | Only the default repeat is tested. The other modes are read as `BreakHeaders`/`BreakFooters` and `SkipFirstHeader`/`SkipLastFooter` (names and values from memory) and covered by unit tests (`TableBreakTests`) only. |
 | `05-image-formats` | **Removed** (its `reference.pdf` embedded Arial Bold). It covered JPEG, PNG, TIFF, PSD, EPS, `.ai`, multi-page and cropped PDFs, a placed `.indd`, GIF, BMP, SVG and WebP. | No sample for image formats until it is re-made with the placed test PDFs embedding Liberation Sans Bold. |
 | `01-doc-bleed-slug`, `12-pdf-output` | `reference-bleed-marks.pdf` and `reference-marks.pdf` **removed** (Minion Pro embedded in the marks). | Printer's marks have no reference; re-export with Page Information off to get them back. |
 | `03-color-swatches` | "PANTONE 185 C" is a spot swatch defined by script with a Lab value, not loaded from the colour book. | Same XML shape as a book colour, except the book reference. |
@@ -398,8 +398,8 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | Sample | Checks | Pass when | Watch out |
 | --- | --- | --- | --- |
 | `09-style-text-styles` | B, D | Based-on chains, next style (B only), character styles, overrides and clearing, object style carrying a paragraph style. | |
-| `09-style-table-cell-styles` | C, B | Cell styles per cell; table style regions (header, body, footer, left/right column) including across a frame break; local overrides. | p3 still fails: footer rows are not repeated at the frame break (`10-table-structure`). |
-| `10-table-structure` | D, C | Header and footer rows, row heights (at least / exactly), merged cells, table across two frames with the header repeated, table in running text, nested table. | |
+| `09-style-table-cell-styles` | C, B | Cell styles per cell; table style regions (header, body, footer, left/right column) including across a frame break; local overrides. | Done: p3 repeats the header and footer rows (`CS Head`, `CS Foot`) in both frames, three body rows in the first. The footer text is 1 pt lower than InDesign's in both frames, as the footer at the end of the table already was. |
+| `10-table-structure` | D, C | Header and footer rows, row heights (at least / exactly), merged cells, table across two frames with the header repeated, table in running text, nested table. | Done: p4 repeats the header and footer rows in both frames and starts row 3 in the next frame (its `StartRow`), every word within 1 pt. |
 | `10-table-cells` | C (regions), F | Fills, per-edge strokes and types, insets and vertical alignment, rotated text, diagonal lines in front and behind; p6 empty graphic cells with their insets and clipping, the overset cell reported. | Edge types are drawn solid today. The overset cell is the one expected overset in the package. |
 | `10-table-alternating` | C (regions) | Alternating row and column fills and strokes with counts, from the table and from a table style, with merged cells. | |
 

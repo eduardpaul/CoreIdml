@@ -188,10 +188,10 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Add rows | `Row` | ✅ | ✅ | `addRow`. |
 | Delete rows, insert or delete columns **[new]** | `Row`, `Column` | ❌ | — | No operation. |
 | Column width, row height | `SingleColumnWidth`, `SingleRowHeight`, `AutoGrow` | ✅ | ✅ | Rows grow to fit unless at exactly. |
-| Header rows, repeated after breaks | `HeaderRowCount` | ✅ | ✅ | |
-| Footer rows **[new]** | `FooterRowCount` | ❌ | 🟡 | Drawn once at the end; not repeated at each frame or column break. |
+| Header rows, repeated after breaks | `HeaderRowCount`, `BreakHeaders`, `SkipFirstHeader` | ✅ | ✅ | Repeated at the top of every part of a split table; a table starts in the next column unless its header, first body rows and footer fit together. `BreakHeaders` (once per frame or page) and `SkipFirstHeader` are from memory: the samples keep the defaults. Agent: `headerRows` only. |
+| Footer rows **[new]** | `FooterRowCount`, `BreakFooters`, `SkipLastFooter` | ❌ | ✅ | Repeated at the bottom of every part of a split table, in the footer region's cell style, their height kept free when deciding which body rows fit (`09-style-table-cell-styles` p3, `10-table-structure` p4). `BreakFooters` (once per frame or page) and `SkipLastFooter` are from memory: the samples keep the defaults. |
 | Merged cells | `RowSpan`, `ColumnSpan` | ❌ | ✅ | Merged blocks never split between frames. |
-| Table across columns and frames | — | — | ✅ | |
+| Table across columns and frames | `Row@StartRow` | — | ✅ | A row's Start Row (next column, frame, page, odd or even page) begins a new part (`10-table-structure` p4). |
 | Cell fill | `Cell@FillColor`, `FillTint` | 🟡 | ✅ | Agent: header rows only (`headerFill`); the DOM sets any cell (`TableCell.SetFill`). |
 | Cell borders | `*EdgeStrokeWeight`, `*EdgeStrokeColor`, `*EdgeStrokeTint` | 🟡 | ✅ | Agent: one stroke for the whole table. Shared edges drawn once, heavier wins. |
 | Cell border types **[new]** | `*EdgeStrokeType`, `*EdgeStrokeGapColor` | ❌ | ❌ † | Dashed and dotted cell borders drawn solid. |
@@ -253,7 +253,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | 10 | ~~**Nested and GREP styles**~~ | Drawn | M | See the row under paragraph formatting (nested line styles too); `08-para-nested-grep-styles` matches InDesign's fonts and colours on every page. |
 | 11 | **Auto-size frames, span columns, balance columns** | Overset or one column | M | All in frame-area construction. Auto-size is now in [responsive-layout-plan.md](responsive-layout-plan.md). |
 | 12 | **Above-line and custom anchored objects** | Missing | M | Custom position relative to frame, page or margin. |
-| 13 | **Cell border types, footer row repeat, cell rotation, diagonal lines** | Simplified | S each | |
+| 13 | **Cell border types, ~~footer row repeat~~, cell rotation, diagonal lines** | Simplified | S each | Footer rows now repeat at every break (see the table rows). |
 | 14 | **Bleed in the PDF** | Cut at trim | S | MediaBox = trim + bleed, TrimBox and BleedBox. |
 | 15 | **Mixed inks, OpenType features, optical kerning** | Approximated or missing | M each | Lower priority. |
 
