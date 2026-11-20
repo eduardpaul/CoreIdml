@@ -11,9 +11,12 @@ namespace CoreIdml.Pdf.Layout;
 /// stretching past the maximum capped at <see cref="StretchCap"/>: a line far too loose is no worse than one merely too
 /// loose (08-para-hyphenation-justification p1 to p3, 120 pt columns: InDesign sets "Mr. Bennet replied that" at 303%
 /// rather than "... that he" at 134% followed by a line at 233%). Compressing past the minimum costs
-/// <see cref="OvershrinkCost"/> more: InDesign does it only when every other way is worse (08-para-alignment-indents
-/// p1 justifies all lines with one at 70% rather than letter space "daughters." alone, but with the last line left
-/// aligned stretches the first line to 191% instead; p4 compresses one line to 26% with a 50% minimum). A line that
+/// <see cref="OvershrinkCost"/> more, about what stretching a line to r = 2.5 (183% by default) costs: InDesign
+/// compresses past the minimum rather than set a loose line or a line more (08-para-alignment-indents p1 justifies all
+/// lines in four with one at 70%, not five with one at 161%, but with the last line left aligned stretches the first
+/// line to 191% instead; 08-para-drop-caps p1 and p6 end "rightful property of some one or other of their daughters."
+/// at 75% rather than leave "of" alone on a line, p1 sets "such a man may be on his first entering a neighbourhood," at
+/// 70%; 08-para-hyphenation-justification p4 compresses one line to 26% with a 50% minimum). A line that
 /// must stretch with nothing that may (one word without single-word justification) costs
 /// <see cref="ImpossibleCost"/>.</item>
 /// <item>ragged: 100 gap / 2 em for the room it leaves at the end, nothing for the last line: linear, so the demerits
@@ -50,8 +53,12 @@ internal sealed partial class TextComposer
     /// <summary>The badness at which a stretched line counts as just loose (r ≈ 3.1, 200% word spacing by default).</summary>
     private const double StretchCap = 3000;
 
-    /// <summary>What compressing a justified line past its minimum adds to its badness.</summary>
-    private const double OvershrinkCost = 10000;
+    /// <summary>
+    /// What compressing a justified line past its minimum adds to its badness. Of the costs from 0 to 10000, 1000 to 1500
+    /// set the most doc-samples pages as InDesign does and none worse than 10000 (600 sets 08-para-alignment-indents p1
+    /// and p2 a line short, 2000 breaks 07-char-language-nobreak p1 worse).
+    /// </summary>
+    private const double OvershrinkCost = 1200;
 
     /// <summary>The badness of a line that must stretch and has nothing that may.</summary>
     private const double ImpossibleCost = 100000;

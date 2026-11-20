@@ -79,6 +79,21 @@ public sealed class ParagraphComposerTests
     }
 
     [Fact]
+    public void A_line_is_compressed_past_the_minimum_word_spacing_rather_than_leave_a_loose_paragraph()
+    {
+        // 08-para-alignment-indents p1 (justify all lines, 253.8 pt): InDesign sets the first line at 70% word spacing,
+        // below the 80% minimum, and the paragraph in four lines, rather than five lines with one at 161%.
+        const string text = "However little known the feelings or views of such a man may be on his first entering a neighbourhood, this "
+            + "truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some "
+            + "one or other of their daughters.";
+        var (document, page) = NewDocument();
+        var frame = page.AddText(new Rect(0, 0, 253.8, 500), text, Style(document, "HL Composer", Justification.FullyJustified));
+        var lines = Layout(document, frame).Lines;
+        Assert.Equal(4, lines.Count);
+        Assert.EndsWith("may be", lines[0].Text.TrimEnd());
+    }
+
+    [Fact]
     public void Justified_lines_fill_the_column_and_keep_every_word()
     {
         var lines = Lines("HL Composer", Justification.LeftJustified, 160, hyphenation: true);
