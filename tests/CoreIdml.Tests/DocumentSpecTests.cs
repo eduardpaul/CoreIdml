@@ -592,6 +592,82 @@ public class DocumentSpecTests
         Assert.Contains("pages[0].items[1]: unknown field 'autoSizing', ignored (did you mean 'autoSize'?).", warnings);
     }
 
+    [Fact]
+    public void Gradients_and_object_styles_are_written_as_InDesign_stores_them()
+    {
+        var spec = """
+        {
+          "colors": [ { "name": "Sun", "cmyk": [0, 20, 90, 0] } ],
+          "gradients": [ { "name": "Dawn", "stops": [ { "color": "Sun" }, { "color": "Black", "midpoint": 30 } ] }, { "name": "Glow", "type": "radial", "stops": [ { "color": "Paper" }, { "color": "Sun", "location": 60 }, { "color": "Black" } ] } ],
+          "objectStyles": [
+            { "name": "Card", "fill": "Sun", "stroke": "Black", "strokeWeight": 2, "cornerRadius": 6, "columns": 2, "inset": { "all": 4 }, "verticalAlign": "center" },
+            { "name": "Ghost", "basedOn": "Card", "opacity": 40 }
+          ],
+          "pages": [ { "items": [
+            { "type": "rectangle", "name": "band", "x": 0, "y": 0, "width": 200, "height": 100, "fill": "Dawn", "gradientAngle": 90 },
+            { "type": "ellipse", "name": "dot", "x": 0, "y": 0, "width": 80, "height": 60, "fill": "Glow" },
+            { "type": "text", "name": "card", "objectStyle": "Ghost", "x": 0, "y": 200, "width": 200, "height": 100, "text": "x", "fill": "Black" },
+            { "type": "rectangle", "name": "plain", "objectStyle": "Card", "x": 0, "y": 400, "width": 50, "height": 50 }
+          ] } ]
+        }
+        """;
+        Assert.Empty(IdmlJson.CheckSpec(spec));
+        using var document = IdmlJson.CreateDocument(spec);
+
+        // 03-color-gradients: a Gradient swatch with typed stops; items name it and place it with GradientFill*.
+        var glow = document.GraphicRoot.Elements("Gradient").Single(gradient => gradient.Attribute("Name")!.Value == "Glow");
+        Assert.Equal("Radial", glow.Attribute("Type")!.Value);
+        Assert.Equal(["0", "60", "100"], glow.Elements("GradientStop").Select(stop => stop.Attribute("Location")!.Value));
+        Assert.Equal("30", document.GraphicRoot.Elements("Gradient").Single(gradient => gradient.Attribute("Name")!.Value == "Dawn").Elements("GradientStop").Last().Attribute("Midpoint")!.Value);
+        var band = Item(document, "band");
+        Assert.Equal("Gradient/Dawn", band.Attribute("FillColor")!.Value);
+        // At 90 degrees the gradient runs up the box from its bottom edge (inner coordinates, y down), the box's height long.
+        Assert.Equal(("0 50", "100", "90"), (band.Attribute("GradientFillStart")!.Value, band.Attribute("GradientFillLength")!.Value, band.Attribute("GradientFillAngle")!.Value));
+        var dot = Item(document, "dot");
+        Assert.Equal(("0 0", "40"), (dot.Attribute("GradientFillStart")!.Value, dot.Attribute("GradientFillLength")!.Value));
+
+        // 02-item-object-styles: category flags, values as attributes, BasedOn in Properties, text frame options in a
+        // TextFramePreference child and the opacity with its effects category flag.
+        var card = document.Styles.FindObjectStyle("Card")!.Element;
+        Assert.Equal(["true", "true", "true", "true", "false"],
+            ((string[])["EnableFill", "EnableStroke", "EnableStrokeAndCornerOptions", "EnableTextFrameGeneralOptions", "EnableTextWrapAndOthers"]).Select(name => card.Attribute(name)!.Value));
+        Assert.Equal(("Color/Sun", "Color/Black", "2", "RoundedCorner", "6"),
+            (card.Attribute("FillColor")!.Value, card.Attribute("StrokeColor")!.Value, card.Attribute("StrokeWeight")!.Value, card.Attribute("TopLeftCornerOption")!.Value, card.Attribute("BottomRightCornerRadius")!.Value));
+        Assert.Equal("$ID/[None]", card.Element("Properties")!.Element("BasedOn")!.Value);
+        Assert.Equal(("2", "CenterAlign"), (card.Element("TextFramePreference")!.Attribute("TextColumnCount")!.Value, card.Element("TextFramePreference")!.Attribute("VerticalJustification")!.Value));
+        var ghost = document.Styles.FindObjectStyle("Ghost")!.Element;
+        Assert.Equal("ObjectStyle/Card", ghost.Element("Properties")!.Element("BasedOn")!.Value);
+        Assert.Equal("true", ghost.Attribute("EnableFill")!.Value);
+        Assert.Equal("40", ghost.Element("TransparencySetting")!.Element("BlendingSetting")!.Attribute("Opacity")!.Value);
+        Assert.Equal("true", ghost.Element("ObjectStyleObjectEffectsCategorySettings")!.Attribute("EnableTransparency")!.Value);
+
+        // Items take the style without values of their own in its categories, except the fields the spec gives.
+        var frame = Item(document, "card");
+        Assert.Equal("ObjectStyle/Ghost", frame.Attribute("AppliedObjectStyle")!.Value);
+        Assert.Equal("Color/Black", frame.Attribute("FillColor")!.Value);
+        Assert.Null(frame.Element("TextFramePreference")!.Attribute("TextColumnCount"));
+        Assert.Null(frame.Element("TextFramePreference")!.Attribute("VerticalJustification"));
+        var plain = Item(document, "plain");
+        Assert.Null(plain.Attribute("StrokeColor"));
+        var resolver = new AttributeResolver(document);
+        Assert.Equal("Color/Black", resolver.Item(plain, "StrokeColor"));
+        Assert.Equal("40", resolver.Blending(frame, "Opacity"));
+    }
+
+    [Theory]
+    [InlineData("""{ "gradients": [ { "name": "G", "type": "conic", "stops": [ { "color": "Black" }, { "color": "Paper" } ] } ] }""", "Unknown gradient type 'conic'. Use linear or radial.")]
+    [InlineData("""{ "gradients": [ { "name": "G", "stops": [ { "color": "Black" } ] } ] }""", "Gradient 'G' needs at least two stops.")]
+    [InlineData("""{ "gradients": [ { "name": "G", "stops": [ { "color": "Black" }, { "color": "Teal" } ] } ] }""", "Unknown swatch 'Teal'. Declare it in colors first.")]
+    [InlineData("""{ "objectStyles": [ { "name": "O", "basedOn": "Base" } ] }""", "Unknown object style 'Base'. Declare it in objectStyles first.")]
+    [InlineData("""{ "objectStyles": [ { "name": "O", "opacity": 120 } ] }""", "opacity 120 is out of range. Use 0 to 100.")]
+    [InlineData("""{ "pages": [ { "items": [ { "type": "rectangle", "objectStyle": "Card" } ] } ] }""", "Unknown object style 'Card'. Declare it in objectStyles first.")]
+    public void Gradient_and_object_style_errors_name_what_is_allowed(string spec, string message)
+    {
+        var exception = Assert.Throws<IdmlException>(() => IdmlJson.CreateDocument(spec));
+
+        Assert.Equal(message, exception.Message);
+    }
+
     private static string Png()
     {
         var path = TestFiles.TempPath(".png");

@@ -174,6 +174,31 @@ public static partial class IdmlJson
                 throw new IdmlException($"Colour '{color.Name}' needs cmyk, rgb or hex.");
             }
         }
+        foreach (var gradient in spec.Gradients ?? [])
+        {
+            var stops = gradient.Stops ?? [];
+            document.Swatches.AddGradient(gradient.Name, TryGradientType(gradient.Type ?? "linear")!.Value,
+                [.. stops.Select((stop, i) => new GradientStop(RequireSwatch(document, stop.Color), stop.Location ?? (100.0 * i / Math.Max(1, stops.Count - 1)), stop.Midpoint ?? 50))]);
+        }
+        foreach (var style in spec.ObjectStyles ?? [])
+        {
+            var basedOn = style.BasedOn is { } baseName ? RequireObjectStyle(document, baseName) : null;
+            document.Styles.AddObjectStyle(style.Name, new ObjectStyleFormat
+            {
+                Fill = style.Fill is { } fill ? RequireSwatch(document, fill) : null,
+                FillTint = style.FillTint,
+                Stroke = style.Stroke is { } stroke ? RequireSwatch(document, stroke) : null,
+                StrokeWeight = style.StrokeWeight,
+                StrokeTint = style.StrokeTint,
+                StrokeKind = style.StrokeType is { } strokeType ? ParseChoice<StrokeKind>(strokeType, "strokeType") : null,
+                CornerRadius = style.CornerRadius is { } radius ? Units.FromUnit(radius, unit) : null,
+                Opacity = style.Opacity,
+                Columns = style.Columns,
+                ColumnGutter = style.ColumnGutter is { } gutter ? Units.FromUnit(gutter, unit) : null,
+                Inset = ToSpacing(style.Inset, unit),
+                VerticalJustification = style.VerticalAlign is { } align ? ParseChoice<VerticalJustification>(align, "verticalAlign") : null,
+            }, basedOn);
+        }
 
         foreach (var style in spec.CharacterStyles ?? [])
         {
@@ -219,13 +244,25 @@ public static partial class IdmlJson
         double U(double value) => Units.FromUnit(value, unit);
         var bounds = new Rect(U(item.X), U(item.Y), U(item.Width), U(item.Height));
         var type = item.Type.ToLowerInvariant();
+        var objectStyle = item.ObjectStyle is { } objectStyleName ? RequireObjectStyle(document, objectStyleName) : null;
+        // The object style first, so the item's own fields override it.
+        T Styled<T>(T created)
+            where T : PageItem
+        {
+            if (objectStyle is not null)
+            {
+                created.ApplyObjectStyle(objectStyle);
+            }
+            return created;
+        }
         var shape = new ShapeStyle
         {
             Fill = item.Fill is { } fill ? RequireSwatch(document, fill) : null,
             FillTint = item.FillTint,
             // A spec's shapes have no outline unless it asks for one (InDesign's default graphics frame style would
-            // draw a 1 pt black stroke around every rectangle and ellipse).
-            Stroke = item.Stroke is { } stroke ? RequireSwatch(document, stroke) : type is "rectangle" or "ellipse" ? Swatch.None : null,
+            // draw a 1 pt black stroke around every rectangle and ellipse), or their object style gives one.
+            Stroke = item.Stroke is { } stroke ? RequireSwatch(document, stroke) : type is "rectangle" or "ellipse" && objectStyle is null ? Swatch.None : null,
+            GradientAngle = item.GradientAngle,
             StrokeWeight = item.StrokeWeight,
             StrokeTint = item.StrokeTint,
             StrokeKind = item.StrokeType is { } strokeType ? ParseChoice<StrokeKind>(strokeType, "strokeType") : null,
@@ -240,7 +277,7 @@ public static partial class IdmlJson
         {
             case "text":
             {
-                var frame = page.AddTextFrame(bounds, item.Name);
+                var frame = Styled(page.AddTextFrame(bounds, item.Name));
                 if (item.Columns is { } columns)
                 {
                     frame.Columns = columns;
@@ -271,27 +308,27 @@ public static partial class IdmlJson
                 break;
             }
             case "rectangle":
-                created = page.AddRectangle(bounds, null, item.Name);
+                created = Styled(page.AddRectangle(bounds, null, item.Name));
                 break;
             case "ellipse":
-                created = page.AddEllipse(bounds, null, item.Name);
+                created = Styled(page.AddEllipse(bounds, null, item.Name));
                 break;
             case "line":
-                created = page.AddLine(
+                created = Styled(page.AddLine(
                     new Point(U(item.X), U(item.Y)),
                     new Point(U(item.X2 ?? item.X + item.Width), U(item.Y2 ?? item.Y + item.Height)),
                     new ShapeStyle { Stroke = Swatch.Black, StrokeWeight = 1 },
-                    item.Name);
+                    item.Name));
                 break;
             case "image":
             {
                 var path = item.Path ?? throw new IdmlException("Image items need a path.");
-                created = page.AddImage(bounds, path, ParseFit(item.Fit), item.Name);
+                created = Styled(page.AddImage(bounds, path, ParseFit(item.Fit), item.Name));
                 break;
             }
             case "table":
             {
-                var frame = page.AddTextFrame(bounds, item.Name);
+                var frame = Styled(page.AddTextFrame(bounds, item.Name));
                 var rows = item.Rows ?? [];
                 var columnCount = Math.Max(1, rows.Count == 0 ? item.ColumnWidths?.Length ?? 1 : rows.Max(row => row.Count));
                 var table = frame.AddTable(Math.Max(1, rows.Count), columnCount, new TableOptions
@@ -312,7 +349,7 @@ public static partial class IdmlJson
                     table.SetRow(row, [.. rows[row]]);
                 }
                 created = frame;
-                shape = new ShapeStyle { Fill = shape.Fill, FillTint = shape.FillTint, Opacity = shape.Opacity, Rotation = shape.Rotation };
+                shape = new ShapeStyle { Fill = shape.Fill, FillTint = shape.FillTint, Opacity = shape.Opacity, Rotation = shape.Rotation, GradientAngle = shape.GradientAngle };
                 break;
             }
             default:
@@ -331,6 +368,7 @@ public static partial class IdmlJson
                 StrokeWeight = shape.StrokeWeight,
                 StrokeTint = shape.StrokeTint,
                 StrokeKind = shape.StrokeKind,
+                GradientAngle = shape.GradientAngle,
                 EndCap = shape.EndCap,
                 Opacity = shape.Opacity,
                 Rotation = shape.Rotation,
@@ -657,6 +695,9 @@ public static partial class IdmlJson
 
     private static ParagraphStyle RequireParagraphStyle(IdmlDocument document, string name) =>
         document.Styles.FindParagraphStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, ParagraphStyleMissing(name));
+
+    private static ObjectStyle RequireObjectStyle(IdmlDocument document, string name) =>
+        document.Styles.FindObjectStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, ObjectStyleMissing(name));
 
     private static CharacterStyle RequireCharacterStyle(IdmlDocument document, string name) =>
         document.Styles.FindCharacterStyle(name) ?? throw new IdmlException(IdmlErrorKind.NotFound, CharacterStyleMissing(name));

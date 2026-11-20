@@ -4,7 +4,14 @@ namespace CoreIdml.Json;
 
 public static partial class IdmlJson
 {
-    private static readonly string[] TopFields = ["unit", "page", "colors", "paragraphStyles", "characterStyles", "pages"];
+    private static readonly string[] TopFields = ["unit", "page", "colors", "gradients", "objectStyles", "paragraphStyles", "characterStyles", "pages"];
+    private static readonly string[] GradientFields = ["name", "type", "stops"];
+    private static readonly string[] GradientStopFields = ["color", "location", "midpoint"];
+    private static readonly string[] ObjectStyleFields =
+    [
+        "name", "basedOn", "fill", "fillTint", "stroke", "strokeWeight", "strokeTint", "strokeType", "cornerRadius", "opacity", "columns",
+        "columnGutter", "inset", "verticalAlign",
+    ];
     private static readonly string[] PageSetupFields = ["size", "width", "height", "landscape", "margins", "facingPages", "columns", "columnGutter", "bleed", "baselineGrid"];
     private static readonly string[] BaselineGridFields = ["start", "increment", "relativeTo"];
     private static readonly string[] SpacingFields = ["all", "top", "right", "bottom", "left"];
@@ -26,7 +33,8 @@ public static partial class IdmlJson
     private static readonly string[] CommonItemFields =
     [
         "type", "name", "label", "tag", "layer", "x", "y", "width", "height", "fill", "fillTint", "stroke", "strokeWeight",
-        "strokeTint", "strokeType", "endCap", "opacity", "cornerRadius", "rotation", "wrap", "wrapOffset", "wrapSide", "wrapInverse",
+        "strokeTint", "strokeType", "endCap", "opacity", "cornerRadius", "rotation", "objectStyle", "gradientAngle", "wrap",
+        "wrapOffset", "wrapSide", "wrapInverse",
     ];
     private static readonly string[] TextItemFields =
     [
@@ -80,6 +88,8 @@ public static partial class IdmlJson
         ["referencePoint"] = "autoSizeFrom", ["anchor"] = "autoSizeFrom", ["minHeight"] = "autoSizeMinHeight", ["minimumHeight"] = "autoSizeMinHeight",
         ["balance"] = "balanceColumns", ["verticalBalanceColumns"] = "balanceColumns", ["firstBaselineOffset"] = "firstBaseline",
         ["minimumFirstBaselineOffset"] = "firstBaselineMin", ["ignoreTextWrap"] = "ignoreWrap",
+        ["appliedObjectStyle"] = "objectStyle", ["frameStyle"] = "objectStyle", ["angle"] = "gradientAngle", ["gradientFillAngle"] = "gradientAngle",
+        ["stopColor"] = "color", ["gradientType"] = "type", ["colorStops"] = "stops",
     };
 
     /// <summary>
@@ -113,6 +123,16 @@ public static partial class IdmlJson
             }
         }
         ForEach(root, "colors", warnings, (color, path) => CheckFields(color, path, ColorFields, warnings));
+        ForEach(root, "gradients", warnings, (gradient, path) =>
+        {
+            CheckFields(gradient, path, GradientFields, warnings);
+            ForEach(gradient, "stops", warnings, (stop, stopPath) => CheckFields(stop, stopPath, GradientStopFields, warnings), path);
+        });
+        ForEach(root, "objectStyles", warnings, (style, path) =>
+        {
+            CheckFields(style, path, ObjectStyleFields, warnings);
+            CheckSpacing(style, path, warnings, "inset");
+        });
         ForEach(root, "characterStyles", warnings, (style, path) =>
             CheckFields(style, path, ["name", "basedOn", .. CharacterFormatFields], warnings, ParagraphOnlyFields, "a character style"));
         ForEach(root, "paragraphStyles", warnings, (style, path) =>

@@ -195,9 +195,11 @@ internal static class LayoutTools
         {
             Name = "idml_define_style",
             Title = "Create or edit a style",
-            Description = "Create a paragraph or character style, or update one by name; only the fields given change. Fields as in the spec's styles (size, leading, spacing, indents in pt).",
+            Description = "Create a paragraph, character or object style, or update one by name; only the fields given change. Fields as in the spec's styles (size, leading, spacing, indents in pt) and objectStyles (fill, stroke, cornerRadius, opacity, text frame columns, inset, verticalAlign; lengths in pt). Apply object styles with idml_edit_item objectStyle.",
             InputSchema = Schema.Edit(
-                """ "kind":{"type":"string","enum":["paragraph","character"]},"name":{"type":"string"},"basedOn":{"type":"string"},""" +
+                """ "kind":{"type":"string","enum":["paragraph","character","object"]},"name":{"type":"string"},"basedOn":{"type":"string"},""" +
+                """ "fill":{"type":"string","description":"Object styles: swatch"},"fillTint":{"type":"number"},"strokeType":{"type":"string","enum":["solid","dashed","dotted"]},"cornerRadius":{"type":"number","minimum":0},"opacity":{"type":"number","minimum":0,"maximum":100},""" +
+                """ "columns":{"type":"integer","minimum":1,"description":"Object styles: text frame columns"},"columnGutter":{"type":"number"},"inset":{"type":"object","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},"verticalAlign":{"type":"string","enum":["top","center","bottom","justify"]},""" +
                 """ "font":{"type":"string"},"fontStyle":{"type":"string"},"size":{"type":"number"},"leading":{"type":"number"},"color":{"type":"string","description":"Swatch name"},"tint":{"type":"number"},""" +
                 """ "align":{"type":"string","enum":["left","center","right","justify","justifyAll"]},"spaceBefore":{"type":"number"},"spaceAfter":{"type":"number"},""" +
                 """ "firstLineIndent":{"type":"number"},"leftIndent":{"type":"number"},"rightIndent":{"type":"number"},"underline":{"type":"boolean"},"strikeThrough":{"type":"boolean"},""" +
@@ -221,16 +223,16 @@ internal static class LayoutTools
             Apply = edit =>
             {
                 var kind = edit.Args.String("kind");
-                if (kind is not ("paragraph" or "character"))
+                if (kind is not ("paragraph" or "character" or "object"))
                 {
-                    throw ToolException.Invalid("Argument 'kind' must be \"paragraph\" or \"character\".");
+                    throw ToolException.Invalid("Argument 'kind' must be \"paragraph\", \"character\" or \"object\".");
                 }
                 var style = JsonNode.Parse(edit.Args.Json.GetRawText())!.AsObject();
                 foreach (var key in (string[])["path", "outPath", "inPlace", "dryRun", "kind"])
                 {
                     style.Remove(key);
                 }
-                var spec = JsonText.Write(new JsonObject { [kind == "paragraph" ? "paragraphStyles" : "characterStyles"] = new JsonArray(style) });
+                var spec = JsonText.Write(new JsonObject { [kind switch { "paragraph" => "paragraphStyles", "character" => "characterStyles", _ => "objectStyles" }] = new JsonArray(style) });
                 IdmlJson.Apply(edit.Document, spec);
                 return WithWarnings(spec);
             },
@@ -296,6 +298,7 @@ internal static class LayoutTools
         """ "stroke":{"type":"string","description":"Swatch; None removes"},"strokeWeight":{"type":"number","minimum":0},""" +
         """ "strokeTint":{"type":"number","minimum":0,"maximum":100},"strokeType":{"type":"string","enum":["solid","dashed","dotted"]},""" +
         """ "endCap":{"type":"string","enum":["butt","round","projecting"]},"cornerRadius":{"type":"number","minimum":0},""" +
+        """ "objectStyle":{"type":"string","description":"Apply this object style first; the other arguments override it"},"gradientAngle":{"type":"number","description":"Degrees of a gradient fill or stroke"},""" +
         """ "opacity":{"type":"number","minimum":0,"maximum":100},"rotateBy":{"type":"number","description":"Degrees counter-clockwise, around the centre"},""" +
         """ "columns":{"type":"integer","minimum":1},"columnGutter":{"type":"number","minimum":0},""" +
         """ "inset":{"type":"object","description":"Sides not given fall back to all, then keep their value","properties":{"all":{"type":"number"},"top":{"type":"number"},"right":{"type":"number"},"bottom":{"type":"number"},"left":{"type":"number"}}},""" +
@@ -310,6 +313,11 @@ internal static class LayoutTools
     /// <summary>The look arguments of idml_edit_item (see <see cref="LookProperties"/>) applied to an item.</summary>
     internal static void ApplyLook(IdmlDocument document, PageItem item, ToolArguments args)
     {
+        if (args.OptionalString("objectStyle") is { } objectStyleName)
+        {
+            item.ApplyObjectStyle(document.Styles.FindObjectStyle(objectStyleName)
+                ?? throw ToolException.NotFound($"No object style '{objectStyleName}' (object styles: {string.Join(", ", document.Styles.ObjectStyles.Select(s => s.DisplayName))}); create it with idml_define_style kind object."));
+        }
         Swatch? SwatchArgument(string name) => args.OptionalString(name) is { } swatchName ? RequireSwatch(document, swatchName) : null;
         var style = new ShapeStyle
         {
@@ -323,6 +331,7 @@ internal static class LayoutTools
             CornerRadius = args.OptionalDouble("cornerRadius"),
             Opacity = args.OptionalDouble("opacity"),
             Rotation = args.OptionalDouble("rotateBy"),
+            GradientAngle = args.OptionalDouble("gradientAngle"),
         };
         item.ApplyStyle(style);
         var options = (string[])["wrap", "wrapOffset", "wrapSide", "wrapInverse", "autoSize", "autoSizeFrom", "autoSizeMinHeight", "balanceColumns", "firstBaseline", "firstBaselineMin", "ignoreWrap"];
@@ -370,6 +379,7 @@ internal static class LayoutTools
         var warnings = IdmlJson.CheckSpec(spec)
             .Select(warning => warning.Replace("paragraphStyles[0]", "arguments", StringComparison.Ordinal)
                 .Replace("characterStyles[0]", "arguments", StringComparison.Ordinal)
+                .Replace("objectStyles[0]", "arguments", StringComparison.Ordinal)
                 .Replace("colors[0]", "arguments", StringComparison.Ordinal))
             .ToList();
         return warnings.Count == 0 ? JsonText.Ok : JsonText.Write(new JsonObject { ["ok"] = true, ["warnings"] = JsonText.Array(warnings) });

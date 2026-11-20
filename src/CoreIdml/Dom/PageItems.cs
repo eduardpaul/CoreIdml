@@ -30,6 +30,12 @@ public sealed class ShapeStyle
     /// <summary>How open stroke ends are drawn (lines and open paths).</summary>
     public LineCap? EndCap { get; init; }
 
+    /// <summary>
+    /// The angle of a gradient fill or stroke in degrees, counter-clockwise (0: left to right). The gradient spans the
+    /// item; give it with a gradient <see cref="Fill"/> or <see cref="Stroke"/>, or alone to turn the item's own.
+    /// </summary>
+    public double? GradientAngle { get; init; }
+
     /// <summary>Opacity of the whole item in percent (100 = opaque), InDesign's Effects > Transparency.</summary>
     public double? Opacity { get; init; }
 }
@@ -315,12 +321,14 @@ public abstract class PageItem : IdmlNode
         }
         if (style.StrokeKind is { } kind)
         {
-            SetAttribute("StrokeType", kind switch
+            SetAttribute("StrokeType", StrokeTypeReference(kind));
+        }
+        foreach (var (prefix, color, given) in (ReadOnlySpan<(string, string, Swatch?)>)[("GradientFill", "FillColor", style.Fill), ("GradientStroke", "StrokeColor", style.Stroke)])
+        {
+            if ((given is not null || style.GradientAngle is not null) && GetAttribute(color) is { } reference && reference.StartsWith("Gradient/", StringComparison.Ordinal))
             {
-                StrokeKind.Dashed => "StrokeStyle/$ID/Canned Dashed 3x2",
-                StrokeKind.Dotted => "StrokeStyle/$ID/Canned Dotted",
-                _ => "StrokeStyle/$ID/Solid",
-            });
+                PlaceGradient(prefix, reference, style.GradientAngle ?? 0);
+            }
         }
         if (style.CornerRadius is { } radius)
         {
@@ -347,6 +355,84 @@ public abstract class PageItem : IdmlNode
         if (style.Rotation is { } rotation && rotation != 0)
         {
             Rotate(rotation);
+        }
+    }
+
+    /// <summary>InDesign's stroke style for a <see cref="StrokeKind"/>.</summary>
+    internal static string StrokeTypeReference(StrokeKind kind) => kind switch
+    {
+        StrokeKind.Dashed => "StrokeStyle/$ID/Canned Dashed 3x2",
+        StrokeKind.Dotted => "StrokeStyle/$ID/Canned Dotted",
+        _ => "StrokeStyle/$ID/Solid",
+    };
+
+    /// <summary>
+    /// Writes where a gradient fill or stroke runs, as InDesign stores it (03-color-gradients): <c>...Start</c> in the
+    /// item's inner coordinates, <c>...Length</c> and <c>...Angle</c> (degrees counter-clockwise). A linear gradient
+    /// crosses the item's box through its centre along the angle; a radial one is centred, its radius half the larger
+    /// side (as InDesign stored for the circle and hexagon of the sample).
+    /// </summary>
+    private void PlaceGradient(string prefix, string reference, double angle)
+    {
+        var radial = Document.GraphicRoot.Elements("Gradient").FirstOrDefault(gradient => gradient.Attribute("Self")?.Value == reference)?.Attribute("Type")?.Value == "Radial";
+        var bounds = InnerBounds;
+        var center = bounds.Center;
+        var radians = angle * Math.PI / 180;
+        var (dx, dy) = (Math.Cos(radians), -Math.Sin(radians));
+        var half = radial ? Math.Max(bounds.Width, bounds.Height) / 2 : (Math.Abs(dx) * bounds.Width / 2) + (Math.Abs(dy) * bounds.Height / 2);
+        var start = radial ? center : new Point(center.X - (dx * half), center.Y - (dy * half));
+        // Rounded so that cos 90° and the like write 0, not 3E-15 or -0.
+        static double Clean(double value) => Math.Round(value, 6) + 0.0;
+        SetAttribute(prefix + "Start", IdmlXml.FormatList(Clean(start.X), Clean(start.Y)));
+        SetAttribute(prefix + "Length", IdmlXml.Format(Clean(radial ? half : 2 * half)));
+        SetAttribute(prefix + "Angle", IdmlXml.Format(angle));
+    }
+
+    /// <summary>
+    /// Applies an object style as InDesign does: the item takes the style, and its own values in the categories the
+    /// style controls (fill, stroke, corners, text frame options, transparency) are cleared, so the style's apply.
+    /// Values set afterwards (<see cref="ApplyStyle"/>, ...) override the style again.
+    /// </summary>
+    public void ApplyObjectStyle(ObjectStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+        SetAttribute("AppliedObjectStyle", style.Reference);
+        var chain = new AttributeResolver(Document).ObjectChain(Element);
+        bool Controls(string category) => AttributeResolver.StylesControl(chain, category);
+        void Clear(XElement? element, Func<string, bool> attribute)
+        {
+            foreach (var name in element?.Attributes().Select(a => a.Name.LocalName).Where(attribute).ToList() ?? [])
+            {
+                element!.Attribute(name)!.Remove();
+            }
+        }
+        if (Controls("EnableFill"))
+        {
+            Clear(Element, name => name is "FillColor" or "FillTint" || name.StartsWith("GradientFill", StringComparison.Ordinal));
+        }
+        if (Controls("EnableStroke"))
+        {
+            Clear(Element, name => name is "StrokeColor" or "StrokeWeight" or "StrokeTint" or "StrokeType" || name.StartsWith("GradientStroke", StringComparison.Ordinal));
+        }
+        if (Controls("EnableStrokeAndCornerOptions"))
+        {
+            Clear(Element, name => name.EndsWith("CornerOption", StringComparison.Ordinal) || name.EndsWith("CornerRadius", StringComparison.Ordinal));
+        }
+        var preference = Element.Element("TextFramePreference");
+        if (Controls("EnableTextFrameGeneralOptions"))
+        {
+            Clear(preference, name => name is "TextColumnCount" or "TextColumnGutter" or "VerticalJustification" or "IgnoreWrap");
+            preference?.Element(IdmlXml.Properties)?.Element("InsetSpacing")?.Remove();
+        }
+        if (Controls("EnableTextFrameBaselineOptions"))
+        {
+            Clear(preference, name => name is "FirstBaselineOffset" or "MinimumFirstBaselineOffset");
+        }
+        var stylesTransparency = chain.Skip(1).Select(element => element.Element("ObjectStyleObjectEffectsCategorySettings")?.Attribute("EnableTransparency")?.Value)
+            .FirstOrDefault(value => value is not null) != "false";
+        if (stylesTransparency)
+        {
+            Element.Element("TransparencySetting")?.Element("BlendingSetting")?.Attribute("Opacity")?.Remove();
         }
     }
 
@@ -578,10 +664,7 @@ public sealed class TextFrame : PageItem
         }
         set
         {
-            var properties = IdmlXml.GetOrCreateProperties(Preference);
-            properties.Element("InsetSpacing")?.Remove();
-            properties.Add(new XElement("InsetSpacing", new XAttribute("type", "list"),
-                ((double[])[value.Top, value.Left, value.Bottom, value.Right]).Select(v => new XElement("ListItem", new XAttribute("type", "unit"), IdmlXml.Format(v)))));
+            WriteInset(Preference, value);
         }
     }
 
@@ -590,7 +673,19 @@ public sealed class TextFrame : PageItem
         get => Enum.TryParse<VerticalJustification>((ExistingPreference?.Attribute("VerticalJustification")?.Value ?? "TopAlign").Replace("Align", string.Empty, StringComparison.Ordinal), out var value)
             ? value
             : VerticalJustification.Top;
-        set => Preference.SetAttributeValue("VerticalJustification", value == VerticalJustification.Justify ? "JustifyAlign" : value + "Align");
+        set => Preference.SetAttributeValue("VerticalJustification", VerticalJustificationName(value));
+    }
+
+    /// <summary>The <c>VerticalJustification</c> value: TopAlign, CenterAlign, BottomAlign, JustifyAlign.</summary>
+    internal static string VerticalJustificationName(VerticalJustification value) => value + "Align";
+
+    /// <summary>A <c>TextFramePreference</c>'s <c>InsetSpacing</c>, in IDML's order: top, left, bottom, right.</summary>
+    internal static void WriteInset(XElement preference, Spacing inset)
+    {
+        var properties = IdmlXml.GetOrCreateProperties(preference);
+        properties.Element("InsetSpacing")?.Remove();
+        properties.Add(new XElement("InsetSpacing", new XAttribute("type", "list"),
+            ((double[])[inset.Top, inset.Left, inset.Bottom, inset.Right]).Select(v => new XElement("ListItem", new XAttribute("type", "unit"), IdmlXml.Format(v)))));
     }
 
     /// <summary>The frame grows or shrinks to its text (06-frame-autosize writes it on <c>TextFramePreference</c>).</summary>

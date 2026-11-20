@@ -130,6 +130,32 @@ public sealed class SpecAuthoringTests
     }
 
     [Fact]
+    public void Spec_gradients_and_object_styles_are_drawn()
+    {
+        using var document = IdmlJson.CreateDocument("""
+        {
+          "colors": [ { "name": "Red", "cmyk": [0, 100, 100, 0] } ],
+          "gradients": [ { "name": "Fade", "stops": [ { "color": "Red" }, { "color": "Paper" } ] }, { "name": "Glow", "type": "radial", "stops": [ { "color": "Paper" }, { "color": "Red" } ] } ],
+          "objectStyles": [ { "name": "Ghost", "fill": "Black", "opacity": 40, "inset": { "all": 9 } } ],
+          "pages": [ { "items": [
+            { "type": "rectangle", "x": 36, "y": 36, "width": 200, "height": 100, "fill": "Fade" },
+            { "type": "ellipse", "x": 300, "y": 36, "width": 100, "height": 100, "fill": "Glow" },
+            { "type": "text", "name": "ghost", "objectStyle": "Ghost", "x": 36, "y": 200, "width": 200, "height": 100, "text": "Faded" }
+          ] } ]
+        }
+        """);
+
+        var pdf = System.Text.Encoding.Latin1.GetString(TestSupport.Export(document));
+        var frame = (TextFrame)document.AllPageItems.Single(item => item.Name == "ghost");
+
+        Assert.Contains("/ShadingType 2", pdf, StringComparison.Ordinal);
+        Assert.Contains("/ShadingType 3", pdf, StringComparison.Ordinal);
+        Assert.Contains("/ca 0.4 /CA 0.4", pdf, StringComparison.Ordinal);
+        // The style's inset moves the text in.
+        Assert.Equal(9, Layout(document, "ghost").Lines[0].Left - frame.InnerBounds.X, 6);
+    }
+
+    [Fact]
     public void Paragraphs_aligned_to_the_spec_baseline_grid_sit_on_its_lines()
     {
         using var document = IdmlJson.CreateDocument($$"""

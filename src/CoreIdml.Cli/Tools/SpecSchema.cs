@@ -36,6 +36,18 @@ internal static class SpecSchema
             "cmyk":{"type":"array","items":{"type":"number","minimum":0,"maximum":100},"minItems":4,"maxItems":4},
             "rgb":{"type":"array","items":{"type":"number","minimum":0,"maximum":255},"minItems":3,"maxItems":3},
             "hex":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}}}},
+          "gradients":{"type":"array","description":"Gradient swatches, after colors: use the name as fill, stroke or text color","items":{"type":"object","required":["name","stops"],"properties":{
+            "name":{"type":"string"},"type":{"type":"string","enum":["linear","radial"],"description":"Default linear"},
+            "stops":{"type":"array","minItems":2,"items":{"type":"object","required":["color"],"properties":{
+              "color":{"type":"string","description":"Colour swatch"},"location":{"type":"number","minimum":0,"maximum":100,"description":"Percent; default evenly spaced"},
+              "midpoint":{"type":"number","minimum":13,"maximum":87,"description":"Where it mixes half and half with the stop before, percent; default 50"}}}}}}},
+          "objectStyles":{"type":"array","description":"Looks shared by frames and shapes (cards, captions, sidebars), applied with objectStyle on items","items":{"type":"object","required":["name"],"properties":{
+            "name":{"type":"string"},"basedOn":{"type":"string","description":"Object style declared before"},
+            "fill":{"type":"string"},"fillTint":{"type":"number","minimum":0,"maximum":100},"stroke":{"type":"string"},"strokeWeight":{"type":"number","minimum":0},
+            "strokeTint":{"type":"number","minimum":0,"maximum":100},"strokeType":{"type":"string","enum":["solid","dashed","dotted"]},
+            "cornerRadius":{"type":"number","minimum":0},"opacity":{"type":"number","minimum":0,"maximum":100},
+            "columns":{"type":"integer","minimum":1,"description":"Text frames"},"columnGutter":{"type":"number"},"inset":{"$ref":"#/$defs/spacing"},
+            "verticalAlign":{"type":"string","enum":["top","center","bottom","justify"]}}}},
           "characterStyles":{"type":"array","items":{"$ref":"#/$defs/style"}},
           "paragraphStyles":{"type":"array","items":{"$ref":"#/$defs/style"}},
           "pages":{"type":"array","items":{"type":"object","properties":{
@@ -113,6 +125,8 @@ internal static class SpecSchema
           "endCap":{"type":"string","enum":["butt","round","projecting"]},
           "opacity":{"type":"number","minimum":0,"maximum":100},
           "cornerRadius":{"type":"number"},"rotation":{"type":"number","description":"Degrees counter-clockwise"},
+          "objectStyle":{"type":"string","description":"From objectStyles (or the document); the item's own fields override it"},
+          "gradientAngle":{"type":"number","description":"Of a gradient fill or stroke, degrees counter-clockwise; default 0 (left to right)"},
           "wrap":{"type":"string","enum":["none","boundingBox","objectShape","jumpObject","nextColumn"],"description":"Text wrap: the text of other frames goes around the item"},
           "wrapOffset":{"$ref":"#/$defs/spacing","description":"Gap between the item and the wrapped text; objectShape uses top all round"},
           "wrapSide":{"type":"string","enum":["both","left","right","towardsSpine","awayFromSpine","largest"],"description":"Default both"},

@@ -68,6 +68,140 @@ public sealed class ObjectStyle : Style
         : base(document, element)
     {
     }
+
+    /// <summary>
+    /// Sets the style's values: each category given (fill, stroke, corners, text frame general options, transparency)
+    /// is turned on (<c>EnableFill</c>, ...); the others keep their setting.
+    /// </summary>
+    public void ApplyFormat(ObjectStyleFormat format)
+    {
+        ArgumentNullException.ThrowIfNull(format);
+        format.ApplyTo(Element);
+    }
+}
+
+/// <summary>
+/// What an object style sets, by category: fill, stroke, corners, the text frame's general options (columns, inset,
+/// vertical justification) and the object's opacity. Null properties are not set.
+/// </summary>
+public sealed class ObjectStyleFormat
+{
+    public Swatch? Fill { get; init; }
+
+    public double? FillTint { get; init; }
+
+    public Swatch? Stroke { get; init; }
+
+    public double? StrokeWeight { get; init; }
+
+    public double? StrokeTint { get; init; }
+
+    public StrokeKind? StrokeKind { get; init; }
+
+    /// <summary>Rounded corners of this radius on all four corners (0: square).</summary>
+    public double? CornerRadius { get; init; }
+
+    /// <summary>Opacity of the whole object in percent.</summary>
+    public double? Opacity { get; init; }
+
+    public int? Columns { get; init; }
+
+    public double? ColumnGutter { get; init; }
+
+    public Spacing? Inset { get; init; }
+
+    public VerticalJustification? VerticalJustification { get; init; }
+
+    internal bool SetsFill => Fill is not null || FillTint is not null;
+
+    internal bool SetsStroke => Stroke is not null || StrokeWeight is not null || StrokeTint is not null || StrokeKind is not null;
+
+    internal bool SetsTextFrameOptions => Columns is not null || ColumnGutter is not null || Inset is not null || VerticalJustification is not null;
+
+    /// <summary>
+    /// Writes the values as InDesign stores an object style (02-item-object-styles): fill, stroke and corner attributes
+    /// on the style with their category flags, a <c>TextFramePreference</c> child for the text frame options, and the
+    /// opacity in <c>TransparencySetting</c> with <c>ObjectStyleObjectEffectsCategorySettings@EnableTransparency</c>.
+    /// </summary>
+    internal void ApplyTo(XElement style)
+    {
+        static void Set(XElement element, string name, double? value)
+        {
+            if (value is { } number)
+            {
+                element.SetAttributeValue(name, IdmlXml.Format(number));
+            }
+        }
+        if (SetsFill)
+        {
+            style.SetAttributeValue("EnableFill", "true");
+            style.SetAttributeValue("FillColor", Fill?.Reference ?? style.Attribute("FillColor")?.Value);
+            Set(style, "FillTint", FillTint);
+        }
+        if (SetsStroke)
+        {
+            style.SetAttributeValue("EnableStroke", "true");
+            style.SetAttributeValue("StrokeColor", Stroke?.Reference ?? style.Attribute("StrokeColor")?.Value);
+            Set(style, "StrokeWeight", StrokeWeight);
+            Set(style, "StrokeTint", StrokeTint);
+            if (StrokeKind is { } kind)
+            {
+                style.SetAttributeValue("StrokeType", PageItem.StrokeTypeReference(kind));
+            }
+        }
+        if (CornerRadius is { } radius)
+        {
+            style.SetAttributeValue("EnableStrokeAndCornerOptions", "true");
+            var option = radius > 0 ? "RoundedCorner" : "None";
+            style.SetAttributeValue("CornerOption", option);
+            style.SetAttributeValue("CornerRadius", IdmlXml.Format(radius));
+            foreach (var corner in (string[])["TopLeft", "TopRight", "BottomLeft", "BottomRight"])
+            {
+                style.SetAttributeValue(corner + "CornerOption", option);
+                style.SetAttributeValue(corner + "CornerRadius", IdmlXml.Format(radius));
+            }
+        }
+        if (SetsTextFrameOptions)
+        {
+            style.SetAttributeValue("EnableTextFrameGeneralOptions", "true");
+            var preference = style.Element("TextFramePreference");
+            if (preference is null)
+            {
+                preference = new XElement("TextFramePreference");
+                IdmlXml.GetOrCreateProperties(style).AddAfterSelf(preference);
+            }
+            if (Columns is { } columns)
+            {
+                preference.SetAttributeValue("TextColumnCount", Math.Max(1, columns).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            Set(preference, "TextColumnGutter", ColumnGutter);
+            if (VerticalJustification is { } justification)
+            {
+                preference.SetAttributeValue("VerticalJustification", TextFrame.VerticalJustificationName(justification));
+            }
+            if (Inset is { } inset)
+            {
+                TextFrame.WriteInset(preference, inset);
+            }
+        }
+        if (Opacity is { } opacity)
+        {
+            if (opacity is < 0 or > 100)
+            {
+                throw new IdmlException($"Opacity {opacity} is outside 0 to 100.");
+            }
+            style.Element("TransparencySetting")?.Remove();
+            style.Element("ObjectStyleObjectEffectsCategorySettings")?.Remove();
+            var anchor = style.Elements().LastOrDefault(child => child.Name.LocalName is "Properties" or "TextFramePreference") ?? IdmlXml.GetOrCreateProperties(style);
+            // Only the object's transparency: effects the style does not set stay the item's own.
+            anchor.AddAfterSelf(
+                new XElement("TransparencySetting", new XElement("BlendingSetting", new XAttribute("Opacity", IdmlXml.Format(opacity)))),
+                new XElement("ObjectStyleObjectEffectsCategorySettings",
+                    new XAttribute("EnableTransparency", "true"),
+                    ((string[])["EnableDropShadow", "EnableFeather", "EnableInnerShadow", "EnableOuterGlow", "EnableInnerGlow", "EnableBevelEmboss",
+                        "EnableSatin", "EnableDirectionalFeather", "EnableGradientFeather"]).Select(name => new XAttribute(name, "false"))));
+        }
+    }
 }
 
 /// <summary>Paragraph, character and object styles of the document (Resources/Styles.xml).</summary>
@@ -163,6 +297,51 @@ public sealed class StyleCatalog
         return style;
     }
 
+    /// <summary>Finds an object style by display name ("[Normal Text Frame]", "Card"), stored name or reference.</summary>
+    public ObjectStyle? FindObjectStyle(string name) =>
+        Find(ObjectGroup, "ObjectStyle", name) is { } element ? new ObjectStyle(document, element) : null;
+
+    /// <summary>
+    /// Adds an object style, or updates the existing one with the same name. A new style turns on the categories
+    /// <paramref name="format"/> sets; the others it leaves alone (<c>EnableFill="false"</c>, ...), or takes from
+    /// <paramref name="basedOn"/>, so items keep their own values there.
+    /// </summary>
+    public ObjectStyle AddObjectStyle(string name, ObjectStyleFormat? format = null, ObjectStyle? basedOn = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var element = Find(ObjectGroup, "ObjectStyle", name);
+        if (element is null)
+        {
+            element = new XElement("ObjectStyle",
+                new XAttribute("Self", "ObjectStyle/" + IdmlXml.EscapeSelfName(name)),
+                new XAttribute("Name", name),
+                new XElement("Properties",
+                    basedOn is null
+                        ? new XElement("BasedOn", new XAttribute("type", "string"), "$ID/[None]")
+                        : new XElement("BasedOn", new XAttribute("type", "object"), basedOn.Reference)));
+            // The categories of the object style dialog, off unless the base style turns them on.
+            var chain = basedOn is null ? [] : new AttributeResolver(document).StyleChain(basedOn.Reference);
+            foreach (var category in (string[])["EnableFill", "EnableStroke", "EnableStrokeAndCornerOptions", "EnableParagraphStyle", "EnableTextFrameGeneralOptions",
+                "EnableTextFrameBaselineOptions", "EnableTextFrameAutoSizingOptions", "EnableTextFrameColumnRuleOptions", "EnableTextFrameFootnoteOptions",
+                "EnableStoryOptions", "EnableTextWrapAndOthers", "EnableAnchoredObjectOptions", "EnableFrameFittingOptions", "EnableTransformAttributes"])
+            {
+                var enabled = chain.Count > 0 && chain.Select(style => style.Attribute(category)?.Value).FirstOrDefault(value => value is not null) == "true";
+                element.Add(new XAttribute(category, enabled ? "true" : "false"));
+            }
+            ObjectGroup.Add(element);
+        }
+        else if (basedOn is not null)
+        {
+            IdmlXml.SetProperty(element, "BasedOn", "object", basedOn.Reference);
+        }
+        var objectStyle = new ObjectStyle(document, element);
+        if (format is not null)
+        {
+            objectStyle.ApplyFormat(format);
+        }
+        return objectStyle;
+    }
+
     /// <summary>"ParagraphStyle/$ID/NormalParagraphStyle" → "[Basic Paragraph]", "CharacterStyle/Group%3aBold" → "Group:Bold".</summary>
     internal static string? DisplayNameFromReference(string? reference)
     {
@@ -185,6 +364,8 @@ public sealed class StyleCatalog
     private XElement ParagraphGroup => Group("RootParagraphStyleGroup");
 
     private XElement CharacterGroup => Group("RootCharacterStyleGroup");
+
+    private XElement ObjectGroup => Group("RootObjectStyleGroup");
 
     private XElement Group(string name)
     {

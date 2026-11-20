@@ -755,6 +755,30 @@ public class CliAndMcpTests
     }
 
     [Fact]
+    public void Object_styles_are_defined_with_define_style_and_applied_with_edit_item()
+    {
+        var path = TestFiles.TempPath(".idml");
+        var client = new McpTestClient();
+        client.CallText("idml_create", new JsonObject
+        {
+            ["spec"] = JsonNode.Parse("""{ "pages": [ { "items": [ { "type": "rectangle", "name": "box", "x": 0, "y": 0, "width": 50, "height": 50 } ] } ] }"""),
+            ["outPath"] = path,
+        });
+
+        Assert.Equal("""{"ok":true}""", client.CallText("idml_define_style", new JsonObject { ["path"] = path, ["kind"] = "object", ["name"] = "Card", ["fill"] = "Black", ["cornerRadius"] = 4, ["inPlace"] = true }));
+        client.CallText("idml_edit_item", new JsonObject { ["path"] = path, ["name"] = "box", ["objectStyle"] = "Card", ["strokeWeight"] = 2, ["inPlace"] = true });
+
+        using var document = IdmlDocument.Open(path);
+        var box = document.AllPageItems.Single(item => item.Name == "box").Element;
+        Assert.Equal("ObjectStyle/Card", box.Attribute("AppliedObjectStyle")?.Value);
+        // Card leaves the stroke alone (EnableStroke="false"): the rectangle keeps its own, and the weight given after it.
+        Assert.Equal("Swatch/None", box.Attribute("StrokeColor")?.Value);
+        Assert.Equal("2", box.Attribute("StrokeWeight")?.Value);
+        Assert.Equal("RoundedCorner", document.Styles.FindObjectStyle("Card")!.Element.Attribute("TopLeftCornerOption")?.Value);
+        Assert.Contains("No object style 'Panel'", client.CallError("idml_edit_item", new JsonObject { ["path"] = path, ["name"] = "box", ["objectStyle"] = "Panel", ["dryRun"] = true }), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void List_fonts_gives_families_and_their_styles()
     {
         var client = new McpTestClient();
@@ -805,6 +829,9 @@ public class CliAndMcpTests
         AssertFields(typeof(PageSetupSpec), spec.GetProperty("page").GetProperty("properties"));
         AssertFields(typeof(BaselineGridSpec), spec.GetProperty("page").GetProperty("properties").GetProperty("baselineGrid").GetProperty("properties"));
         AssertFields(typeof(ColorSpec), spec.GetProperty("colors").GetProperty("items").GetProperty("properties"));
+        AssertFields(typeof(GradientSpec), spec.GetProperty("gradients").GetProperty("items").GetProperty("properties"));
+        AssertFields(typeof(GradientStopSpec), spec.GetProperty("gradients").GetProperty("items").GetProperty("properties").GetProperty("stops").GetProperty("items").GetProperty("properties"));
+        AssertFields(typeof(ObjectStyleSpec), spec.GetProperty("objectStyles").GetProperty("items").GetProperty("properties"));
         AssertFields(typeof(PageSpec), spec.GetProperty("pages").GetProperty("items").GetProperty("properties"));
         AssertFields(typeof(SpacingSpec), definitions.GetProperty("spacing").GetProperty("properties"));
         AssertFields(typeof(TextFormatSpec), definitions.GetProperty("format").GetProperty("properties"));

@@ -44,6 +44,49 @@ public static partial class IdmlJson
                 Add($"colors[{i}]", message);
             }
         }
+        var gradients = spec.Gradients ?? [];
+        for (var i = 0; i < gradients.Count; i++)
+        {
+            var path = $"gradients[{i}]";
+            var stops = gradients[i].Stops ?? [];
+            foreach (var stop in stops)
+            {
+                Swatch(stop.Color, path);
+            }
+            if (GradientError(gradients[i]) is { } message)
+            {
+                Add(path, message);
+            }
+            swatches.Add(gradients[i].Name);
+        }
+        var objectStyles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void ObjectStyle(string? name, string path)
+        {
+            if (name is not null && !objectStyles.Contains(name) && document.Styles.FindObjectStyle(name) is null)
+            {
+                Add(path, ObjectStyleMissing(name), IdmlErrorKind.NotFound);
+            }
+        }
+        var objectStyleSpecs = spec.ObjectStyles ?? [];
+        for (var i = 0; i < objectStyleSpecs.Count; i++)
+        {
+            var style = objectStyleSpecs[i];
+            var path = $"objectStyles[{i}]";
+            ObjectStyle(style.BasedOn, path);
+            Swatch(style.Fill, path);
+            Swatch(style.Stroke, path);
+            Choice<StrokeKind>(style.StrokeType, "strokeType", path);
+            Choice<VerticalJustification>(style.VerticalAlign, "verticalAlign", path);
+            if (style.Opacity is < 0 or > 100)
+            {
+                Add(path, $"opacity {style.Opacity} is out of range. Use 0 to 100.");
+            }
+            if (style.Columns is < 1)
+            {
+                Add(path, $"columns {style.Columns} is out of range. Use 1 or more.");
+            }
+            objectStyles.Add(style.Name);
+        }
 
         var characterStyles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var paragraphStyles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -145,6 +188,7 @@ public static partial class IdmlJson
                     continue;
                 }
                 Swatch(item.Fill, path);
+                ObjectStyle(item.ObjectStyle, path);
                 Swatch(item.Stroke, path);
                 Choice<StrokeKind>(item.StrokeType, "strokeType", path);
                 Choice<LineCap>(item.EndCap, "endCap", path);
@@ -391,4 +435,35 @@ public static partial class IdmlJson
     private static string ParagraphStyleMissing(string name) => $"Unknown paragraph style '{name}'.";
 
     private static string CharacterStyleMissing(string name) => $"Unknown character style '{name}'.";
+
+    private static string ObjectStyleMissing(string name) => $"Unknown object style '{name}'. Declare it in objectStyles first.";
+
+    private static GradientType? TryGradientType(string type) => type.ToLowerInvariant() switch
+    {
+        "linear" => GradientType.Linear,
+        "radial" => GradientType.Radial,
+        _ => null,
+    };
+
+    /// <summary>What is wrong with a gradient's type or stops, or null.</summary>
+    private static string? GradientError(GradientSpec gradient)
+    {
+        if (gradient.Type is { } type && TryGradientType(type) is null)
+        {
+            return $"Unknown gradient type '{type}'. Use linear or radial.";
+        }
+        if (gradient.Stops is not { Count: >= 2 } stops)
+        {
+            return $"Gradient '{gradient.Name}' needs at least two stops.";
+        }
+        if (stops.Any(stop => stop.Location is < 0 or > 100))
+        {
+            return $"Gradient '{gradient.Name}': stop locations are percentages, 0 to 100.";
+        }
+        if (stops.Any(stop => stop.Midpoint is < 13 or > 87))
+        {
+            return $"Gradient '{gradient.Name}': midpoints are 13 to 87 percent.";
+        }
+        return null;
+    }
 }

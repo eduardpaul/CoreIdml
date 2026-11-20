@@ -156,6 +156,42 @@ export interface ColorSpec {
   hex?: string;
 }
 
+export interface GradientSpec {
+  name: string;
+  /** `linear` (default) or `radial`. */
+  type?: string;
+  /** At least two. */
+  stops: GradientStopSpec[];
+}
+
+export interface GradientStopSpec {
+  /** A colour swatch. */
+  color: string;
+  /** Percent, 0 to 100; default spaced evenly. */
+  location?: number;
+  /** Where it mixes half and half with the stop before, 13 to 87 percent; default 50. */
+  midpoint?: number;
+}
+
+/** The look of frames and shapes; lengths in the spec's unit. */
+export interface ObjectStyleSpec {
+  name: string;
+  basedOn?: string;
+  fill?: string;
+  fillTint?: number;
+  stroke?: string;
+  strokeWeight?: number;
+  strokeTint?: number;
+  strokeType?: 'solid' | 'dashed' | 'dotted';
+  cornerRadius?: number;
+  opacity?: number;
+  /** Text frames: columns, gutter, inset and vertical alignment. */
+  columns?: number;
+  columnGutter?: number;
+  inset?: Spacing;
+  verticalAlign?: string;
+}
+
 export interface PageSetupSpec {
   /** A named size such as `A4`, `A5` or `Letter`. */
   size?: string;
@@ -222,6 +258,10 @@ export interface ItemSpec {
   opacity?: number;
   cornerRadius?: number;
   rotation?: number;
+  /** Object style; the item's own fields override it. */
+  objectStyle?: string;
+  /** Angle of a gradient fill or stroke, degrees counter-clockwise. */
+  gradientAngle?: number;
   /** Text wrap around the item: `none`, `boundingBox`, `objectShape`, `jumpObject` or `nextColumn`. */
   wrap?: string;
   /** Gap between the item and the wrapped text (`objectShape` uses `top` all round). */
@@ -284,6 +324,10 @@ export interface DocumentSpec {
   unit?: string;
   page?: PageSetupSpec;
   colors?: ColorSpec[];
+  /** Gradient swatches, after colours: use the name as a fill, stroke or text colour. */
+  gradients?: GradientSpec[];
+  /** Object styles, applied with `objectStyle` on items. */
+  objectStyles?: ObjectStyleSpec[];
   paragraphStyles?: StyleSpec[];
   characterStyles?: StyleSpec[];
   pages?: PageSpec[];

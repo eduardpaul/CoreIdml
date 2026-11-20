@@ -13,6 +13,12 @@ public sealed class DocumentSpec
 
     public List<ColorSpec>? Colors { get; set; }
 
+    /// <summary>Gradient swatches, usable as fills, strokes and text colours like colours.</summary>
+    public List<GradientSpec>? Gradients { get; set; }
+
+    /// <summary>Object styles: the look of frames and shapes, applied with <see cref="ItemSpec.ObjectStyle"/>.</summary>
+    public List<ObjectStyleSpec>? ObjectStyles { get; set; }
+
     public List<StyleSpec>? ParagraphStyles { get; set; }
 
     public List<StyleSpec>? CharacterStyles { get; set; }
@@ -82,6 +88,63 @@ public sealed class ColorSpec
 
     /// <summary>"#RRGGBB".</summary>
     public string? Hex { get; set; }
+}
+
+public sealed class GradientSpec
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>linear (default) or radial.</summary>
+    public string? Type { get; set; }
+
+    /// <summary>At least two stops, in order.</summary>
+    public List<GradientStopSpec>? Stops { get; set; }
+}
+
+public sealed class GradientStopSpec
+{
+    /// <summary>A colour swatch.</summary>
+    public string Color { get; set; } = string.Empty;
+
+    /// <summary>Percent along the gradient, 0 to 100; default spaced evenly.</summary>
+    public double? Location { get; set; }
+
+    /// <summary>Where this stop and the one before mix half and half, percent of the span between them (13 to 87, default 50).</summary>
+    public double? Midpoint { get; set; }
+}
+
+/// <summary>An object style: fill, stroke, corners, opacity and text frame options, in the units of items.</summary>
+public sealed class ObjectStyleSpec
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string? BasedOn { get; set; }
+
+    public string? Fill { get; set; }
+
+    public double? FillTint { get; set; }
+
+    public string? Stroke { get; set; }
+
+    public double? StrokeWeight { get; set; }
+
+    public double? StrokeTint { get; set; }
+
+    /// <summary>solid, dashed or dotted.</summary>
+    public string? StrokeType { get; set; }
+
+    public double? CornerRadius { get; set; }
+
+    public double? Opacity { get; set; }
+
+    public int? Columns { get; set; }
+
+    public double? ColumnGutter { get; set; }
+
+    public SpacingSpec? Inset { get; set; }
+
+    /// <summary>top, center, bottom, justify.</summary>
+    public string? VerticalAlign { get; set; }
 }
 
 /// <summary>Text attributes shared by styles, paragraphs and runs.</summary>
@@ -349,6 +412,12 @@ public sealed class ItemSpec
     public double? CornerRadius { get; set; }
 
     public double? Rotation { get; set; }
+
+    /// <summary>Object style; the item's own fields override it.</summary>
+    public string? ObjectStyle { get; set; }
+
+    /// <summary>Angle of a gradient fill or stroke, degrees counter-clockwise (0: left to right).</summary>
+    public double? GradientAngle { get; set; }
 
     /// <summary>Text wrap around the item: none, boundingBox, objectShape, jumpObject or nextColumn.</summary>
     public string? Wrap { get; set; }

@@ -26,13 +26,16 @@ undeclared colour or style, or a disallowed value (`"fit": "cover"`), is an erro
   "unit": "mm",
   "page": { ... },
   "colors": [ ... ],
+  "gradients": [ ... ],
+  "objectStyles": [ ... ],
   "characterStyles": [ ... ],
   "paragraphStyles": [ ... ],
   "pages": [ ... ]
 }
 ```
 
-Applied in this order: colours, character styles, paragraph styles, pages. A colour or style must be declared (in
+Applied in this order: colours, gradients, object styles, character styles, paragraph styles, pages. A colour or
+style must be declared (in
 the spec, or already in the document for `idml_apply`) before use.
 
 ## `page`: the page setup (`idml_create` only)
@@ -52,6 +55,36 @@ the spec, or already in the document for `idml_apply`) before use.
 
 `{ "name": "Brand", "cmyk": [75, 45, 0, 10] }` (percent), or `"rgb": [0, 102, 204]` (0-255), or `"hex": "#0066CC"`;
 exactly one. `Black`, `Paper`, `Registration` and `None` always exist.
+
+## `gradients`
+
+```json
+"gradients": [
+  { "name": "Sunrise", "stops": [ { "color": "Brand" }, { "color": "Paper" } ] },
+  { "name": "Glow", "type": "radial", "stops": [ { "color": "Paper" }, { "color": "Brand", "location": 70, "midpoint": 40 } ] }
+]
+```
+
+A gradient is a swatch: use its name as an item's `fill` or `stroke`, or as a text `color`. `type` is `linear`
+(default) or `radial`; at least two `stops`, each a colour (declared in `colors`, or built in), its `location` in
+percent (default spaced evenly) and the `midpoint` where it mixes half and half with the stop before (13 to 87, default
+50). On items, `gradientAngle` turns a linear gradient (degrees counter-clockwise; 0 runs left to right, 90 bottom to
+top); the gradient spans the item, and a radial one is centred on it.
+
+## `objectStyles`
+
+```json
+"objectStyles": [
+  { "name": "Card", "fill": "Brand light", "stroke": "Brand", "strokeWeight": 0.5, "cornerRadius": 3, "inset": { "all": 4 } },
+  { "name": "Card faded", "basedOn": "Card", "opacity": 60 }
+]
+```
+
+The look of frames and shapes in one place, applied with `"objectStyle": "Card"` on items (or `idml_edit_item`
+`objectStyle`; `idml_define_style` with `kind: "object"` defines one). Fields, in the units of items: `fill`,
+`fillTint`, `stroke`, `strokeWeight`, `strokeTint`, `strokeType`, `cornerRadius`, `opacity`, and for text frames
+`columns`, `columnGutter`, `inset`, `verticalAlign`. A style controls only what it (or its `basedOn` style) sets; an
+item keeps its own values elsewhere, and fields given on the item override the style.
 
 ## `paragraphStyles` and `characterStyles`
 
@@ -183,6 +216,8 @@ Every item has `type` (default `text`), `x`, `y`, `width`, `height`, and optiona
 | `endCap` | Ends of lines: `butt` (default), `round` or `projecting`. |
 | `opacity` | Whole item, 0-100. |
 | `cornerRadius`, `rotation` | Rounded corners; degrees. |
+| `objectStyle` | An object style from `objectStyles`; the item's own fields override it. |
+| `gradientAngle` | With a gradient `fill` or `stroke`: its angle in degrees, counter-clockwise. |
 | `wrap` | Text wrap: the text of other frames goes around the item. `boundingBox` (its box), `objectShape` (its outline: ellipses, rounded corners), `jumpObject` (no text beside it), `nextColumn` (the text after it goes to the next column), `none`. See [Text wrap](#text-wrap). |
 | `wrapOffset`, `wrapSide`, `wrapInverse` | The gap kept around the item (a margins object in `unit`; `objectShape` uses `top` all round); `both` (default), `left`, `right`, `towardsSpine`, `awayFromSpine` or `largest` (the wider side of each line); `true` keeps the text inside the item instead. |
 
@@ -278,12 +313,11 @@ not fit, with their frames by name. Pass the same `fonts` as for the PDF (fonts 
 
 Small fixes do not need the spec again: `idml_edit_item` moves and resizes (**in points**) and takes `fill`,
 `fillTint`, `stroke`, `strokeWeight`, `strokeTint`, `strokeType`, `endCap`, `cornerRadius`, `opacity`, `rotateBy`,
-`wrap`, `wrapOffset`, `wrapSide`, `wrapInverse`, and a text frame's `columns`, `columnGutter`, `inset`,
-`verticalAlign`, `autoSize`, `autoSizeFrom`, `autoSizeMinHeight`, `balanceColumns`, `firstBaseline`,
-`firstBaselineMin`, `ignoreWrap`. Put several in one `idml_batch`.
+`objectStyle`, `gradientAngle`, `wrap`, `wrapOffset`, `wrapSide`, `wrapInverse`, and a text frame's `columns`,
+`columnGutter`, `inset`, `verticalAlign`, `autoSize`, `autoSizeFrom`, `autoSizeMinHeight`, `balanceColumns`,
+`firstBaseline`, `firstBaselineMin`, `ignoreWrap`. Put several in one `idml_batch`.
 
 ## Not supported
 
-Master pages and paragraph rules (drawn when a document has them, but not authorable), polygons
-and free paths, gradients, effects other than opacity (the preview and PDF draw gradients a document already has, but
-not other effects). Repeat a header on each page instead of a master; draw rules with a `line`.
+Master pages and paragraph rules (drawn when a document has them, but not authorable), polygons and free paths,
+effects other than opacity. Repeat a header on each page instead of a master; draw rules with a `line`.
