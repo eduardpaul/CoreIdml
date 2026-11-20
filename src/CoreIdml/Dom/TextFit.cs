@@ -71,7 +71,7 @@ public static class TextFit
                 case "Br" when !InNestedText(element):
                     EndParagraph();
                     break;
-                case "Row":
+                case "Row" when !TrackedChanges.IsDeleted(element):
                     needed += IdmlXml.ParseDouble(element.Attribute("SingleRowHeight")?.Value) ?? 18;
                     break;
             }
@@ -80,8 +80,9 @@ public static class TextFit
         return new TextFitEstimate(needed, available);
     }
 
+    /// <summary>Text with its own estimate (tables, footnotes, notes) or not shown at all (deleted tracked text).</summary>
     private static bool InNestedText(XElement element) =>
-        element.Ancestors().Any(ancestor => ancestor.Name.LocalName is "Table" or "Footnote" or "Note");
+        element.Ancestors().Any(ancestor => ancestor.Name.LocalName is "Table" or "Footnote" or "Note" || TrackedChanges.IsDeletion(ancestor));
 
     /// <summary>Point size and leading of a run: local formatting, then character style, paragraph, paragraph style (with BasedOn).</summary>
     private sealed class StyleResolver(AttributeResolver resolver)

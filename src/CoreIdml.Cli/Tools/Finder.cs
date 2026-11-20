@@ -107,7 +107,7 @@ internal static class Finder
                 var matches = new JsonArray();
                 if (text is not null)
                 {
-                    foreach (var run in story.ContentRuns.Where(run => run.Text.Contains(text, StringComparison.OrdinalIgnoreCase)))
+                    foreach (var run in story.ContentRuns.Where(run => run.TrackedChange != "deleted" && run.Text.Contains(text, StringComparison.OrdinalIgnoreCase)))
                     {
                         matches.Add((JsonNode)new JsonObject { ["runIndex"] = run.Index, ["text"] = Snippet(run.Text, text) });
                     }

@@ -150,6 +150,9 @@ public sealed partial class TagCatalog
                     break;
                 case "Properties" or "XMLAttribute" or "Note":
                     break;
+                case "Change" when TrackedChanges.IsDeletion(child):
+                    // Deleted tracked text is not part of the current text (see TrackedChanges).
+                    break;
                 default:
                     ExportContent(child, owner, node, result, includeImageLinks);
                     break;

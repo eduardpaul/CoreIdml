@@ -15,7 +15,7 @@ public sealed class Story : IdmlNode
     /// <summary>Package path of the part holding this story (e.g. <c>Stories/Story_u1f0.xml</c>).</summary>
     public string PartPath { get; }
 
-    /// <summary>Plain text; paragraphs separated by "\n" (tables, footnotes and notes excluded).</summary>
+    /// <summary>Plain text; paragraphs separated by "\n" (tables, footnotes, notes and deleted tracked text excluded).</summary>
     public string Text => TextOps.GetText(Element);
 
     /// <summary>Character runs in reading order (runs inside tables included).</summary>
@@ -101,12 +101,16 @@ public sealed class Story : IdmlNode
     /// <summary>
     /// Every <c>Content</c> element in document order (table cells, footnotes and notes included), indexed from 0.
     /// The same index space idmlkit uses, so indices read from a summary stay valid until the text structure changes.
+    /// Runs of deleted tracked text are included (see <see cref="ContentRun.TrackedChange"/>), so indices do not
+    /// depend on whether changes are shown.
     /// </summary>
     public IReadOnlyList<ContentRun> ContentRuns =>
         Element.Descendants("Content").Select((content, index) => new ContentRun(Document, content, index)).ToList();
 
-    /// <summary>Words in the story (text split on whitespace; tables, footnotes and notes included).</summary>
-    public int WordCount => ContentRuns.Sum(run => ContentRun.CountWords(run.Text));
+    /// <summary>
+    /// Words in the story (text split on whitespace; tables, footnotes and notes included, deleted tracked text not).
+    /// </summary>
+    public int WordCount => ContentRuns.Where(run => run.TrackedChange != "deleted").Sum(run => ContentRun.CountWords(run.Text));
 
     /// <summary>Sets the text of content run <paramref name="index"/> (see <see cref="ContentRuns"/>), keeping its formatting.</summary>
     public void SetRunText(int index, string text, bool force = false)

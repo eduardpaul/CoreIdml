@@ -51,6 +51,12 @@ public sealed class ContentRun : IdmlNode
     public bool HasSpecialCharacters => Element.Nodes().OfType<XProcessingInstruction>().Any();
 
     /// <summary>
+    /// "inserted", "deleted" or "moved" when the run was recorded with Track Changes; null otherwise. Deleted runs
+    /// keep their index but are not part of the text InDesign shows (or <see cref="Story.Text"/>).
+    /// </summary>
+    public string? TrackedChange => TrackedChanges.KindOf(Element);
+
+    /// <summary>
     /// Replaces the run's text, keeping the element (and so every later index) even when the text is empty.
     /// "\n" splits the run into paragraphs, which shifts later indices. Runs holding special characters are only
     /// overwritten with <paramref name="force"/>.

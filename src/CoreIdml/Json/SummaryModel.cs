@@ -150,6 +150,12 @@ public sealed class RunSummary
 
     /// <summary>Holds special characters (page numbers...): editing it requires force.</summary>
     public bool? Special { get; set; }
+
+    /// <summary>
+    /// "inserted", "deleted" or "moved" for text recorded with Track Changes. Deleted text is not shown in InDesign
+    /// (nor in the story text, previews or fit checks); it keeps its run index.
+    /// </summary>
+    public string? Change { get; set; }
 }
 
 public sealed class LinkSummary

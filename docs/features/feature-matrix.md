@@ -215,7 +215,7 @@ Features with an implementation plan already (the six in [README.md](README.md),
 | Table of contents | generated story | 🟡 | ✅ | Drawn as the stored text; no tool regenerates it. |
 | Index markers | `PageReference` | — | — | Invisible in InDesign too. |
 | Conditional text **[plan]** | `Condition`, `AppliedConditions` | ❌ | ❌ † | Text under a hidden condition is still drawn. See [responsive-layout-plan.md](responsive-layout-plan.md), phase 1. |
-| Tracked changes **[new]** | `Change@ChangeType` | ❌ | ❌ | Text inside `Change` is always drawn ([StoryReader.cs:14](../../src/CoreIdml.Pdf/Layout/StoryReader.cs#L14)), so **deleted text appears** in the preview; InDesign's layout shows only the accepted text. |
+| Tracked changes | `Change@ChangeType` | 🟡 | ✅ | Drawn as InDesign exports them: the document's current text, without change marks. `DeletedText` is skipped by the composer, fit checks, story text, word counts, `idml_find`, `idml_replace_text`, paragraph indices and XML export ([TrackedChanges.cs](../../src/CoreIdml/Dom/TrackedChanges.cs)); `InsertedText` and `MovedText` (moved text at its new place; the old place is a deletion) are drawn. Accepted and rejected changes are plain text in the IDML. Checked against `11-long-tracked-changes`: every page 100% of words within 1 pt except p4, where InDesign hyphenates `fami-lies.must` (English is not hyphenated). Agent: `idml_get_story` runs carry `change` (inserted, deleted, moved; deleted runs keep their index); changes cannot be authored, accepted or rejected. |
 | Notes | `Note` | — | ✅ | Skipped, as InDesign does. |
 | Find and replace | — | ✅ | — | `idml_replace_text` (plain text, across runs). GREP is not offered. |
 | Templates and data | names, labels, tags, `{{key}}` | ✅ | — | `idml_fill`, `idml_import_xml`. |
@@ -242,7 +242,7 @@ Effort uses the plan's scale (S up to 2 days, M up to 1 week, L 1 to 3 weeks).
 | # | Gap | Preview today | Effort | Notes |
 | --- | --- | --- | --- | --- |
 | 1 | ~~**Bullets and numbering**~~ | Drawn | M | See the row under paragraph formatting; `08-para-bullets-numbering` matches InDesign on every page. |
-| 2 | **Tracked changes** | Deleted text drawn | S | Skip `Change[@ChangeType="DeletedText"]` in `StoryReader`; also exclude it from `idml_get_story` text and fit checks. A correctness bug, not a feature. |
+| 2 | ~~**Tracked changes**~~ | Drawn | S | See the row under long documents; `11-long-tracked-changes` matches InDesign except one hyphenation on p4. |
 | 3 | **Table alternating fills, table style region cell styles** | Plain tables | S–M | Both resolved in `DrawCell`; the agent side can expose `alternateFill` on the spec table. |
 | 4 | **Keep options, widows and orphans, start in next frame** | Headings orphaned | M | In `Flow.Place`; needs look-ahead of N lines. Changes overset results. |
 | 5 | **Text variables, next/previous page number** | Blank | S | Draw `ResultText`; compute page markers like the current page number. |

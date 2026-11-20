@@ -39,6 +39,9 @@ internal static class TextOps
                 case var name when NestedScopes.Contains(name):
                     // Tables, footnotes and notes have their own text.
                     break;
+                case "Change" when TrackedChanges.IsDeletion(child):
+                    // Deleted tracked text is not part of the current text (see TrackedChanges).
+                    break;
                 default:
                     AppendText(child, builder);
                     break;
@@ -253,7 +256,8 @@ internal static class TextOps
     /// <summary>
     /// Replaces every occurrence of <paramref name="find"/> under <paramref name="scope"/>. A match may span several
     /// runs (InDesign often splits words when formatting changes or after edits); the replacement takes the
-    /// formatting of the run where the match starts. Matches never cross paragraph breaks or table cells.
+    /// formatting of the run where the match starts. Matches never cross paragraph breaks or table cells. Deleted
+    /// tracked text is neither searched nor changed: matches are found in the text InDesign shows.
     /// </summary>
     public static int Replace(XElement scope, string find, string replacement, StringComparison comparison)
     {
@@ -261,7 +265,7 @@ internal static class TextOps
         replacement = IdmlXml.SanitizeText(replacement);
         var count = 0;
         var scopes = new List<XElement> { scope };
-        scopes.AddRange(scope.Descendants().Where(element => element.Name.LocalName is "Cell" or "Footnote" or "Note"));
+        scopes.AddRange(scope.Descendants().Where(element => element.Name.LocalName is "Cell" or "Footnote" or "Note" && !TrackedChanges.IsDeleted(element)));
         foreach (var current in scopes)
         {
             foreach (var paragraph in Paragraphs(current))
@@ -307,7 +311,7 @@ internal static class TextOps
             {
                 yield return child;
             }
-            else if (name != "Properties" && !NestedScopes.Contains(name))
+            else if (name != "Properties" && !NestedScopes.Contains(name) && !TrackedChanges.IsDeletion(child))
             {
                 foreach (var nested in WalkScope(child))
                 {

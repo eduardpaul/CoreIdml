@@ -147,7 +147,7 @@ red today (section 7) until the failing samples have a `sample.json` holding the
 Treat ceilings as a ratchet: lower them when a feature lands, never raise them without a reason in the commit.
 
 **A green run proves little.** At 5% a page passes with whole features missing: `08-para-bullets-numbering` passes
-with no list markers drawn, and `11-long-tracked-changes` passes with deleted text drawn. The pixel threshold catches
+with no list markers drawn, and `11-long-tracked-changes` passed while it drew deleted text. The pixel threshold catches
 regressions in what already works; it does not show that a feature works. Section 3 says what does.
 
 ## 3. The checks, and which one proves what
@@ -408,7 +408,7 @@ are off by more than 0.5 pt, the page, master or spread transform is wrong, what
 | `11-long-links-bookmarks` | E | Link annotations with the URL or page/anchor destination over the right text; outline with the bookmarks of the reference. | Text already renders; this is structure only. |
 | `11-long-toc-index` | D | TOC and index stories render as stored. | Stored text; no regeneration expected. |
 | `11-long-conditional-text` | D | Hidden conditions absent with the double space; visible ones present; the "Web" condition set. | `reference-allvisible.pdf` is the reference after making every condition visible in a copy. |
-| `11-long-tracked-changes` | D | Inserted text present, deleted text absent, moved text at its new place; accepted/rejected changes. | Today deleted text is drawn: unexpected words in our page. |
+| `11-long-tracked-changes` | D | Inserted text present, deleted text absent, moved text at its new place; accepted/rejected changes. | Done: deleted text is skipped (in the preview, fit checks and story text), inserted and moved text drawn; accepted or rejected changes are plain text in the IDML. p1 to p3 and p5 match; p4 differs only where InDesign hyphenates `fami-lies.must` (English hyphenation is a separate gap). |
 | `11-long-notes` | D | No note text in our page. | |
 | `11-long-xml-structure` | B | `idml_xml_structure` lists Root, Article, Title, Body (with nested Emphasis), Image and 4 attributes; `idml_export_xml` matches `source.xml` in elements and text. | |
 | `11-long-data-merge`, `-result` | B, D | Placeholders `<<Name>>`, `<<Residence>>`, `<<Remark>>` found (template); the result renders 3 records. | Placeholders are stored as text with `DataMerge` options; `data.csv` is in `links/`. |

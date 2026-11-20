@@ -88,6 +88,9 @@ internal sealed class StoryReader
                         break;
                     case "Cell" or "Row" or "Column":
                         break;
+                    case "Change" when TrackedChanges.IsDeletion(child):
+                        // Deleted tracked text is not drawn: InDesign lays out the document's current text.
+                        break;
                     case "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "TextFrame" or "Group":
                         if (InlineObject(child) is { } inline)
                         {
@@ -217,6 +220,8 @@ internal sealed class StoryReader
                         hasItems = true;
                         break;
                     case "Cell" or "Row" or "Column":
+                        break;
+                    case "Change" when TrackedChanges.IsDeletion(child):
                         break;
                     case "Rectangle" or "Oval" or "Polygon" or "GraphicLine" or "TextFrame" or "Group":
                         if (InlineObject(child) is not null)

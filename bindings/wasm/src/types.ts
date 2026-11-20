@@ -277,6 +277,8 @@ export interface RunSummary extends JsonObject {
   scope: string;
   /** Holds special characters (a page number): `setRunText` needs `force`. */
   special?: boolean;
+  /** Recorded with Track Changes. `deleted` text is not shown (nor in the story text); it keeps its index. */
+  change?: "inserted" | "deleted" | "moved";
 }
 
 export interface StorySummary extends JsonObject {

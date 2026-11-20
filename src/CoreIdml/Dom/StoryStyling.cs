@@ -223,6 +223,11 @@ public static class StoryStyling
     private static XElement Range(XElement element) =>
         element.Ancestors("ParagraphStyleRange").FirstOrDefault() ?? throw new IdmlException("Text outside a paragraph range.");
 
+    /// <summary>
+    /// The element is body text: not in a table, footnote or note, and not deleted tracked text (a deleted paragraph
+    /// break does not end a paragraph, as in InDesign's layout).
+    /// </summary>
     private static bool IsBody(XElement element, XElement story) =>
-        !element.Ancestors().TakeWhile(ancestor => ancestor != story).Any(ancestor => NestedScopes.Contains(ancestor.Name.LocalName));
+        !element.Ancestors().TakeWhile(ancestor => ancestor != story)
+            .Any(ancestor => NestedScopes.Contains(ancestor.Name.LocalName) || TrackedChanges.IsDeletion(ancestor));
 }

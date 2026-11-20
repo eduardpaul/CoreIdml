@@ -418,7 +418,7 @@ public static partial class IdmlJson
         {
             Id = story.Id,
             Text = Truncate(story.Text, maxTextLength),
-            WordCount = runs.Sum(run => ContentRun.CountWords(run.Text)),
+            WordCount = runs.Where(run => run.TrackedChange != "deleted").Sum(run => ContentRun.CountWords(run.Text)),
             RunCount = runs.Count,
             Tables = story.Tables.Count,
             Frames = frames.Select(frame => frame.Id).ToList(),
@@ -431,6 +431,7 @@ public static partial class IdmlJson
                     CharacterStyle = run.CharacterStyle,
                     Scope = run.Scope,
                     Special = run.HasSpecialCharacters ? true : null,
+                    Change = run.TrackedChange,
                 }).ToList()
                 : null,
         };

@@ -33,7 +33,7 @@ internal static class DocumentTools
         {
             Name = "idml_get_story",
             Title = "Get story",
-            Description = "One story in full: text and every content run (index, text, paragraph and character style, scope: body, table cell, footnote, note). includeParagraphs adds body paragraphs (index, text, style, first and last run, list: bullet or numbered when InDesign draws a marker that is not in the text) for idml_apply_style.",
+            Description = "One story in full: text and every content run (index, text, paragraph and character style, scope: body, table cell, footnote, note; change: inserted, deleted or moved for Track Changes text, where deleted text is not shown and not in the story text). includeParagraphs adds body paragraphs (index, text, style, first and last run, list: bullet or numbered when InDesign draws a marker that is not in the text) for idml_apply_style.",
             InputSchema = Schema.Read(
                 """ "storyId":{"type":"string","description":"e.g. u123"},"includeParagraphs":{"type":"boolean"}""", "storyId"),
             Access = ToolAccess.Read,
