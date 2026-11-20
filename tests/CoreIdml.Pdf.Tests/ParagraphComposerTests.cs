@@ -79,6 +79,22 @@ public sealed class ParagraphComposerTests
     }
 
     [Fact]
+    public void A_wide_ragged_column_leaves_room_rather_than_hyphenate()
+    {
+        // 01-doc-margins-guides p6 (540 pt): InDesign ends line 2 with "Mr. Morris" and leaves 28.7 pt at the end of line 3
+        // rather than break "Mor-ris" to leave 9 and 16 pt.
+        const string text = "“Why, my dear, you must know, Mrs. Long says that Netherfield is taken by a young man of large fortune from "
+            + "the north of England; that he came down on Monday in a chaise and four to see the place, and was so much delighted with "
+            + "it, that he agreed with Mr. Morris immediately; that he is to take possession before Michaelmas, and some of his "
+            + "servants are to be in the house by the end of next week.”";
+        var (document, page) = NewDocument();
+        var frame = page.AddText(new Rect(0, 0, 540, 500), text, Style(document, "HL Composer", Justification.Left, hyphenation: true));
+        var lines = Layout(document, frame).Lines;
+        Assert.EndsWith("Mr. Morris", lines[1].Text.TrimEnd());
+        Assert.DoesNotContain(lines, line => line.Text.TrimEnd().EndsWith('-'));
+    }
+
+    [Fact]
     public void A_line_is_compressed_past_the_minimum_word_spacing_rather_than_leave_a_loose_paragraph()
     {
         // 08-para-alignment-indents p1 (justify all lines, 253.8 pt): InDesign sets the first line at 70% word spacing,
