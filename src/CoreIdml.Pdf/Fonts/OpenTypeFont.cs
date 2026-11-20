@@ -53,6 +53,7 @@ internal sealed class OpenTypeFont
             TypoDescender = BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(o + 70));
             IsItalic = (fsSelection & 1) != 0 || (fsSelection & 0x200) != 0;
             IsBold = (fsSelection & 0x20) != 0;
+            StrikeoutSize = BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(o + 26));
             if (os2.Length >= 90 && BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(o)) >= 2)
             {
                 XHeight = BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(o + 86));
@@ -79,6 +80,11 @@ internal sealed class OpenTypeFont
         if (tables.TryGetValue("post", out var post) && post.Length >= 8)
         {
             ItalicAngle = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(post.Offset + 4)) / 65536.0;
+            if (post.Length >= 12)
+            {
+                UnderlinePosition = BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(post.Offset + 8));
+                UnderlineThickness = BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(post.Offset + 10));
+            }
         }
 
         advances = new ushort[GlyphCount];
@@ -176,6 +182,15 @@ internal sealed class OpenTypeFont
     public bool IsItalic { get; }
 
     public double ItalicAngle { get; }
+
+    /// <summary>post <c>underlinePosition</c>: where the underline goes, in font units (negative below the baseline).</summary>
+    public short UnderlinePosition { get; }
+
+    /// <summary>post <c>underlineThickness</c> in font units (0 when the font does not say).</summary>
+    public short UnderlineThickness { get; }
+
+    /// <summary>OS/2 <c>yStrikeoutSize</c> in font units (0 when the font does not say).</summary>
+    public short StrikeoutSize { get; }
 
     internal byte[] RawData => data;
 

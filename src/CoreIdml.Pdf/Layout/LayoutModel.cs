@@ -38,9 +38,17 @@ internal sealed record RunStyle
 
     public string Position { get; init; } = "Normal";
 
-    public bool Underline { get; init; }
+    /// <summary>The underline (<c>Underline="true"</c>) and its options; null for none.</summary>
+    public TextRule? Underline { get; init; }
 
-    public bool StrikeThrough { get; init; }
+    /// <summary>The strikethrough (<c>StrikeThru="true"</c>) and its options; null for none.</summary>
+    public TextRule? StrikeThrough { get; init; }
+
+    /// <summary>The stroke on the glyph outlines (<c>StrokeColor</c>, <c>StrokeWeight</c>, ...); null for none.</summary>
+    public TextStroke? Stroke { get; init; }
+
+    /// <summary>Skew (false italic) in degrees, sheared about the baseline: positive leans the glyphs right.</summary>
+    public double Skew { get; init; }
 
     public bool Kerning { get; init; } = true;
 
@@ -233,17 +241,69 @@ internal sealed record GlyphRunOp(FontFace Font, double Size, double HorizontalS
     /// <summary>The gradient the glyphs are filled with, instead of <see cref="Color"/>.</summary>
     public TextGradient? Gradient { get; init; }
 
+    /// <summary>The stroke on the glyph outlines; null for none.</summary>
+    public TextStroke? Stroke { get; init; }
+
+    /// <summary>Skew (false italic) in degrees: positive leans the glyphs right.</summary>
+    public double Skew { get; init; }
+
     public double Width => Glyphs.Sum(glyph => glyph.Advance);
 
     public override DrawOp Offset(double dx, double dy) => this with { X = X + dx, Y = Y + dy };
+
+    /// <summary>Glyphs painted as <paramref name="style"/> says: fill (colour or gradient), stroke, vertical scale, skew.</summary>
+    public static GlyphRunOp Of(RunStyle style, FontFace font, double size, double horizontalScale, double x, double y, IReadOnlyList<PlacedGlyph> glyphs) =>
+        new(font, size, horizontalScale, style.Fill, x, y, glyphs)
+        {
+            VerticalScale = style.VerticalScale,
+            Gradient = style.FillGradient,
+            Stroke = style.Stroke,
+            Skew = style.Skew,
+        };
 }
 
 /// <summary>
-/// A gradient text fill: the swatch and the run's <c>GradientFillStart</c>, <c>GradientFillLength</c> and
-/// <c>GradientFillAngle</c>. Text keeps InDesign's default length of −1, which spans the text frame (see
-/// <c>IdmlRenderer.GradientSpace</c>).
+/// A gradient text fill or stroke: the swatch and the run's <c>GradientFillStart</c>, <c>GradientFillLength</c> and
+/// <c>GradientFillAngle</c> (or the <c>GradientStroke</c> ones). Text keeps InDesign's default length of −1, which
+/// spans the text frame (see <c>IdmlRenderer.GradientSpace</c>).
 /// </summary>
 internal sealed record TextGradient(ResolvedGradient Gradient, Point Start, double Length, double Angle);
+
+/// <summary>
+/// A stroke on the glyph outlines (Character panel stroke): a colour or a gradient (<paramref name="Gradient"/>, then
+/// <paramref name="Color"/> is null), the weight in points, and <paramref name="Outside"/> for
+/// <c>StrokeAlignment="OutsideAlignment"</c>, the default of [No paragraph style]. <paramref name="Join"/> is the PDF
+/// line join (0 miter, 1 round, 2 bevel, from <c>EndJoin</c>).
+/// </summary>
+internal sealed record TextStroke(ResolvedColor? Color, TextGradient? Gradient, double Weight, bool Outside, int Join, double MiterLimit);
+
+/// <summary>
+/// An underline or a strikethrough and its options (07-char-underline-strike). <paramref name="Weight"/> and
+/// <paramref name="Offset"/> are in points, null for automatic (IDML writes −9999): the composer then takes them from
+/// the font. <paramref name="TextColor"/>: the colour is the text's fill (<c>Text Color</c>, the default); otherwise
+/// <paramref name="Color"/>, null for [None]. <paramref name="Tint"/> applies to either (−1: none).
+/// <paramref name="Type"/> is the stroke style (<c>StrokeStyle/$ID/Solid</c>, <c>.../Dashed</c>, ...) and
+/// <paramref name="Gap"/> the colour painted between its dashes, null for none.
+/// </summary>
+internal sealed record TextRule(double? Weight, double? Offset, bool TextColor, ResolvedColor? Color, double Tint, string Type, ResolvedColor? Gap)
+{
+    /// <summary>The colour for text filled with <paramref name="fill"/>; null draws nothing.</summary>
+    public ResolvedColor? ColorFor(ResolvedColor? fill)
+    {
+        var color = TextColor ? fill : Color;
+        return color is not null && Tint >= 0 ? color.WithTint(Tint) : color;
+    }
+}
+
+/// <summary>
+/// An underline or strikethrough of a run: centred on the horizontal line from <paramref name="From"/>,
+/// <paramref name="Length"/> long, drawn in the rule's <paramref name="Type"/> over its gap colour (see
+/// <c>IdmlRenderer.DrawTextRule</c>).
+/// </summary>
+internal sealed record TextRuleOp(Point From, double Length, double Weight, ResolvedColor Color, string Type, ResolvedColor? Gap) : DrawOp
+{
+    public override DrawOp Offset(double dx, double dy) => this with { From = new Point(From.X + dx, From.Y + dy) };
+}
 
 internal sealed record RectOp(Rect Rect, ResolvedColor Color) : DrawOp
 {

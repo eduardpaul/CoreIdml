@@ -1138,22 +1138,32 @@ internal sealed partial class TextComposer
         var runStart = x;
         var run = new List<PlacedGlyph>();
         Shaped? runFirst = null;
+        // InDesign paints a line's underlines before its text, strikethroughs after each run (07-char-underline-strike).
+        var underlineAt = flow.OpCount;
 
         void FlushRun()
         {
             if (runFirst is not null && run.Count > 0)
             {
-                flow.Add(new GlyphRunOp(runFirst.Font, runFirst.Size, runFirst.Style.HorizontalScale * spacing.Scale, runFirst.Style.Fill, runStart, baseline - runFirst.Rise, run.ToList()) { VerticalScale = runFirst.Style.VerticalScale, Gradient = runFirst.Style.FillGradient });
+                var style = runFirst.Style;
+                var y = baseline - runFirst.Rise;
+                flow.Add(GlyphRunOp.Of(style, runFirst.Font, runFirst.Size, style.HorizontalScale * spacing.Scale, runStart, y, run.ToList()));
                 var runWidth = run.Sum(glyph => glyph.Advance);
-                if (runFirst.Style.Underline && runFirst.Style.Fill is { } color)
+                if (style.Underline is { } underline && underline.ColorFor(style.Fill) is { } color)
                 {
-                    var y = baseline - runFirst.Rise + (runFirst.Size * 0.1);
-                    flow.Add(new LineOp(new Point(runStart, y), new Point(runStart + runWidth, y), runFirst.Size / 18, color));
+                    // Auto weight and offset come from the font's post table; an offset in points is down from the baseline.
+                    var weight = underline.Weight ?? (runFirst.Font.UnderlineThickness * runFirst.Size);
+                    var offset = underline.Offset ?? (runFirst.Font.UnderlineOffset * runFirst.Size);
+                    flow.Insert(underlineAt++, new TextRuleOp(new Point(runStart, y + offset), runWidth, weight, color, underline.Type, underline.Gap));
                 }
-                if (runFirst.Style.StrikeThrough && runFirst.Style.Fill is { } strikeColor)
+                if (style.StrikeThrough is { } strike && strike.ColorFor(style.Fill) is { } strikeColor)
                 {
-                    var y = baseline - runFirst.Rise - (runFirst.Font.XHeight * runFirst.Size / 2);
-                    flow.Add(new LineOp(new Point(runStart, y), new Point(runStart + runWidth, y), runFirst.Size / 18, strikeColor));
+                    // An offset in points is up from the baseline; auto is a third of the point size (07-char-underline-strike:
+                    // 7.33 pt for 22 pt, 3.33 pt for 10 pt, 10 pt for 30 pt, 4.67 pt for 14 pt Liberation Serif), not the
+                    // font's yStrikeoutPosition (0.21 em).
+                    var weight = strike.Weight ?? (runFirst.Font.StrikeoutThickness * runFirst.Size);
+                    var offset = strike.Offset ?? (runFirst.Size / 3);
+                    flow.Add(new TextRuleOp(new Point(runStart, y - offset), runWidth, weight, strikeColor, strike.Type, strike.Gap));
                 }
             }
             run.Clear();
@@ -1178,8 +1188,8 @@ internal sealed partial class TextComposer
                 if (glyph.Font.TryMap(' ', out var spaceGlyph))
                 {
                     var spaceWidth = glyph.Font.Advance(spaceGlyph) * glyph.Size * glyph.Style.HorizontalScale;
-                    flow.Add(new GlyphRunOp(glyph.Font, glyph.Size, glyph.Style.HorizontalScale, glyph.Style.Fill, x, baseline - glyph.Rise,
-                        [new PlacedGlyph(spaceGlyph, " ", spaceWidth, spaceWidth)]) { VerticalScale = glyph.Style.VerticalScale, Gradient = glyph.Style.FillGradient });
+                    flow.Add(GlyphRunOp.Of(glyph.Style, glyph.Font, glyph.Size, glyph.Style.HorizontalScale, x, baseline - glyph.Rise,
+                        [new PlacedGlyph(spaceGlyph, " ", spaceWidth, spaceWidth)]));
                 }
                 if (glyph.Leader is { Length: > 0 } leader)
                 {
@@ -1334,7 +1344,7 @@ internal sealed partial class TextComposer
         if (glyphs.Count > 0)
         {
             var head = unit[0];
-            flow.Add(new GlyphRunOp(head.Font, head.Size, head.Style.HorizontalScale, head.Style.Fill, start, baseline - head.Rise, glyphs) { VerticalScale = head.Style.VerticalScale, Gradient = head.Style.FillGradient });
+            flow.Add(GlyphRunOp.Of(head.Style, head.Font, head.Size, head.Style.HorizontalScale, start, baseline - head.Rise, glyphs));
         }
     }
 
@@ -1816,6 +1826,12 @@ internal sealed partial class TextComposer
         public string PageName => Frame.PageName;
 
         public void Add(DrawOp op) => columnOps.Add(op);
+
+        /// <summary>How many ops the current column holds: where the ops of the next line start.</summary>
+        public int OpCount => columnOps.Count;
+
+        /// <summary>Puts <paramref name="op"/> under the ops from <paramref name="index"/> on (painted before them).</summary>
+        public void Insert(int index, DrawOp op) => columnOps.Insert(index, op);
 
         /// <summary>
         /// Positions the next line; false when the text no longer fits anywhere. With <paramref name="snapToGrid"/>

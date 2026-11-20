@@ -106,7 +106,7 @@ internal sealed partial class TextComposer
                 to++;
             }
             var run = dropCap.Glyphs.GetRange(from, to - from).Select(glyph => new PlacedGlyph(glyph.Glyph, glyph.Text, glyph.Advance, glyph.Natural)).ToList();
-            flow.Add(new GlyphRunOp(first.Font, first.Size, first.Style.HorizontalScale, first.Style.Fill, x, baseline - first.Rise, run) { VerticalScale = first.Style.VerticalScale });
+            flow.Add(GlyphRunOp.Of(first.Style, first.Font, first.Size, first.Style.HorizontalScale, x, baseline - first.Rise, run));
             x += run.Sum(glyph => glyph.Advance);
             from = to;
         }

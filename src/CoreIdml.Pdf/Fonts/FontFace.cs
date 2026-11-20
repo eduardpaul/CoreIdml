@@ -46,6 +46,25 @@ internal sealed class FontFace
 
     public double XHeight => OpenType is { } font ? font.XHeight / (double)font.UnitsPerEm : Standard!.CapHeight * 0.72 / 1000.0;
 
+    /// <summary>
+    /// How far below the baseline an automatic underline is centred, in em: the post table's <c>underlinePosition</c>
+    /// (07-char-underline-strike: 1.32 pt below the baseline of 22 pt Liberation Serif, −123/2048 em; 09-style-text-styles
+    /// p3: 0.16 pt for 12 pt Liberation Serif Bold Italic, −28/2048 em). 0.1 em for a font without one.
+    /// </summary>
+    public double UnderlineOffset => OpenType is { UnderlineThickness: > 0 } font ? -font.UnderlinePosition / (double)font.UnitsPerEm : 0.1;
+
+    /// <summary>
+    /// The weight of an automatic underline in em: the post table's <c>underlineThickness</c> (1.074 pt for 22 pt
+    /// Liberation Serif, 100/2048 em; 1.143 pt for 12 pt Liberation Serif Bold Italic, 195/2048 em). 0.05 em without one.
+    /// </summary>
+    public double UnderlineThickness => OpenType is { UnderlineThickness: > 0 } font ? font.UnderlineThickness / (double)font.UnitsPerEm : 0.05;
+
+    /// <summary>
+    /// The weight of an automatic strikethrough in em: OS/2 <c>yStrikeoutSize</c>, else <see cref="UnderlineThickness"/>.
+    /// (Liberation Serif, the only font struck through in the samples, has the same value in both tables.)
+    /// </summary>
+    public double StrikeoutThickness => OpenType is { StrikeoutSize: > 0 } font ? font.StrikeoutSize / (double)font.UnitsPerEm : UnderlineThickness;
+
     public static FontFace FromOpenType(OpenTypeFont font) => new($"{font.SourcePath}#{font.FaceIndex}", font, null, null);
 
     public static FontFace FromStandard(string name) => new(name, null, name, StandardFontMetrics.All[name]);

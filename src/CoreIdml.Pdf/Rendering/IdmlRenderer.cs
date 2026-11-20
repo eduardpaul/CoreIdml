@@ -1139,13 +1139,26 @@ internal sealed partial class IdmlRenderer : IDisposable
                 case GlyphRunOp run:
                     DrawGlyphs(run, content, frame.InnerBounds);
                     break;
+                case TextRuleOp rule:
+                    DrawTextRule(rule, content);
+                    break;
             }
         }
     }
 
+    /// <summary>
+    /// Draws a glyph run: its fill, then a stroke on the outlines as InDesign writes text strokes
+    /// (07-char-outlined-text): text render mode 1 (stroke only) at the stroke weight, in the stroke colour, join and
+    /// miter limit. An outside stroke (the default alignment) under a fill is painted first at twice the weight, and
+    /// the fill over it hides the inner half (red fill + 2 pt black stroke: <c>4 w</c>, <c>1 Tr</c>, then the fill);
+    /// with no fill it is centred on the outline at its weight (<c>0.5 w</c> for 0.5 pt). A centred stroke goes over
+    /// the fill (from memory: no sample has one). A gradient stroke is a shading pattern spanning the frame, like a
+    /// gradient fill (03-color-gradients p4).
+    /// </summary>
     private void DrawGlyphs(GlyphRunOp run, ContentBuilder content, Rect frameBounds)
     {
-        if (run.Glyphs.Count == 0 || (run.Color is null && run.Gradient is null))
+        var filled = run.Color is not null || run.Gradient is not null;
+        if (run.Glyphs.Count == 0 || (!filled && run.Stroke is null))
         {
             return;
         }
@@ -1169,25 +1182,76 @@ internal sealed partial class IdmlRenderer : IDisposable
             array.Append(font.Hex(pending));
         }
         array.Append("] TJ");
-        if (run.Gradient is { } gradient)
+        var text = array.ToString();
+        if (run.Stroke is { } stroke && (stroke.Outside || !filled))
         {
-            // A shading pattern laid over the frame, as InDesign fills gradient text (03-color-gradients p4).
-            var space = GradientSpace(gradient.Gradient.Type, gradient.Start, gradient.Length, gradient.Angle, frameBounds);
-            content.PatternColor(Pdf.Pattern(GradientShading.From(gradient.Gradient), space.Then(content.CurrentMatrix)), stroke: false);
+            DrawText(run, font.Name, text, content, frameBounds, filled ? 2 * stroke.Weight : stroke.Weight);
         }
-        else
+        if (filled)
         {
-            content.FillColor(run.Color!);
+            if (run.Gradient is { } gradient)
+            {
+                // A shading pattern laid over the frame, as InDesign fills gradient text (03-color-gradients p4).
+                content.PatternColor(TextPattern(gradient, content, frameBounds), stroke: false);
+            }
+            else
+            {
+                content.FillColor(run.Color!);
+            }
+            DrawText(run, font.Name, text, content, frameBounds, strokeWidth: null);
+        }
+        if (run.Stroke is { Outside: false } centred && filled)
+        {
+            DrawText(run, font.Name, text, content, frameBounds, centred.Weight);
+        }
+    }
+
+    /// <summary>
+    /// One text object of a glyph run: filled in the current fill colour, or stroked (render mode 1) with
+    /// <paramref name="strokeWidth"/> in the run's stroke paint, inside its own graphics state. Skew shears the text
+    /// matrix about the baseline: 07-char-basics p5 writes 15° as <c>24 0 6.4308 24</c> (tan 15° × 24).
+    /// </summary>
+    private void DrawText(GlyphRunOp run, string fontName, string glyphs, ContentBuilder content, Rect frameBounds, double? strokeWidth)
+    {
+        if (strokeWidth is { } width)
+        {
+            var stroke = run.Stroke!;
+            content.Save();
+            if (stroke.Gradient is { } gradient)
+            {
+                content.PatternColor(TextPattern(gradient, content, frameBounds), stroke: true);
+            }
+            else
+            {
+                content.StrokeColor(stroke.Color!);
+            }
+            content.LineWidth(width).LineJoin(stroke.Join).MiterLimit(stroke.MiterLimit);
         }
         content.Raw("BT");
-        content.Raw($"/{font.Name} {Number(run.Size)} Tf");
+        content.Raw($"/{fontName} {Number(run.Size)} Tf");
         if (Math.Abs(run.HorizontalScale - 1) > 1e-6)
         {
             content.Raw($"{Number(run.HorizontalScale * 100)} Tz");
         }
-        content.Raw($"1 0 0 {Number(-run.VerticalScale)} {Number(run.X)} {Number(run.Y)} Tm");
-        content.Raw(array.ToString());
+        if (strokeWidth is not null)
+        {
+            content.Raw("1 Tr");
+        }
+        var shear = Math.Tan(run.Skew * Math.PI / 180) * run.VerticalScale;
+        content.Raw($"1 0 {Number(shear)} {Number(-run.VerticalScale)} {Number(run.X)} {Number(run.Y)} Tm");
+        content.Raw(glyphs);
         content.Raw("ET");
+        if (strokeWidth is not null)
+        {
+            content.Restore();
+        }
+    }
+
+    /// <summary>The shading pattern of a gradient text fill or stroke, spanning the frame (see <see cref="GradientSpace"/>).</summary>
+    private string TextPattern(TextGradient gradient, ContentBuilder content, Rect frameBounds)
+    {
+        var space = GradientSpace(gradient.Gradient.Type, gradient.Start, gradient.Length, gradient.Angle, frameBounds);
+        return Pdf.Pattern(GradientShading.From(gradient.Gradient), space.Then(content.CurrentMatrix));
     }
 
     internal static string Describe(PageItem item) => string.Create(CultureInfo.InvariantCulture, $"{item.Kind} {item.Id}");

@@ -520,10 +520,12 @@ internal sealed class StoryReader
         {
             fill = fill.WithTint(tint);
         }
-        var start = Values.List(Get("GradientFillStart"));
-        var gradient = fill is null && document.Swatches.ResolveGradient(fillReference) is { } resolved
-            ? new TextGradient(resolved, start.Length == 2 ? new Point(start[0], start[1]) : default, Values.Number(Get("GradientFillLength"), -1), Values.Number(Get("GradientFillAngle"), 0))
-            : null;
+        TextGradient? GradientOf(string part, string? reference) =>
+            reference is not null && document.Swatches.ResolveGradient(reference) is { } resolved
+                ? new TextGradient(resolved, Values.List(Get($"Gradient{part}Start")) is [var x, var y] ? new Point(x, y) : default,
+                    Values.Number(Get($"Gradient{part}Length"), -1), Values.Number(Get($"Gradient{part}Angle"), 0))
+                : null;
+        var gradient = fill is null ? GradientOf("Fill", fillReference) : null;
         var leadingValue = Get("Leading");
         double? leading = leadingValue is null || leadingValue == "Auto" ? null : Values.Number(leadingValue);
         var kerning = Get("KerningMethod") ?? "$ID/Metrics";
@@ -540,14 +542,65 @@ internal sealed class StoryReader
             BaselineShift = Values.Number(Get("BaselineShift"), 0),
             Capitalization = Get("Capitalization") ?? "Normal",
             Position = Get("Position") ?? "Normal",
-            Underline = Get("Underline") == "true",
-            StrikeThrough = Get("StrikeThru") == "true",
+            Underline = Get("Underline") == "true" ? Rule(Get, "Underline") : null,
+            StrikeThrough = Get("StrikeThru") == "true" ? Rule(Get, "StrikeThrough") : null,
+            Stroke = Stroke(Get, GradientOf),
+            Skew = Values.Number(Get("Skew"), 0),
             Kerning = kerning is not ("None" or "$ID/None"),
             Ligatures = Get("Ligatures") != "false",
             Leading = leading is > 0 ? leading : null,
             AutoLeading = Values.Number(Get("AutoLeading"), 120) / 100,
             Language = Get("AppliedLanguage"),
         };
+    }
+
+    /// <summary>
+    /// The stroke on the glyph outlines: <c>StrokeColor</c> (a swatch, a tint or a gradient; [None] for none, the
+    /// default), <c>StrokeWeight</c>, <c>StrokeTint</c>, <c>StrokeAlignment</c>, <c>EndJoin</c> and <c>MiterLimit</c>.
+    /// </summary>
+    private TextStroke? Stroke(Func<string, string?> get, Func<string, string?, TextGradient?> gradientOf)
+    {
+        var reference = get("StrokeColor");
+        var weight = Values.Number(get("StrokeWeight"), 1);
+        if (reference is null || weight <= 0)
+        {
+            return null;
+        }
+        var color = document.Swatches.ResolveColor(reference);
+        var tint = Values.Number(get("StrokeTint"), -1);
+        if (color is not null && tint >= 0)
+        {
+            color = color.WithTint(tint);
+        }
+        var gradient = color is null ? gradientOf("Stroke", reference) : null;
+        if (color is null && gradient is null)
+        {
+            return null;
+        }
+        return new TextStroke(color, gradient, weight, (get("StrokeAlignment") ?? "OutsideAlignment") == "OutsideAlignment",
+            get("EndJoin") switch { "RoundEndJoin" => 1, "BevelEndJoin" => 2, _ => 0 }, Values.Number(get("MiterLimit"), 4));
+    }
+
+    /// <summary>
+    /// An underline (<paramref name="prefix"/> <c>Underline</c>) or strikethrough (<c>StrikeThrough</c>) and its
+    /// options: weight and offset (−9999, InDesign's "auto", gives null), colour (<c>Text Color</c> or a swatch, a
+    /// child element under Properties), tint, type and gap colour and tint.
+    /// </summary>
+    private TextRule Rule(Func<string, string?> get, string prefix)
+    {
+        static double? Explicit(string? value) => Values.Number(value) is { } number and > -9999 ? number : null;
+        var colorReference = get(prefix + "Color") ?? "Text Color";
+        var textColor = colorReference == "Text Color";
+        var gap = document.Swatches.ResolveColor(get(prefix + "GapColor"));
+        var gapTint = Values.Number(get(prefix + "GapTint"), -1);
+        return new TextRule(
+            Explicit(get(prefix + "Weight")) is { } weight ? Math.Max(0, weight) : null,
+            Explicit(get(prefix + "Offset")),
+            textColor,
+            textColor ? null : document.Swatches.ResolveColor(colorReference),
+            Values.Number(get(prefix + "Tint"), -1),
+            get(prefix + "Type") ?? "StrokeStyle/$ID/Solid",
+            gap is not null && gapTint >= 0 ? gap.WithTint(gapTint) : gap);
     }
 
     private Dictionary<(string, string), string>? postScriptNames;
