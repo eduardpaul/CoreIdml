@@ -72,6 +72,9 @@ internal sealed class FontFace
         ? font.Advance(glyph) / (double)font.UnitsPerEm
         : Standard!.Width((byte)glyph) / 1000.0;
 
+    /// <summary>Left side bearing in em: where the glyph's outline starts right of its origin (0 for standard fonts).</summary>
+    public double LeftSideBearing(ushort glyph) => OpenType is { } font ? font.LeftSideBearing(glyph) / (double)font.UnitsPerEm : 0;
+
     /// <summary>The standard ligature starting <paramref name="glyphs"/> (none for standard fonts).</summary>
     public bool TryLigature(ReadOnlySpan<ushort> glyphs, out ushort ligature, out int length)
     {

@@ -23,7 +23,7 @@ includes tests and docs.
 | Text wrap | [text-wrap.md](text-wrap.md) |
 | Polygons and paths | [polygons-and-paths.md](polygons-and-paths.md) |
 | Gradients and effects | [gradients-and-effects.md](gradients-and-effects.md) |
-| Drop caps | [drop-caps.md](drop-caps.md) |
+| Drop caps | [drop-caps.md](drop-caps.md) (drawn; authoring still a plan) |
 
 Two further plans, for new plugin skills rather than layout fidelity, have their own work plan in
 [accessibility-and-variants.md](accessibility-and-variants.md):

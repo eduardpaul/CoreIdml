@@ -1,71 +1,64 @@
 # Drop caps
 
-Status: **plan, not implemented.** Written against commit `691f87a`; the files it then marked **(wip)** were committed in `dc5bbf4` (1.1.0), so their line numbers may have moved. Overview, order, milestones and open questions: [README.md](README.md).
+Status: **drawn by the preview and PDF export; not authorable yet** (DOM, spec and tools below are still a plan).
+The rendering is in [TextComposer.DropCaps.cs](../../src/CoreIdml.Pdf/Layout/TextComposer.DropCaps.cs), measured
+against the doc-samples `08-para-drop-caps` package (InDesign 20). Overview, order, milestones and open questions:
+[README.md](README.md).
 
 
 ## IDML
 
-- **Attributes** on paragraph styles and ranges: `DropCapLines` (0 = off), `DropCapCharacters`, and `DropcapDetail`
-  (lower-case "c", seen in `TextDefault`).
-- **`DropcapDetail`** holds the "Align left edge" and "Scale for descenders" flags (memory: bit flags, check).
-- **The drop cap's character style** is a `DropCapStyle` reference (memory: a `Properties` child; check).
-- **Nested styles** (`AllNestedStyles`) belong to the same dialog. Out of scope.
+Checked in `08-para-drop-caps` (`Resources/Styles.xml`):
 
-## Current state
+- **Attributes** on paragraph styles and ranges: `DropCapLines="3"` (0 = off), `DropCapCharacters="1"`, and
+  `DropcapDetail` (lower-case "c"; `"1"` on `[No paragraph style]` and in `TextDefault` there, `"0"` on one style).
+- **`DropcapDetail` bit 0 is Align Left Edge**: with `"1"` the "g" of p4 has its outline at the text's left edge,
+  with `"0"` its origin is there (2.31 pt further right). Scale for Descenders is presumably another bit (memory); no
+  paragraph in the sample sets it, and neither of p4's paragraphs (labelled "descenders on/off") scales the "g".
+- **The drop cap's character style** is not a `DropCapStyle` attribute: InDesign stores it as the paragraph's first
+  nested style, `<Delimiter type="enumeration">Dropcap</Delimiter>`, `Repetition` 1, `Inclusive` true.
 
-- Nothing reads drop caps.
-- `LayoutParagraph` has a per-line indent only for the first line (`TextComposer.cs:356-357`).
-- The first line's metrics come from all of its glyphs (`Measure`, 467-501). A drop cap must not count there.
+## Measured behaviour
 
-## Design
+- **Size**: the drop cap's cap height (its own font's OS/2 cap height) reaches from the first line's cap height to
+  line N's baseline: size = S + (N − 1) × leading / capHeight, S being the characters' own size. 11/14 Liberation
+  Serif: 32.38, 53.76, 75.14, 96.52 pt for 2 to 5 lines; 51.70 pt in Liberation Sans Bold, 50.44 pt in Raleway Italic.
+- **Baseline** on line N, also when the paragraph has fewer lines (p6, a 2-line paragraph under a 4-line drop cap).
+- **Horizontal**: at the first line's start (left and first-line indents, p5); the text of lines 1 to N starts after
+  its advances (no kerning with the next letter); lines 2 to N also take the first-line indent (p5: 20 pt).
+- **Spaces after the drop cap** take no room: with two characters "It", the "is" after the space starts right after
+  the "t" (p2); with three, the space is part of the drop cap and its width counts.
+- **Centred paragraph** (p5): lines 2 to N are centred between the drop cap and the right edge, but line 1 starts
+  right after the drop cap. Not reproduced (3.5 pt).
+- **Baseline grid** (p6): the sample's styles have `GridAlignment="None"`, so the grid case is not exercised; the code
+  drops the drop cap N − 1 grid increments (leading rounded up to the grid) when every line snaps.
+- **Not measured**: whether the next paragraph is pushed below a drop cap that is deeper than its paragraph (memory: it
+  is not; CoreIdml does not push it), list markers before a drop cap (CoreIdml leaves the marker in the first line).
+
+## Implementation
+
+- **Reading.** `StoryReader.FormatOf` reads `ParagraphFormatting.DropCap` (lines, characters, Align Left Edge). The
+  nested style "through 1 drop cap" covers exactly the drop cap's characters (`NestedStyles`), so they come shaped in
+  its font and colour.
+- **Composer.** A narrow hook in `TextComposer.LayoutParagraph`: `TakeDropCap` takes the characters out of the shaped
+  paragraph and scales them; `DropCapIndent` adds the extra left indent (and so the narrower width) of lines 1 to N
+  to `LineIndent`, and the paragraph composer plans those N lines at their own widths (`steadyLines`);
+  `EmitDropCap` draws the glyphs as their own `GlyphRunOp`s once line 1 is placed, at line 1's baseline plus N − 1 leadings.
+  Line 1's metrics do not include the drop cap.
+- **Fonts.** `OpenTypeFont.LeftSideBearing` reads `hmtx` for Align Left Edge.
+- **Tests.** `tests/CoreIdml.Pdf.Tests/DropCapTests.cs`.
+- **Not done:** Scale for Descenders; a drop cap whose line N falls in the next column (it is drawn N − 1 leadings
+  below line 1 regardless); the centred first line above; outlined drop caps (p3: text stroke is not drawn at all).
+- **Import:** not planned. The grouping (`Import/TextGrouping.cs`) makes the drop cap a separate small block; a
+  heuristic could rejoin it later.
+
+## Still a plan: authoring
 
 **DOM:** `ParagraphFormat.DropCap` as `DropCap(int Lines, int Characters = 1, CharacterStyle? Style = null)`;
-`ApplyTo` writes the attributes and the style reference.
+`ApplyTo` writes the attributes and, for the style, the "through 1 `Dropcap`" nested style InDesign writes.
 
 **Spec**
 
 - Paragraph-only field `"dropCap": { "lines": 3, "characters": 1, "style": "Initial" }`.
 - The style is a character style; its font and colour are used, and its size is ignored.
 - Checker, schema and the `idml_define_style` schema as in [paragraph rules](paragraph-rules.md).
-
-**Composer** (after the slot refactor in [text wrap](text-wrap.md)):
-
-- **Reading.** `StoryReader.FormatOf` reads the drop cap and resolves the style chain into a `RunStyle` override.
-  `Shape` takes the first M characters out of the paragraph and shapes them separately with that style. Characters
-  include opening punctuation, per InDesign.
-- **Size.**
-  - The drop cap's top is at the cap height of the first line, and its baseline sits on line N's baseline.
-  - Line N's baseline is predictable from the paragraph's leading: `size = (capHeight₁ + (N-1) × leading) /
-    font.CapHeight`.
-  - If line N ends up elsewhere (a column break), emit at the last line placed in that column.
-- **Width.** The drop cap's width W is the sum of its advances plus tracking.
-- **Lines 1 to N** get a blocked interval `[start, start + W]` in their slot: a local wrap. The first-line indent
-  interaction must be checked in phase 0.
-- **Emission.** A `GlyphRunOp` for the drop cap, once line N is placed, or once the paragraph ends if it is shorter.
-  Short paragraphs do not push the next paragraph (memory).
-- **Not done:** "Align left edge" and "scale for descenders" need glyph bounds that `OpenTypeFont` does not read
-  yet. Optional: read `hmtx` left side bearings and the `glyf` bbox later.
-
-**Renderer:** nothing new. Glyph runs already carry the font and size.
-
-**Import:** not planned. Today the grouping (`Import/TextGrouping.cs`) would make the drop cap a separate small
-block; a heuristic could rejoin it later.
-
-## Tests
-
-- Composer:
-  - The first N lines start W to the right.
-  - The drop cap's size and baseline equal line N's baseline.
-  - Line 1's leading is unchanged.
-  - Two characters; a style font; justified text.
-  - A paragraph shorter than N.
-  - A drop cap together with a wrap.
-- `TextPositionDiff` against the phase-0 sample.
-
-**Effort: M** (about 5 days with the slot refactor in place, 8 standalone).
-
-**Risks**
-
-- The size formula and the alignment details (memory).
-- Kerning between the drop cap and the following text.
-- Interaction with the first-line indent.

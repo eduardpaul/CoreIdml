@@ -611,6 +611,9 @@ internal sealed class StoryReader
                 (int)Values.Number(Get("KeepFirstLines"), 2),
                 (int)Values.Number(Get("KeepLastLines"), 2),
                 Get("StartParagraph") ?? "Anywhere"),
+            DropCap = (int)Values.Number(Get("DropCapLines"), 0) is var lines and > 0 && (int)Values.Number(Get("DropCapCharacters"), 0) is var characters and > 0
+                ? new DropCapFormat(lines, characters, ((int)Values.Number(Get("DropcapDetail"), 0) & 1) != 0)
+                : null,
         };
         paragraphFormats[range] = format;
         return format;

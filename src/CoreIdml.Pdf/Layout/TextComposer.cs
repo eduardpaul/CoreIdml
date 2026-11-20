@@ -647,6 +647,7 @@ internal sealed partial class TextComposer
             flow.NextColumn();
         }
         var glyphs = Shape(paragraph, flow.Frame);
+        var dropCap = TakeDropCap(glyphs, format, flow.Frame);
         flow.PendingSpace += isFirst ? 0 : format.SpaceBefore;
         var columns = new List<int>();
         var index = 0;
@@ -663,10 +664,10 @@ internal sealed partial class TextComposer
         List<(int End, bool Forced)>? plan = null;
         var (planned, plannedStart, plannedWidth) = (0, -1, double.NaN);
         // Line n's indent from the column's left edge: the first-line indent goes to line 0, unless the paragraph starts
-        // with a table; every line from steadyLines on is indented alike.
+        // with a table; lines beside a drop cap start after it; every line from steadyLines on is indented alike.
         var indentedLine = 0;
-        var steadyLines = 1;
-        double LineIndent(int line) => format.LeftIndent + (line == indentedLine ? format.FirstLineIndent : 0);
+        var steadyLines = Math.Max(1, dropCap?.Lines ?? 1);
+        double LineIndent(int line) => format.LeftIndent + (line == indentedLine ? format.FirstLineIndent : 0) + DropCapIndent(dropCap, line, format);
         while (index < glyphs.Count || !emitted)
         {
             if (index < glyphs.Count && glyphs[index].Kind == GlyphKind.Table)
@@ -728,6 +729,10 @@ internal sealed partial class TextComposer
             var isLast = index >= glyphs.Count || glyphs[index].Kind == GlyphKind.Table;
             columns.Add(flow.ColumnOrdinal);
             EmitLine(line, flow, format, indent, available, isLast, forced);
+            if (dropCap is not null && columns.Count == 1)
+            {
+                EmitDropCap(dropCap, flow, format);
+            }
 
             // The end of the line starting at `start` in a column `width` wide, and the line's width.
             (int End, bool Forced, double Available) BreakLine(double width)

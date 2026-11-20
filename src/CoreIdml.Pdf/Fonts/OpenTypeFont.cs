@@ -14,6 +14,8 @@ internal sealed class OpenTypeFont
     private readonly Dictionary<string, (int Offset, int Length)> tables;
     private readonly Dictionary<int, ushort> cmap = [];
     private readonly ushort[] advances;
+    // Glyphs with their own advance in hmtx; the left side bearings of the others follow those records.
+    private readonly int metricCount;
     private readonly Dictionary<uint, short> kernPairs = [];
     private readonly List<PairSubtable> gposPairs = [];
     // Standard ligatures by first glyph, in the font's order of preference.
@@ -39,7 +41,7 @@ internal sealed class OpenTypeFont
         HheaAscender = S16(hhea, 4);
         HheaDescender = S16(hhea, 6);
         LineGap = S16(hhea, 8);
-        var metricCount = U16(hhea, 34);
+        metricCount = U16(hhea, 34);
 
         if (tables.TryGetValue("OS/2", out var os2) && os2.Length >= 78)
         {
@@ -196,6 +198,17 @@ internal sealed class OpenTypeFont
 
     /// <summary>Advance width in font units.</summary>
     public int Advance(ushort glyph) => glyph < advances.Length ? advances[glyph] : 0;
+
+    /// <summary>
+    /// Left side bearing in font units (<c>hmtx</c>): how far right of its origin the glyph's outline starts. Fonts
+    /// set it to the outline's left edge (<c>glyf</c> xMin), for CFF outlines too.
+    /// </summary>
+    public int LeftSideBearing(ushort glyph)
+    {
+        var hmtx = Table("hmtx");
+        var at = glyph < metricCount ? (glyph * 4) + 2 : (metricCount * 4) + ((glyph - metricCount) * 2);
+        return glyph < GlyphCount && at + 2 <= hmtx.Length ? S16(hmtx, at) : 0;
+    }
 
     /// <summary>
     /// Pair kerning in font units (GPOS when present, else the kern table). Not cached here: a parsed font is

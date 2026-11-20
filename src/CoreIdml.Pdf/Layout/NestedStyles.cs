@@ -84,7 +84,7 @@ internal sealed class NestedStyles
             }
         }
         var content = text.ToString();
-        var nested = AssignNested(content, definition.Nested);
+        var nested = AssignNested(content, definition.Nested, DropCapEnd(content, reader.FormatOf(range).DropCap));
         var greps = new List<string>?[content.Length];
         foreach (var grep in definition.Greps)
         {
@@ -168,7 +168,7 @@ internal sealed class NestedStyles
     }
 
     /// <summary>The nested style of each character of <paramref name="text"/>, null where none applies.</summary>
-    private static string?[] AssignNested(string text, IReadOnlyList<Nested> styles)
+    private static string?[] AssignNested(string text, IReadOnlyList<Nested> styles, int dropCapEnd)
     {
         var result = new string?[text.Length];
         var position = 0;
@@ -188,7 +188,7 @@ internal sealed class NestedStyles
                 index -= Math.Clamp(style.Repetition, 1, index);
                 continue;
             }
-            if (End(text, position, style) is not { } end)
+            if (End(text, position, style, dropCapEnd) is not { } end)
             {
                 // A delimiter CoreIdml does not know: nothing from here on is styled.
                 break;
@@ -204,14 +204,13 @@ internal sealed class NestedStyles
     }
 
     /// <summary>Where a nested style starting at <paramref name="start"/> ends (exclusive); null for an unknown delimiter.</summary>
-    private static int? End(string text, int start, Nested style)
+    private static int? End(string text, int start, Nested style, int dropCapEnd)
     {
         if (style.Enumerated && style.Delimiter == "Dropcap")
         {
-            // The drop cap's own character style (08-para-drop-caps p3). CoreIdml does not draw drop caps yet: the
-            // letters stay body text, and giving body-size letters the drop cap's font and colour moves them further
-            // from InDesign's page, so the style takes no text until drop caps are drawn.
-            return start;
+            // "Through 1 drop cap" is how InDesign stores the drop cap's character style (08-para-drop-caps p3: red bold
+            // Liberation Sans, blue italic Raleway): it covers the drop cap's characters, and "up to" the text before them.
+            return style.Inclusive ? Math.Max(start, dropCapEnd) : start;
         }
         Func<string, int, bool>? isDelimiter = !style.Enumerated
             ? (style.Delimiter.Length == 0 ? null : (s, k) => style.Delimiter.Contains(s[k], StringComparison.Ordinal))
@@ -244,6 +243,35 @@ internal sealed class NestedStyles
             if (isDelimiter(text, k) && ++count >= Math.Max(1, style.Repetition))
             {
                 return style.Inclusive ? k + 1 : k;
+            }
+        }
+        return text.Length;
+    }
+
+    /// <summary>
+    /// Where the drop cap's characters end in <paramref name="text"/> (0 without a drop cap): the first
+    /// <see cref="DropCapFormat.Characters"/> characters of text, as the composer counts them, ending early at a tab,
+    /// break or object. The zero-width end nested style and indent to here characters do not count.
+    /// </summary>
+    private static int DropCapEnd(string text, DropCapFormat? dropCap)
+    {
+        if (dropCap is null)
+        {
+            return 0;
+        }
+        var count = 0;
+        for (var k = 0; k < text.Length; k++)
+        {
+            switch (text[k])
+            {
+                case '\u0003' or '\u0007':
+                    continue;
+                case '\t' or '\u0008' or '\n' or '\u0012' or '\u0013' or '\u0016' or '\uFFFC':
+                    return k;
+            }
+            if (++count == dropCap.Characters)
+            {
+                return k + 1;
             }
         }
         return text.Length;

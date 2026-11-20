@@ -103,7 +103,17 @@ internal sealed record ParagraphFormatting
     public bool GridAlignFirstLineOnly { get; init; }
 
     public KeepOptions Keeps { get; init; } = KeepOptions.None;
+
+    /// <summary>The paragraph's drop cap (<c>DropCapLines</c>, <c>DropCapCharacters</c>, <c>DropcapDetail</c>); null for none.</summary>
+    public DropCapFormat? DropCap { get; init; }
 }
+
+/// <summary>
+/// A drop cap: the first <paramref name="Characters"/> characters of the paragraph, <paramref name="Lines"/> lines
+/// tall. <paramref name="AlignLeftEdge"/> is bit 0 of <c>DropcapDetail</c> (08-para-drop-caps p4: with "1", the
+/// default in that document, the outline of the "g" starts at the text's left edge; with "0" its origin does).
+/// </summary>
+internal sealed record DropCapFormat(int Lines, int Characters, bool AlignLeftEdge);
 
 /// <summary>
 /// A paragraph's keep options (Paragraph &gt; Keep Options): keep its last line with the first
