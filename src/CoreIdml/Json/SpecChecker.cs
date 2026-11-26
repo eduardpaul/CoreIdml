@@ -37,7 +37,7 @@ public static partial class IdmlJson
     private static readonly string[] CommonItemFields =
     [
         "type", "name", "label", "tag", "layer", "x", "y", "width", "height", "fill", "fillTint", "stroke", "strokeWeight",
-        "strokeTint", "strokeType", "endCap", "opacity", "cornerRadius", "rotation", "objectStyle", "gradientAngle", "wrap",
+        "strokeTint", "strokeType", "strokeDash", "endCap", "opacity", "cornerRadius", "rotation", "objectStyle", "gradientAngle", "wrap",
         "wrapOffset", "wrapSide", "wrapInverse",
     ];
     private static readonly string[] TextItemFields =
@@ -47,7 +47,7 @@ public static partial class IdmlJson
     ];
     private static readonly string[] TableItemFields = ["rows", "columnWidths", "headerRows", "rowHeight", "cellStyle", "headerStyle", "headerFill", "alternateFill", "cellInset"];
     private static readonly string[] ImageItemFields = ["path", "fit"];
-    private static readonly string[] LineItemFields = ["x2", "y2"];
+    private static readonly string[] LineItemFields = ["x2", "y2", "startArrow", "endArrow"];
 
     // Names other formats use for a field of the spec (CSS, other layout APIs), so the warning can say which one is meant.
     private static readonly Dictionary<string, string> KnownAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -60,6 +60,10 @@ public static partial class IdmlJson
         ["strokeWidth"] = "strokeWeight", ["borderWidth"] = "strokeWeight", ["lineWidth"] = "strokeWeight",
         ["radius"] = "cornerRadius", ["borderRadius"] = "cornerRadius", ["alpha"] = "opacity", ["transparency"] = "opacity",
         ["lineCap"] = "endCap", ["cap"] = "endCap", ["dash"] = "strokeType", ["strokeStyle"] = "strokeType",
+        ["strokeDashArray"] = "strokeDash", ["strokeDasharray"] = "strokeDash", ["dashArray"] = "strokeDash", ["dashPattern"] = "strokeDash",
+        ["dashes"] = "strokeDash", ["strokeDashAndGap"] = "strokeDash", ["arrowStart"] = "startArrow", ["markerStart"] = "startArrow",
+        ["leftLineEnd"] = "startArrow", ["startArrowHead"] = "startArrow", ["arrowEnd"] = "endArrow", ["markerEnd"] = "endArrow",
+        ["rightLineEnd"] = "endArrow", ["endArrowHead"] = "endArrow", ["arrow"] = "endArrow", ["arrowHead"] = "endArrow",
         ["src"] = "path", ["file"] = "path", ["image"] = "path", ["url"] = "path", ["kind"] = "type", ["id"] = "name",
         ["left"] = "x", ["top"] = "y", ["w"] = "width", ["h"] = "height", ["children"] = "items", ["elements"] = "items",
         ["objects"] = "items", ["content"] = "text", ["paragraphStyle"] = "style", ["characterStyle"] = "style",

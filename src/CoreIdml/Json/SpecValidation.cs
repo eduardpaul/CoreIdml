@@ -200,6 +200,17 @@ public static partial class IdmlJson
                 Swatch(item.Stroke, path);
                 Choice<StrokeKind>(item.StrokeType, "strokeType", path);
                 Choice<LineCap>(item.EndCap, "endCap", path);
+                if (item.StrokeDash is { } dash && PageItem.DashError(dash) is { } dashError)
+                {
+                    Add(path, "strokeDash: " + dashError);
+                }
+                foreach (var (arrow, field) in (ReadOnlySpan<(string?, string)>)[(item.StartArrow, "startArrow"), (item.EndArrow, "endArrow")])
+                {
+                    if (type == "line" && arrow is not null && TryArrowHead(arrow) is null)
+                    {
+                        Add(path, ArrowHeadError(arrow, field));
+                    }
+                }
                 if (ItemOptionsError(ItemOptions(item, type)) is { } optionsError)
                 {
                     Add(path, optionsError);

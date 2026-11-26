@@ -475,6 +475,19 @@ public sealed class ItemSpec
     /// <summary>solid, dashed or dotted.</summary>
     public string? StrokeType { get; set; }
 
+    /// <summary>
+    /// A custom dash pattern in points (like strokeWeight): [dash, gap], [dash, gap, dash, gap] or six lengths; one
+    /// length is a dash and a gap of that length. InDesign's "Dashed" stroke type with these lengths; wins over
+    /// strokeType. [] is a solid stroke.
+    /// </summary>
+    public double[]? StrokeDash { get; set; }
+
+    /// <summary>Arrowhead at a line's start (x, y): none, simple, simpleWide, triangle, triangleWide, barbed, curved, circle, circleSolid, square, squareSolid or bar.</summary>
+    public string? StartArrow { get; set; }
+
+    /// <summary>Arrowhead at a line's end (x2, y2), with the values of <see cref="StartArrow"/>.</summary>
+    public string? EndArrow { get; set; }
+
     /// <summary>Ends of lines: butt (default), round or projecting.</summary>
     public string? EndCap { get; set; }
 

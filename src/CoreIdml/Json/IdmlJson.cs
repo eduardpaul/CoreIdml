@@ -266,6 +266,9 @@ public static partial class IdmlJson
             StrokeWeight = item.StrokeWeight,
             StrokeTint = item.StrokeTint,
             StrokeKind = item.StrokeType is { } strokeType ? ParseChoice<StrokeKind>(strokeType, "strokeType") : null,
+            StrokeDash = item.StrokeDash,
+            StartArrow = type == "line" && item.StartArrow is { } startArrow ? ParseArrowHead(startArrow, "startArrow") : null,
+            EndArrow = type == "line" && item.EndArrow is { } endArrow ? ParseArrowHead(endArrow, "endArrow") : null,
             EndCap = item.EndCap is { } endCap ? ParseChoice<LineCap>(endCap, "endCap") : null,
             Opacity = item.Opacity,
             CornerRadius = item.CornerRadius is { } radius ? U(radius) : null,
@@ -368,6 +371,9 @@ public static partial class IdmlJson
                 StrokeWeight = shape.StrokeWeight,
                 StrokeTint = shape.StrokeTint,
                 StrokeKind = shape.StrokeKind,
+                StrokeDash = shape.StrokeDash,
+                StartArrow = shape.StartArrow,
+                EndArrow = shape.EndArrow,
                 GradientAngle = shape.GradientAngle,
                 EndCap = shape.EndCap,
                 Opacity = shape.Opacity,
@@ -455,6 +461,24 @@ public static partial class IdmlJson
             Units.FromUnit(spec.Bottom ?? all, unit),
             Units.FromUnit(spec.Left ?? all, unit));
     }
+
+    /// <summary>An arrowhead by its spec name (triangle, simpleWide...) or its IDML name (TriangleArrowHead...).</summary>
+    private static ArrowHead ParseArrowHead(string value, string field) =>
+        TryArrowHead(value) ?? throw new IdmlException(ArrowHeadError(value, field));
+
+    private static ArrowHead? TryArrowHead(string value)
+    {
+        var name = value.Replace("-", string.Empty, StringComparison.Ordinal).Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (name.EndsWith("ArrowHead", StringComparison.OrdinalIgnoreCase))
+        {
+            name = name[..^"ArrowHead".Length];
+        }
+        return Enum.TryParse<ArrowHead>(name, ignoreCase: true, out var arrow) && Enum.IsDefined(arrow) && !int.TryParse(name, out _) ? arrow : null;
+    }
+
+    private static string ArrowHeadError(string value, string field) =>
+        $"Unknown {field} '{value}'. Use none, simple, simpleWide, triangle, triangleWide, barbed, curved, circle, circleSolid, square, squareSolid or bar.";
 
     private static ImageFit ParseFit(string? fit) =>
         string.IsNullOrEmpty(fit) ? ImageFit.Fill : ParseChoice<ImageFit>(fit, "fit");

@@ -137,6 +137,7 @@ internal static class SpecSchema
           "stroke":{"type":"string","description":"Swatch. Shapes have no outline without it; lines default to Black 1 pt."},
           "strokeWeight":{"type":"number"},"strokeTint":{"type":"number","minimum":0,"maximum":100},
           "strokeType":{"type":"string","enum":["solid","dashed","dotted"]},
+          "strokeDash":{"type":"array","items":{"type":"number","minimum":0},"minItems":0,"maxItems":6,"description":"Custom dashes in pt: [dash, gap] (or 4 or 6 lengths; one: dash = gap). Wins over strokeType; [] solid"},
           "endCap":{"type":"string","enum":["butt","round","projecting"]},
           "opacity":{"type":"number","minimum":0,"maximum":100},
           "cornerRadius":{"type":"number"},"rotation":{"type":"number","description":"Degrees counter-clockwise"},
@@ -169,7 +170,9 @@ internal static class SpecSchema
           "headerRows":{"type":"integer","minimum":0,"description":"table"},"rowHeight":{"type":"number","description":"table: default 18 pt"},
           "cellStyle":{"type":"string","description":"table: paragraph style"},"headerStyle":{"type":"string","description":"table: paragraph style"},
           "headerFill":{"type":"string","description":"table: swatch"},"alternateFill":{"type":"string","description":"table: swatch of every other body row"},"cellInset":{"type":"number","description":"table"},
-          "x2":{"type":"number","description":"line: end; default x + width"},"y2":{"type":"number","description":"line: default y + height"}}}}
+          "x2":{"type":"number","description":"line: end; default x + width"},"y2":{"type":"number","description":"line: default y + height"},
+          "startArrow":{"type":"string","enum":["none","simple","simpleWide","triangle","triangleWide","barbed","curved","circle","circleSolid","square","squareSolid","bar"],"description":"line: arrowhead at x/y, sized by strokeWeight"},
+          "endArrow":{"type":"string","enum":["none","simple","simpleWide","triangle","triangleWide","barbed","curved","circle","circleSolid","square","squareSolid","bar"],"description":"line: arrowhead at x2/y2"}}}}
         """;
 
     /// <summary>The members of <paramref name="members"/> as one line of JSON (it is checked to be valid JSON too).</summary>

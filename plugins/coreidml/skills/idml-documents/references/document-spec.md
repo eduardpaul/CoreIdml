@@ -106,7 +106,7 @@ Format fields:
 | `underline`, `strikeThrough` | `true` or `false`. |
 | `tracking` | Thousandths of an em. |
 | `caps` | `normal`, `allCaps`, `smallCaps` or `capToSmallCap`. |
-| `position` | `normal`, `superscript` or `subscript`. |
+| `position` | `normal`, `superscript` or `subscript`: smaller and raised or lowered, at the document's Advanced Type settings (InDesign's 58.3 % of the size, 33.3 % up or down). For formulas: `NO` + `2` subscript + `−` superscript. |
 | `stroke`, `strokeWeight`, `strokeTint` | An outline around the letters (swatch, points, percent). With `"color": "None"` the letters are hollow; under a fill the outline sits outside the letters. `"stroke": "None"` removes it. |
 | `skew` | False italic in degrees (-85 to 85), positive leaning right. Prefer a real italic `fontStyle`. |
 | `underlineWeight`, `underlineOffset`, `underlineColor`, `underlineTint`, `underlineType` | With `underline: true`: the line's weight (points), its distance below the baseline (points), swatch, tint, and `solid`, `dashed`, `dotted`, `wavy` or `thickThin`. Unset: InDesign's automatic weight and offset in the text colour. A thick, tinted underline raised behind the letters (a negative offset) works as a highlighter: underlines are painted under the text. |
@@ -216,9 +216,10 @@ Every item has `type` (default `text`), `x`, `y`, `width`, `height`, and optiona
 | `fill`, `fillTint` | Background swatch and its tint. |
 | `stroke`, `strokeWeight` | Outline swatch and weight (pt). **Rectangles and ellipses have no outline unless `stroke` is given**; lines default to Black, 1 pt. `"None"` removes one. |
 | `strokeTint`, `strokeType` | Outline tint, and `solid`, `dashed` or `dotted`. |
+| `strokeDash` | Custom dashes **in points** (like `strokeWeight`), whatever `unit` is: `[dash, gap]`, four or six lengths (dash, gap, dash, gap...), or one (dash and gap alike). InDesign's "Dashed" stroke type with those lengths (editable in the Stroke panel); it wins over `strokeType`, and `[]` is solid. |
 | `endCap` | Ends of lines: `butt` (default), `round` or `projecting`. |
 | `opacity` | Whole item, 0-100. |
-| `cornerRadius`, `rotation` | Rounded corners; degrees. |
+| `cornerRadius`, `rotation` | Rounded corners; degrees counter-clockwise about the item's centre (`x`, `y`, `width`, `height` give the unrotated item). An image frame turns with its image, as when a frame and its content are rotated together in InDesign. |
 | `objectStyle` | An object style from `objectStyles`; the item's own fields override it. |
 | `gradientAngle` | With a gradient `fill` or `stroke`: its angle in degrees, counter-clockwise. |
 | `wrap` | Text wrap: the text of other frames goes around the item. `boundingBox` (its box), `objectShape` (its outline: ellipses, rounded corners), `jumpObject` (no text beside it), `nextColumn` (the text after it goes to the next column), `none`. See [Text wrap](#text-wrap). |
@@ -244,7 +245,10 @@ By `type`:
   - `ignoreWrap`: `true` lets the frame's text run under every text wrap (a caption on a wrapped photo).
 - **`rectangle`**, **`ellipse`**: shapes, styled with `fill` and `stroke`.
 - **`line`**: from `x`, `y` to `x2`, `y2` (default `x + width`, `y + height`). Black 1 pt unless `stroke`,
-  `strokeWeight` say otherwise.
+  `strokeWeight` say otherwise. `startArrow` (at `x`, `y`) and `endArrow` (at `x2`, `y2`) put InDesign's
+  arrowheads on its ends: `none`, `simple`, `simpleWide` (open V), `triangle`, `triangleWide`, `barbed`, `curved`
+  (filled), `circle`, `square` (hollow), `circleSolid`, `squareSolid` or `bar`. Their size follows `strokeWeight` (a
+  triangle is about 5 weights long and 4 wide), and they extend beyond the end of the line.
 - **`image`**: `path` is the **absolute** path of a JPEG or PNG, linked (not embedded). `fit`: `fill` (default,
   crops), `fit` (whole image), `stretch`, `center` or `original`.
 - **`table`**: a text frame holding a table.

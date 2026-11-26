@@ -852,10 +852,12 @@ internal sealed partial class IdmlRenderer : IDisposable
         }
         var alignment = resolver.Item(element, "StrokeAlignment") ?? "CenterAlignment";
         content.Save();
+        string? pattern = null;
         if (gradient is { } paint)
         {
             // A shading pattern, as InDesign writes gradient strokes; its matrix is in the page's default space.
-            content.PatternColor(Pdf.Pattern(paint.Shading, paint.Space.Then(content.CurrentMatrix)), stroke: true);
+            pattern = Pdf.Pattern(paint.Shading, paint.Space.Then(content.CurrentMatrix));
+            content.PatternColor(pattern, stroke: true);
         }
         else
         {
@@ -889,8 +891,10 @@ internal sealed partial class IdmlRenderer : IDisposable
         {
             content.LineWidth(weight);
         }
-        AppendPath(item, contours, content, bounds);
+        var (ends, stroked) = closed ? (new List<LineEnd>(), contours) : LineEnds(item, contours, weight);
+        AppendPath(item, stroked, content, bounds);
         content.Stroke();
+        DrawLineEnds(ends, content, color, pattern);
         content.Restore();
     }
 

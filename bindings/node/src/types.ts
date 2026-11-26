@@ -213,6 +213,11 @@ export interface GradientStopSpec {
   midpoint?: number;
 }
 
+/** InDesign's arrowheads (Stroke panel Start and End). */
+export type ArrowHead =
+  | 'none' | 'simple' | 'simpleWide' | 'triangle' | 'triangleWide' | 'barbed' | 'curved'
+  | 'circle' | 'circleSolid' | 'square' | 'squareSolid' | 'bar';
+
 /** The look of frames and shapes; lengths in the spec's unit. */
 export interface ObjectStyleSpec {
   name: string;
@@ -292,6 +297,14 @@ export interface ItemSpec {
   strokeWeight?: number;
   strokeTint?: number;
   strokeType?: 'solid' | 'dashed' | 'dotted';
+  /**
+   * Custom dashes in points (like strokeWeight): [dash, gap], four or six lengths, or one (dash = gap). InDesign's
+   * "Dashed" stroke type; wins over strokeType. [] is solid.
+   */
+  strokeDash?: number[];
+  /** Lines: the arrowhead at x/y and at x2/y2, sized by strokeWeight. */
+  startArrow?: ArrowHead;
+  endArrow?: ArrowHead;
   /** Ends of lines. */
   endCap?: 'butt' | 'round' | 'projecting';
   /** Opacity of the whole item, 0 to 100. */

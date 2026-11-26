@@ -21,6 +21,20 @@ public sealed class ShapeStyle
     /// <summary>Solid, dashed or dotted stroke (InDesign's built-in stroke styles).</summary>
     public StrokeKind? StrokeKind { get; init; }
 
+    /// <summary>
+    /// A custom dash pattern in points: dash, gap, dash, gap... (two, four or six lengths, as InDesign's Stroke panel
+    /// takes; one length is a dash and a gap of that length). It makes the stroke InDesign's "Dashed" type with these
+    /// dash and gap lengths (<c>StrokeType="StrokeStyle/$ID/Dashed"</c>, <c>StrokeDashAndGap</c>), and wins over
+    /// <see cref="StrokeKind"/>; an empty pattern is a solid stroke.
+    /// </summary>
+    public IReadOnlyList<double>? StrokeDash { get; init; }
+
+    /// <summary>The arrowhead at the start of a line or open path (InDesign's Start, <c>LeftLineEnd</c>).</summary>
+    public ArrowHead? StartArrow { get; init; }
+
+    /// <summary>The arrowhead at the end of a line or open path (InDesign's End, <c>RightLineEnd</c>).</summary>
+    public ArrowHead? EndArrow { get; init; }
+
     /// <summary>Rounded-corner radius applied to all four corners.</summary>
     public double? CornerRadius { get; init; }
 
@@ -58,6 +72,48 @@ public enum StrokeKind
 
     /// <summary>InDesign's "Dotted".</summary>
     Dotted,
+}
+
+/// <summary>
+/// The arrowheads of InDesign's Stroke panel (Start and End), drawn at the ends of lines and open paths at a size that
+/// follows the stroke weight. The IDML names add "ArrowHead": <c>TriangleArrowHead</c>, <c>SimpleArrowHead</c>...
+/// </summary>
+public enum ArrowHead
+{
+    None,
+
+    /// <summary>An open V.</summary>
+    Simple,
+
+    /// <summary>A wider open V.</summary>
+    SimpleWide,
+
+    /// <summary>A filled triangle.</summary>
+    Triangle,
+
+    /// <summary>A wider filled triangle.</summary>
+    TriangleWide,
+
+    /// <summary>A filled triangle with a notched back.</summary>
+    Barbed,
+
+    /// <summary>A filled head with curved, notched sides.</summary>
+    Curved,
+
+    /// <summary>A hollow circle.</summary>
+    Circle,
+
+    /// <summary>A filled circle.</summary>
+    CircleSolid,
+
+    /// <summary>A hollow square.</summary>
+    Square,
+
+    /// <summary>A filled square.</summary>
+    SquareSolid,
+
+    /// <summary>A bar across the line.</summary>
+    Bar,
 }
 
 /// <summary>How text wraps around an item (Window &gt; Text Wrap).</summary>
@@ -319,9 +375,25 @@ public abstract class PageItem : IdmlNode
         {
             SetAttribute("StrokeTint", IdmlXml.Format(strokeTint));
         }
-        if (style.StrokeKind is { } kind)
+        if (style.StrokeDash is { } dash)
+        {
+            var pattern = DashAndGap(dash);
+            SetAttribute("StrokeType", StrokeTypeReference(pattern.Length == 0 ? Dom.StrokeKind.Solid : Dom.StrokeKind.Dashed, custom: pattern.Length > 0));
+            SetAttribute("StrokeDashAndGap", pattern.Length == 0 ? null : IdmlXml.FormatList(pattern));
+        }
+        else if (style.StrokeKind is { } kind)
         {
             SetAttribute("StrokeType", StrokeTypeReference(kind));
+            // A custom dash belongs to the Dashed type; another type would keep it hidden in the item.
+            SetAttribute("StrokeDashAndGap", null);
+        }
+        if (style.StartArrow is { } start)
+        {
+            SetAttribute("LeftLineEnd", ArrowHeadName(start));
+        }
+        if (style.EndArrow is { } end)
+        {
+            SetAttribute("RightLineEnd", ArrowHeadName(end));
         }
         foreach (var (prefix, color, given) in (ReadOnlySpan<(string, string, Swatch?)>)[("GradientFill", "FillColor", style.Fill), ("GradientStroke", "StrokeColor", style.Stroke)])
         {
@@ -358,13 +430,37 @@ public abstract class PageItem : IdmlNode
         }
     }
 
-    /// <summary>InDesign's stroke style for a <see cref="StrokeKind"/>.</summary>
-    internal static string StrokeTypeReference(StrokeKind kind) => kind switch
+    /// <summary>InDesign's stroke style for a <see cref="StrokeKind"/>; <paramref name="custom"/>: the Dashed type of custom dashes.</summary>
+    internal static string StrokeTypeReference(StrokeKind kind, bool custom = false) => kind switch
     {
+        StrokeKind.Dashed when custom => "StrokeStyle/$ID/Dashed",
         StrokeKind.Dashed => "StrokeStyle/$ID/Canned Dashed 3x2",
         StrokeKind.Dotted => "StrokeStyle/$ID/Canned Dotted",
         _ => "StrokeStyle/$ID/Solid",
     };
+
+    /// <summary>The IDML value of an arrowhead (<c>ArrowHead</c> enumeration): <c>None</c>, <c>TriangleArrowHead</c>...</summary>
+    internal static string ArrowHeadName(ArrowHead arrow) => arrow == ArrowHead.None ? "None" : arrow + "ArrowHead";
+
+    /// <summary>
+    /// A dash pattern as InDesign stores it: pairs of dash and gap lengths, at most three; one length is a dash and
+    /// a gap of that length. Throws on anything InDesign's Stroke panel could not hold.
+    /// </summary>
+    internal static double[] DashAndGap(IReadOnlyList<double> dash)
+    {
+        if (DashError(dash) is { } error)
+        {
+            throw new IdmlException(error);
+        }
+        return dash.Count == 1 ? [dash[0], dash[0]] : [.. dash];
+    }
+
+    /// <summary>What is wrong with a dash pattern, or null: one, two, four or six lengths, not negative, some dash.</summary>
+    internal static string? DashError(IReadOnlyList<double> dash) =>
+        dash.Count is not (0 or 1 or 2 or 4 or 6) ? $"A dash pattern has 1, 2, 4 or 6 lengths (dash, gap, ...), not {dash.Count}."
+        : dash.Any(length => length < 0 || !double.IsFinite(length)) ? "Dash and gap lengths must be 0 or more."
+        : dash.Count > 0 && dash.Where((_, i) => i % 2 == 0).All(length => length == 0) ? "A dash pattern needs a dash longer than 0."
+        : null;
 
     /// <summary>
     /// Writes where a gradient fill or stroke runs, as InDesign stores it (03-color-gradients): <c>...Start</c> in the
@@ -412,11 +508,12 @@ public abstract class PageItem : IdmlNode
         }
         if (Controls("EnableStroke"))
         {
-            Clear(Element, name => name is "StrokeColor" or "StrokeWeight" or "StrokeTint" or "StrokeType" || name.StartsWith("GradientStroke", StringComparison.Ordinal));
+            Clear(Element, name => name is "StrokeColor" or "StrokeWeight" or "StrokeTint" or "StrokeType" or "StrokeDashAndGap" || name.StartsWith("GradientStroke", StringComparison.Ordinal));
         }
         if (Controls("EnableStrokeAndCornerOptions"))
         {
-            Clear(Element, name => name.EndsWith("CornerOption", StringComparison.Ordinal) || name.EndsWith("CornerRadius", StringComparison.Ordinal));
+            Clear(Element, name => name.EndsWith("CornerOption", StringComparison.Ordinal) || name.EndsWith("CornerRadius", StringComparison.Ordinal)
+                || name is "LeftLineEnd" or "RightLineEnd");
         }
         var preference = Element.Element("TextFramePreference");
         if (Controls("EnableTextFrameGeneralOptions"))

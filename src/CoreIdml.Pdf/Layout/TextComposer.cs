@@ -33,12 +33,30 @@ internal sealed partial class TextComposer
     private readonly IdmlDocument document;
     // ShapeText's hyphenation points, reused (ShapeText does not nest).
     private readonly List<int> hyphens = [];
+    // The document's superscript and subscript settings (Positions), read once.
+    private (double, double, double, double)? positions;
 
     public TextComposer(IdmlDocument document, StoryReader reader, FontLibrary fonts)
     {
         this.document = document;
         this.reader = reader;
         this.fonts = fonts;
+    }
+
+    /// <summary>
+    /// Size and offset of superscript and subscript text, as fractions of the text's size: the document's
+    /// Preferences &gt; Advanced Type (<c>TextPreference</c> <c>SuperscriptSize</c>, <c>SuperscriptPosition</c>,
+    /// <c>SubscriptSize</c>, <c>SubscriptPosition</c>, in percent), InDesign's 58.3 % and 33.3 % by default.
+    /// </summary>
+    private (double SuperscriptSize, double SuperscriptPosition, double SubscriptSize, double SubscriptPosition) Positions =>
+        positions ??= ReadPositions(document);
+
+    private static (double, double, double, double) ReadPositions(IdmlDocument document)
+    {
+        var preference = document.Package.TryGetXml("Resources/Preferences.xml")?.Root?.Element("TextPreference");
+        double Percent(string name, double fallback) =>
+            Values.Number(preference?.Attribute(name)?.Value, fallback) is var value && value > 0 ? value / 100 : fallback / 100;
+        return (Percent("SuperscriptSize", 58.3), Percent("SuperscriptPosition", 33.3), Percent("SubscriptSize", 58.3), Percent("SubscriptPosition", 33.3));
     }
 
     /// <summary>Composes the paragraphs of <paramref name="container"/> (a Story or a Cell) into <paramref name="frames"/>.</summary>
@@ -480,12 +498,12 @@ internal sealed partial class TextComposer
             switch (style.Position)
             {
                 case "Superscript" or "OTSuperscript":
-                    size *= 0.583;
-                    rise += style.Size * 0.333;
+                    size *= Positions.SuperscriptSize;
+                    rise += style.Size * Positions.SuperscriptPosition;
                     break;
                 case "Subscript" or "OTSubscript":
-                    size *= 0.583;
-                    rise -= style.Size * 0.333;
+                    size *= Positions.SubscriptSize;
+                    rise -= style.Size * Positions.SubscriptPosition;
                     break;
             }
             if (style.Capitalization == "AllCaps")

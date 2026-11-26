@@ -36,7 +36,7 @@ them (`Arial`: `Regular`, `Italic`, `Bold`, `Bold Italic`), for choosing fonts t
 ## IDML to PDF
 
 What is rendered: master items, groups, rotation, Bézier paths and rounded corners; CMYK, RGB and Lab swatches with
-tints and opacity; stroke alignment; JPEG and PNG images clipped to their frames, with EXIF orientation; placed PDF
+tints and opacity; stroke alignment, dashes and arrowheads; JPEG and PNG images clipped to their frames, with EXIF orientation; placed PDF
 pages as vector graphics; threaded frames, columns, leading, alignment and justification (word and letter spacing,
 glyph scaling), tabs (left, right, centre
 and decimal stops, leaders), tables (row heights,

@@ -172,7 +172,8 @@ doc.fill({ text: { number: 'F-001' } });
 ```
 
 Every item also takes `name`, `label`, `tag` (to appear in the XML structure), `layer`, `fill`, `stroke` (shapes
-have no outline without one), `strokeWeight`, `strokeTint`, `strokeType`, `endCap`, `opacity` and `rotation`. Images
+have no outline without one), `strokeWeight`, `strokeTint`, `strokeType`, `strokeDash` (custom dashes in points),
+`endCap`, `opacity` and `rotation` (image frames turn with their image); lines take `startArrow` and `endArrow`. Images
 must be in the engine's file system, since they are measured to fit. Every field, its unit, allowed values and
 defaults are in the [document spec reference](https://github.com/eduardpaul/CoreIdml/blob/main/plugins/coreidml/skills/idml-documents/references/document-spec.md).
 
