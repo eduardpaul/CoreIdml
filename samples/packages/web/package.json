@@ -8,6 +8,6 @@
     "check": "node serve.mjs --check"
   },
   "dependencies": {
-    "@coreidml/wasm": "1.4.0"
+    "@coreidml/wasm": "1.4.1"
   }
 }
